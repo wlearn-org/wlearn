@@ -26,6 +26,49 @@ class LinearModel:
         self._fitted = True
         self._disposed = False
 
+    @classmethod
+    def create(cls, params=None):
+        """Create an unfitted LinearModel."""
+        obj = cls.__new__(cls)
+        obj._model = None
+        obj._params = dict(params) if params else {}
+        obj._raw_bytes = None
+        obj._fitted = False
+        obj._disposed = False
+        return obj
+
+    def fit(self, X, y):
+        """Train a liblinear model.
+
+        Params: ``solver`` (int, default 0=L2R_LR), ``C`` (float, default 1.0),
+        ``eps`` (float, default 0.01), ``bias`` (float, default -1),
+        ``p`` (float, default 0.1, SVR epsilon).
+        """
+        if self._disposed:
+            raise DisposedError('LinearModel has been disposed.')
+
+        from liblinear.liblinearutil import train
+
+        X = np.asarray(X, dtype=np.float64)
+        y = np.asarray(y, dtype=np.float64)
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+
+        solver = self._params.get('solver', 0)
+        C = self._params.get('C', 1.0)
+        eps = self._params.get('eps', 0.01)
+        bias = self._params.get('bias', -1)
+        p = self._params.get('p', 0.1)
+
+        param_str = f'-s {solver} -c {C} -e {eps} -B {bias} -p {p} -q'
+
+        X_list = X.tolist()
+        y_list = y.tolist()
+        self._model = train(y_list, X_list, param_str)
+        self._raw_bytes = None
+        self._fitted = True
+        return self
+
     @staticmethod
     def _from_bundle(manifest, toc, blobs):
         entry = next((e for e in toc if e['id'] == 'model'), None)

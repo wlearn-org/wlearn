@@ -33,6 +33,67 @@ class XGBModel:
         self._fitted = True
         self._disposed = False
 
+    @classmethod
+    def create(cls, params=None):
+        """Create an unfitted XGBoost model."""
+        obj = cls.__new__(cls)
+        obj._booster = None
+        obj._params = dict(params) if params else {}
+        obj._nr_class = 0
+        obj._classes = np.array([], dtype=np.int32)
+        obj._fitted = False
+        obj._disposed = False
+        return obj
+
+    def fit(self, X, y):
+        """Train an XGBoost model.
+
+        Params are passed directly to xgboost.train(). The wlearn-only
+        param ``numRound`` controls the number of boosting rounds (default 100).
+        """
+        if self._disposed:
+            raise DisposedError('XGBModel has been disposed.')
+
+        X = np.asarray(X, dtype=np.float32)
+        y = np.asarray(y, dtype=np.float64)
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+
+        obj = self._params.get('objective', 'reg:squarederror')
+        num_round = self._params.get('numRound', 100)
+
+        # Build xgboost params (exclude wlearn-only params)
+        xgb_params = {k: v for k, v in self._params.items()
+                      if k not in WLEARN_PARAMS}
+        xgb_params.setdefault('objective', obj)
+        xgb_params.setdefault('verbosity', 0)
+
+        # Detect classes for classification
+        if obj in CLASSIFIER_OBJECTIVES:
+            unique = np.unique(y)
+            classes = np.sort(unique).astype(np.int32)
+            self._classes = classes
+            self._nr_class = len(classes)
+
+            # Remap to 0-based contiguous for multi:softmax/softprob
+            if obj in ('multi:softmax', 'multi:softprob'):
+                xgb_params['num_class'] = len(classes)
+                class_map = {int(c): i for i, c in enumerate(classes)}
+                y_train = np.array([class_map[int(v)] for v in y], dtype=np.float32)
+            else:
+                # Binary: remap to 0/1
+                class_map = {int(c): i for i, c in enumerate(classes)}
+                y_train = np.array([class_map[int(v)] for v in y], dtype=np.float32)
+        else:
+            self._classes = np.array([], dtype=np.int32)
+            self._nr_class = 0
+            y_train = y.astype(np.float32)
+
+        dtrain = xgb.DMatrix(X, label=y_train)
+        self._booster = xgb.train(xgb_params, dtrain, num_boost_round=num_round)
+        self._fitted = True
+        return self
+
     @staticmethod
     def _from_bundle(manifest, toc, blobs):
         entry = next((e for e in toc if e['id'] == 'model'), None)

@@ -25,6 +25,63 @@ class SVMModel:
         self._fitted = True
         self._disposed = False
 
+    @classmethod
+    def create(cls, params=None):
+        """Create an unfitted SVMModel."""
+        obj = cls.__new__(cls)
+        obj._model = None
+        obj._params = dict(params) if params else {}
+        obj._raw_bytes = None
+        obj._fitted = False
+        obj._disposed = False
+        return obj
+
+    def fit(self, X, y):
+        """Train a libsvm model.
+
+        Params: ``svmType`` (int, default 0=C_SVC), ``kernel`` (int, default 2=RBF),
+        ``degree`` (int, default 3), ``gamma`` (float, default 0=1/n_features),
+        ``coef0`` (float, default 0), ``C`` (float, default 1),
+        ``nu`` (float, default 0.5), ``eps`` (float, default 0.001),
+        ``p`` (float, default 0.1), ``shrinking`` (int, default 1),
+        ``probability`` (int, default 0), ``cacheSize`` (float, default 100).
+        """
+        if self._disposed:
+            raise DisposedError('SVMModel has been disposed.')
+
+        from libsvm.svmutil import svm_train
+
+        X = np.asarray(X, dtype=np.float64)
+        y = np.asarray(y, dtype=np.float64)
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+
+        svm_type = self._params.get('svmType', 0)
+        kernel = self._params.get('kernel', 2)
+        degree = self._params.get('degree', 3)
+        gamma = self._params.get('gamma', 0)
+        coef0 = self._params.get('coef0', 0)
+        C = self._params.get('C', 1.0)
+        nu = self._params.get('nu', 0.5)
+        eps = self._params.get('eps', 0.001)
+        p_val = self._params.get('p', 0.1)
+        shrinking = self._params.get('shrinking', 1)
+        probability = self._params.get('probability', 0)
+        cache_size = self._params.get('cacheSize', 100)
+
+        param_str = (
+            f'-s {svm_type} -t {kernel} -d {degree} -g {gamma} -r {coef0} '
+            f'-c {C} -n {nu} -e {eps} -p {p_val} '
+            f'-h {shrinking} -b {probability} -m {cache_size} -q'
+        )
+
+        X_list = X.tolist()
+        y_list = y.tolist()
+        self._model = svm_train(y_list, X_list, param_str)
+        self._raw_bytes = None
+        self._fitted = True
+        return self
+
     @staticmethod
     def _from_bundle(manifest, toc, blobs):
         entry = next((e for e in toc if e['id'] == 'model'), None)

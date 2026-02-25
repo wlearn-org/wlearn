@@ -50,6 +50,47 @@ class KNNModel:
         else:
             self._build_tree()
 
+    @classmethod
+    def create(cls, params=None):
+        """Create an unfitted KNNModel."""
+        obj = cls.__new__(cls)
+        obj._X = None
+        obj._y = None
+        obj._params = dict(params) if params else {}
+        obj._tree = None
+        obj._classes = None
+        obj._n_classes = 0
+        obj._disposed = False
+        obj._fitted = False
+        return obj
+
+    def fit(self, X, y):
+        """Train a KNN model (stores data and builds KD-tree).
+
+        Params: ``k`` (int, default 5), ``metric`` (str, default 'l2'),
+        ``leafMaxSize`` (int, default 10), ``task`` ('classification' or 'regression').
+        """
+        if self._disposed:
+            raise DisposedError('KNNModel has been disposed.')
+
+        self._X = np.ascontiguousarray(X, dtype=np.float64)
+        if self._X.ndim == 1:
+            self._X = self._X.reshape(1, -1)
+
+        task = self._params.get('task', 'classification')
+        if task == 'classification':
+            self._y = np.asarray(y, dtype=np.int32)
+            self._classes = np.unique(self._y)
+            self._n_classes = len(self._classes)
+        else:
+            self._y = np.asarray(y, dtype=np.float64)
+            self._classes = None
+            self._n_classes = 0
+
+        self._build_tree()
+        self._fitted = True
+        return self
+
     def _build_tree(self):
         k = self._params.get('k', 5)
         metric = self._params.get('metric', 'l2').upper()
