@@ -63,7 +63,10 @@ class EBMModel:
         self._term_names = metadata.get('termNames')
         self._feature_names = metadata.get('featureNames')
 
-        # Pre-convert cuts and scores to numpy arrays for fast predict
+        self._setup_arrays(model_data)
+
+    def _setup_arrays(self, model_data):
+        """Pre-convert cuts and scores to numpy arrays for fast predict."""
         self._cuts = []
         for f in model_data['features']:
             cuts = np.array(f.get('cuts', []), dtype=np.float64)
@@ -73,6 +76,200 @@ class EBMModel:
         self._term_scores = []
         for t in self._terms:
             self._term_scores.append(np.array(t['scores'], dtype=np.float64))
+
+    @classmethod
+    def create(cls, params=None):
+        """Create an unfitted EBM model."""
+        obj = cls.__new__(cls)
+        obj._model_data = None
+        obj._params = dict(params) if params else {}
+        obj._disposed = False
+        obj._fitted = False
+        obj._raw_blob = None
+        obj._task = None
+        obj._n_features = 0
+        obj._n_terms = 0
+        obj._n_scores = 0
+        obj._intercept = None
+        obj._n_classes = 0
+        obj._classes = None
+        obj._term_names = None
+        obj._feature_names = None
+        obj._cuts = []
+        obj._terms = []
+        obj._term_scores = []
+        return obj
+
+    def fit(self, X, y):
+        """Train an EBM model using the interpret package.
+
+        Requires the ``interpret`` package (``pip install interpret``).
+        Predict/save/load only need numpy.
+        """
+        if self._disposed:
+            raise DisposedError('EBMModel has been disposed.')
+
+        try:
+            from interpret.glassbox import (
+                ExplainableBoostingClassifier,
+                ExplainableBoostingRegressor,
+            )
+        except ImportError:
+            raise ImportError(
+                'interpret package required for fit(). '
+                'Install with: pip install interpret'
+            )
+
+        X = np.asarray(X, dtype=np.float64)
+        y = np.asarray(y)
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+
+        # Determine task
+        objective = self._params.get('objective')
+        if objective == 'regression':
+            is_regressor = True
+        elif objective == 'classification':
+            is_regressor = False
+        else:
+            is_regressor = not np.all(y == np.floor(y.astype(np.float64)))
+
+        interpret_params = self._map_params(self._params)
+
+        if is_regressor:
+            ebm = ExplainableBoostingRegressor(**interpret_params)
+            ebm.fit(X, y)
+            self._task = 'regression'
+            self._n_classes = 0
+            self._classes = None
+        else:
+            ebm = ExplainableBoostingClassifier(**interpret_params)
+            ebm.fit(X, y)
+            self._task = 'classification'
+            classes = ebm.classes_.astype(np.int32)
+            self._classes = classes
+            self._n_classes = len(classes)
+
+        self._model_data = self._extract_model_data(ebm, is_regressor)
+        self._raw_blob = None
+
+        self._n_features = self._model_data['nFeatures']
+        self._n_terms = self._model_data['nTerms']
+        self._n_scores = self._model_data['nScores']
+        self._intercept = np.array(self._model_data['intercept'], dtype=np.float64)
+        self._setup_arrays(self._model_data)
+
+        if hasattr(ebm, 'term_names_'):
+            self._term_names = [str(n) for n in ebm.term_names_]
+        if hasattr(ebm, 'feature_names_in_'):
+            self._feature_names = [str(n) for n in ebm.feature_names_in_]
+
+        self._fitted = True
+        return self
+
+    @staticmethod
+    def _map_params(params):
+        """Map wlearn camelCase params to interpret snake_case."""
+        mapping = {
+            'learningRate': 'learning_rate',
+            'maxRounds': 'max_rounds',
+            'earlyStoppingRounds': 'early_stopping_rounds',
+            'maxLeaves': 'max_leaves',
+            'minSamplesLeaf': 'min_samples_leaf',
+            'maxInteractions': 'interactions',
+            'maxBins': 'max_bins',
+            'outerBags': 'outer_bags',
+            'innerBags': 'inner_bags',
+            'seed': 'random_state',
+        }
+        skip = {'objective'}
+        out = {}
+        for k, v in params.items():
+            if k in skip:
+                continue
+            out[mapping.get(k, k)] = v
+
+        # Match JS behavior: same bins for interactions and mains
+        if 'max_interaction_bins' not in out:
+            out['max_interaction_bins'] = out.get('max_bins', 256)
+
+        return out
+
+    @staticmethod
+    def _extract_model_data(ebm, is_regressor):
+        """Convert interpret fitted model to ebm-json-v1 format."""
+        n_features = len(ebm.feature_names_in_)
+        n_terms = len(ebm.term_features_)
+
+        if is_regressor:
+            n_scores = 1
+        else:
+            n_classes = len(ebm.classes_)
+            n_scores = 1 if n_classes <= 2 else n_classes
+
+        # Intercept
+        intercept_raw = np.atleast_1d(np.asarray(ebm.intercept_, dtype=np.float64))
+        intercept = [float(v) for v in intercept_raw[:n_scores]]
+
+        # Features (bin edges)
+        features = []
+        for fi in range(n_features):
+            ftype = ebm.feature_types_in_[fi]
+            if ftype == 'continuous':
+                bins_fi = ebm.bins_[fi]
+                # bins_ is list-of-arrays (one per resolution level)
+                if isinstance(bins_fi, list):
+                    cuts_arr = np.asarray(bins_fi[0], dtype=np.float64)
+                else:
+                    cuts_arr = np.asarray(bins_fi, dtype=np.float64)
+                features.append({
+                    'type': 'continuous',
+                    'cuts': [float(c) for c in cuts_arr],
+                })
+            else:
+                # Nominal: bins_ is a dict mapping categories to bin indices
+                bins_fi = ebm.bins_[fi]
+                if isinstance(bins_fi, list):
+                    bins_fi = bins_fi[0]
+                n_bins = len(bins_fi) if isinstance(bins_fi, dict) else int(bins_fi)
+                features.append({
+                    'type': 'nominal',
+                    'nBins': n_bins,
+                })
+
+        # Terms: strip the unseen bin (last index) from each spatial dimension
+        terms = []
+        for t in range(n_terms):
+            term_features = [int(f) for f in ebm.term_features_[t]]
+            scores_raw = np.asarray(ebm.term_scores_[t], dtype=np.float64)
+            n_dims = len(term_features)
+
+            # Strip unseen bin from each spatial dimension
+            slices = tuple(slice(0, -1) for _ in range(n_dims))
+            if scores_raw.ndim > n_dims:
+                # Multiclass: extra axis for classes
+                slices = slices + (slice(None),)
+            scores_stripped = scores_raw[slices]
+
+            bin_counts = [int(scores_stripped.shape[d]) for d in range(n_dims)]
+            flat_scores = [float(s) for s in scores_stripped.ravel()]
+
+            terms.append({
+                'features': term_features,
+                'binCounts': bin_counts,
+                'scores': flat_scores,
+            })
+
+        return {
+            'format': 'ebm-json-v1',
+            'task': 'regression' if is_regressor else 'classification',
+            'nFeatures': n_features,
+            'nTerms': n_terms,
+            'nScores': n_scores,
+            'intercept': intercept,
+            'features': features,
+            'terms': terms,
+        }
 
     @staticmethod
     def _from_bundle(manifest, toc, blobs):
