@@ -1,0 +1,23 @@
+{
+  "name": "@wlearn/types",
+  "version": "0.1.0",
+  "description": "Type definitions and constants for wlearn",
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "scripts": {
+    "test": "echo 'no tests (types-only package)'"
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "Anton Zemlyansky",
+  "license": "MIT"
+}
