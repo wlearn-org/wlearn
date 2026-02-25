@@ -25,6 +25,7 @@ import wlearn.xgboost    # noqa: F401
 import wlearn.liblinear  # noqa: F401
 import wlearn.libsvm     # noqa: F401
 import wlearn.nanoflann  # noqa: F401
+import wlearn.ebm        # noqa: F401
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent / 'fixtures'
 

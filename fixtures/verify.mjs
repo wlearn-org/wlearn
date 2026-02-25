@@ -21,15 +21,17 @@ let modelsAvailable = false
 async function tryLoadModels() {
   try {
     if (PORTS_DIR) {
-      await import(`${PORTS_DIR}/liblinear/src/index.js`)
-      await import(`${PORTS_DIR}/libsvm/src/index.js`)
-      await import(`${PORTS_DIR}/xgboost/src/index.js`)
-      await import(`${PORTS_DIR}/nanoflann/src/index.js`)
+      await import(`${PORTS_DIR}/liblinear-wasm/src/index.js`)
+      await import(`${PORTS_DIR}/libsvm-wasm/src/index.js`)
+      await import(`${PORTS_DIR}/xgboost-wasm/src/index.js`)
+      await import(`${PORTS_DIR}/nanoflann-wasm/src/index.js`)
+      await import(`${PORTS_DIR}/ebm-wasm/src/index.js`)
     } else {
       await import('@wlearn/liblinear')
       await import('@wlearn/libsvm')
       await import('@wlearn/xgboost')
       await import('@wlearn/nanoflann')
+      await import('@wlearn/ebm')
     }
     modelsAvailable = true
   } catch {

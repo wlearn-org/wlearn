@@ -25,7 +25,7 @@ const PORTS_DIR = process.env.WLEARN_PORTS_DIR
 async function importPort(name) {
   if (PORTS_DIR) {
     // dev mode: absolute path to sibling repo
-    const map = { liblinear: 'liblinear', libsvm: 'libsvm', xgboost: 'xgboost', nanoflann: 'nanoflann' }
+    const map = { liblinear: 'liblinear-wasm', libsvm: 'libsvm-wasm', xgboost: 'xgboost-wasm', nanoflann: 'nanoflann-wasm', ebm: 'ebm-wasm' }
     const dir = map[name]
     if (!dir) throw new Error(`Unknown port: ${name}`)
     return import(`${PORTS_DIR}/${dir}/src/index.js`)
@@ -225,6 +225,36 @@ async function main() {
     const preds = model.predict(X)
     const bundle = model.save()
     writeFixture('nanoflann-regressor', bundle,
+      makeSidecar(bundle, model.getParams(), X, y, preds))
+    model.dispose()
+  }
+
+  // 9. ebm-classifier
+  {
+    const { EBMModel } = await importPort('ebm')
+    const rng = makeLCG(900)
+    const { X, y } = makeClassificationData(rng, 100, 2)
+    const params = { maxRounds: 100, earlyStoppingRounds: 20, maxInteractions: 0, seed: 42 }
+    const model = await EBMModel.create(params)
+    model.fit(X, y)
+    const preds = model.predict(X)
+    const bundle = model.save()
+    writeFixture('ebm-classifier', bundle,
+      makeSidecar(bundle, model.getParams(), X, y, preds))
+    model.dispose()
+  }
+
+  // 10. ebm-regressor
+  {
+    const { EBMModel } = await importPort('ebm')
+    const rng = makeLCG(1000)
+    const { X, y } = makeRegressionData(rng, 100, 2)
+    const params = { objective: 'regression', maxRounds: 100, earlyStoppingRounds: 20, maxInteractions: 0, seed: 42 }
+    const model = await EBMModel.create(params)
+    model.fit(X, y)
+    const preds = model.predict(X)
+    const bundle = model.save()
+    writeFixture('ebm-regressor', bundle,
       makeSidecar(bundle, model.getParams(), X, y, preds))
     model.dispose()
   }
