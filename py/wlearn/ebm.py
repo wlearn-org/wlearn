@@ -498,5 +498,18 @@ class EBMModel:
             raise NotFittedError('EBMModel is not fitted.')
 
 
+    @classmethod
+    def default_search_space(cls):
+        return {
+            'learningRate': {'type': 'log_uniform', 'low': 0.001, 'high': 0.1},
+            'maxRounds': {'type': 'int_uniform', 'low': 1000, 'high': 10000},
+            'maxLeaves': {'type': 'int_uniform', 'low': 2, 'high': 5},
+            'maxInteractions': {'type': 'int_uniform', 'low': 0, 'high': 20},
+            'maxBins': {'type': 'categorical', 'values': [128, 256, 512]},
+            'outerBags': {'type': 'int_uniform', 'low': 4, 'high': 16},
+            'minSamplesLeaf': {'type': 'int_uniform', 'low': 1, 'high': 10},
+        }
+
+
 register('wlearn.ebm.classifier@1', EBMModel._from_bundle)
 register('wlearn.ebm.regressor@1', EBMModel._from_bundle)

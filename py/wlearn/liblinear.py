@@ -177,5 +177,14 @@ class LinearModel:
             raise NotFittedError('LinearModel is not fitted.')
 
 
+    @classmethod
+    def default_search_space(cls):
+        return {
+            'solver': {'type': 'categorical', 'values': [0, 6, 7]},
+            'C': {'type': 'log_uniform', 'low': 1e-4, 'high': 1e4},
+            'eps': {'type': 'log_uniform', 'low': 1e-5, 'high': 1e-1},
+        }
+
+
 register('wlearn.liblinear.classifier@1', LinearModel._from_bundle)
 register('wlearn.liblinear.regressor@1', LinearModel._from_bundle)

@@ -190,5 +190,17 @@ class SVMModel:
             raise NotFittedError('SVMModel is not fitted.')
 
 
+    @classmethod
+    def default_search_space(cls):
+        return {
+            'svmType': {'type': 'categorical', 'values': [0, 1]},
+            'kernel': {'type': 'categorical', 'values': [2, 0, 1]},
+            'C': {'type': 'log_uniform', 'low': 1e-3, 'high': 1e3},
+            'gamma': {'type': 'log_uniform', 'low': 1e-5, 'high': 1e1},
+            'degree': {'type': 'int_uniform', 'low': 2, 'high': 5, 'condition': {'kernel': 1}},
+            'nu': {'type': 'uniform', 'low': 0.01, 'high': 0.99, 'condition': {'svmType': 1}},
+        }
+
+
 register('wlearn.libsvm.classifier@1', SVMModel._from_bundle)
 register('wlearn.libsvm.regressor@1', SVMModel._from_bundle)

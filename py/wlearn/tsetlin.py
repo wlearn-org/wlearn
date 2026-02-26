@@ -644,5 +644,18 @@ class TsetlinModel:
             raise NotFittedError('TsetlinModel is not fitted.')
 
 
+    @classmethod
+    def default_search_space(cls):
+        return {
+            'nClauses': {'type': 'int_log_uniform', 'low': 20, 'high': 2000},
+            'threshold': {'type': 'int_uniform', 'low': 10, 'high': 200},
+            's': {'type': 'log_uniform', 'low': 1.0, 'high': 20.0},
+            'stateBits': {'type': 'int_uniform', 'low': 4, 'high': 12},
+            'boostTruePositiveFeedback': {'type': 'categorical', 'values': [True, False]},
+            'nThresholdsPerFeature': {'type': 'int_uniform', 'low': 2, 'high': 20},
+            'nEpochs': {'type': 'int_uniform', 'low': 20, 'high': 200},
+        }
+
+
 register('wlearn.tsetlin.classifier@1', TsetlinModel._from_bundle)
 register('wlearn.tsetlin.regressor@1', TsetlinModel._from_bundle)

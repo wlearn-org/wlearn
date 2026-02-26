@@ -253,5 +253,14 @@ class KNNModel:
             raise NotFittedError('KNNModel is not fitted.')
 
 
+    @classmethod
+    def default_search_space(cls):
+        return {
+            'k': {'type': 'int_uniform', 'low': 1, 'high': 30},
+            'metric': {'type': 'categorical', 'values': ['l2', 'l1']},
+            'leafMaxSize': {'type': 'int_uniform', 'low': 5, 'high': 50},
+        }
+
+
 register('wlearn.nanoflann.classifier@1', KNNModel._from_bundle)
 register('wlearn.nanoflann.regressor@1', KNNModel._from_bundle)

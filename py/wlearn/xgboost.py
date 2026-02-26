@@ -248,5 +248,20 @@ class XGBModel:
             raise NotFittedError('XGBModel is not fitted.')
 
 
+    @classmethod
+    def default_search_space(cls):
+        return {
+            'objective': {'type': 'categorical', 'values': ['binary:logistic', 'reg:squarederror']},
+            'max_depth': {'type': 'int_uniform', 'low': 3, 'high': 10},
+            'eta': {'type': 'log_uniform', 'low': 0.01, 'high': 0.3},
+            'numRound': {'type': 'int_uniform', 'low': 50, 'high': 500},
+            'subsample': {'type': 'uniform', 'low': 0.5, 'high': 1.0},
+            'colsample_bytree': {'type': 'uniform', 'low': 0.5, 'high': 1.0},
+            'min_child_weight': {'type': 'log_uniform', 'low': 1, 'high': 10},
+            'lambda': {'type': 'log_uniform', 'low': 1e-3, 'high': 10},
+            'alpha': {'type': 'log_uniform', 'low': 1e-3, 'high': 10},
+        }
+
+
 register('wlearn.xgboost.classifier@1', XGBModel._from_bundle)
 register('wlearn.xgboost.regressor@1', XGBModel._from_bundle)
