@@ -23,3 +23,16 @@ export { register, load, loadSync, getRegistry } from './registry.js'
 // pipeline
 export { Pipeline } from './pipeline.js'
 export { Step } from './step.js'
+
+// rng
+export { makeLCG, shuffle } from './rng.js'
+
+// metrics
+export {
+  accuracy, r2Score, meanSquaredError, meanAbsoluteError,
+  confusionMatrix, precisionScore, recallScore, f1Score,
+  logLoss, rocAuc
+} from './metrics.js'
+
+// cross-validation
+export { kFold, stratifiedKFold, trainTestSplit, crossValScore, getScorer } from './cv.js'
