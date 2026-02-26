@@ -1,4 +1,5 @@
 import { getScorer, normalizeY, ValidationError } from '@wlearn/core'
+import { optimizeWeights } from './weights.js'
 
 /**
  * Caruana greedy ensemble selection (Caruana et al., 2004).
@@ -12,6 +13,7 @@ import { getScorer, normalizeY, ValidationError } from '@wlearn/core'
  *   Regression: each is n_samples
  * @param {TypedArray|number[]} yTrue - true labels
  * @param {Object} opts
+ * @param {boolean} opts.refineWeights - if true, optimize weights after selection
  * @returns {{ indices: Int32Array, weights: Float64Array, scores: Float64Array }}
  */
 export function caruanaSelect(oofPredictions, yTrue, {
@@ -19,6 +21,7 @@ export function caruanaSelect(oofPredictions, yTrue, {
   scoring = 'accuracy',
   task = 'classification',
   nClasses = 0,
+  refineWeights = false,
 } = {}) {
   const yn = normalizeY(yTrue)
   const n = yn.length
@@ -80,11 +83,18 @@ export function caruanaSelect(oofPredictions, yTrue, {
     weights[i] = counts.get(uniqueIndices[i]) / maxSize
   }
 
-  return {
+  const result = {
     indices: uniqueIndices,
     weights,
     scores: new Float64Array(scores),
   }
+
+  if (refineWeights && uniqueIndices.length > 1) {
+    const selectedOofs = Array.from(uniqueIndices, idx => oofPredictions[idx])
+    result.weights = optimizeWeights(selectedOofs, yn, weights, { task })
+  }
+
+  return result
 }
 
 // --- Internal helpers ---

@@ -1,4 +1,6 @@
 export { VotingEnsemble } from './voting.js'
 export { StackingEnsemble } from './stacking.js'
+export { BaggedEstimator } from './bagging.js'
 export { caruanaSelect } from './selection.js'
 export { getOofPredictions } from './oof.js'
+export { optimizeWeights, projectSimplex } from './weights.js'
