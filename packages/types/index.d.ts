@@ -76,6 +76,7 @@ export type SearchParam =
   | { type: 'uniform'; low: number; high: number }
   | { type: 'log_uniform'; low: number; high: number }
   | { type: 'int_uniform'; low: number; high: number }
+  | { type: 'int_log_uniform'; low: number; high: number }
 
 export type SearchSpace = Record<string, SearchParam & { condition?: Record<string, unknown> }>
 
@@ -122,3 +123,176 @@ export type LoaderFn = (
   toc: BundleTOCEntry[],
   blobs: Uint8Array
 ) => Estimator | Promise<Estimator>
+
+// RNG
+export type RngFn = () => number
+export declare function makeLCG(seed?: number): RngFn
+export declare function shuffle<T extends ArrayLike<number> & { [i: number]: number }>(arr: T, rng: RngFn): T
+
+// Metrics
+export type AveragingMethod = 'binary' | 'micro' | 'macro'
+
+export interface ConfusionMatrixResult {
+  matrix: Int32Array
+  labels: Int32Array
+}
+
+export declare function accuracy(yTrue: Labels, yPred: Labels): number
+export declare function r2Score(yTrue: Labels, yPred: Labels): number
+export declare function meanSquaredError(yTrue: Labels, yPred: Labels): number
+export declare function meanAbsoluteError(yTrue: Labels, yPred: Labels): number
+export declare function confusionMatrix(yTrue: Labels, yPred: Labels): ConfusionMatrixResult
+export declare function precisionScore(yTrue: Labels, yPred: Labels, opts?: { average?: AveragingMethod }): number
+export declare function recallScore(yTrue: Labels, yPred: Labels, opts?: { average?: AveragingMethod }): number
+export declare function f1Score(yTrue: Labels, yPred: Labels, opts?: { average?: AveragingMethod }): number
+export declare function logLoss(yTrue: Labels, yProba: Float64Array, opts?: { nClasses?: number; eps?: number }): number
+export declare function rocAuc(yTrue: Labels, yProba: Float64Array): number
+
+// Cross-validation
+export interface CVFold {
+  train: Int32Array
+  test: Int32Array
+}
+
+export type ScoringName = 'accuracy' | 'r2' | 'neg_mse' | 'neg_mae'
+export type ScoringFn = (yTrue: Labels, yPred: Labels) => number
+
+export declare function kFold(n: number, k?: number, opts?: { shuffle?: boolean; seed?: number }): CVFold[]
+export declare function stratifiedKFold(y: Labels, k?: number, opts?: { shuffle?: boolean; seed?: number }): CVFold[]
+export declare function trainTestSplit(n: number, opts?: { testSize?: number; shuffle?: boolean; seed?: number }): CVFold
+export declare function getScorer(scoring: ScoringName | ScoringFn): ScoringFn
+
+export interface CrossValScoreOpts {
+  cv?: number | CVFold[]
+  scoring?: ScoringName | ScoringFn
+  seed?: number
+  params?: Record<string, unknown>
+}
+
+export interface EstimatorClass {
+  create(params?: Record<string, unknown>): Promise<Estimator>
+}
+
+export declare function crossValScore(
+  EstimatorClass: EstimatorClass,
+  X: Matrix | number[][],
+  y: Labels | number[],
+  opts?: CrossValScoreOpts
+): Promise<Float64Array>
+
+// Ensemble types
+export type TaskType = 'classification' | 'regression'
+export type VotingMethod = 'soft' | 'hard'
+
+export type EstimatorSpec = [name: string, cls: EstimatorClass, params?: Record<string, unknown>]
+
+export interface VotingEnsembleParams {
+  estimators?: EstimatorSpec[]
+  weights?: number[] | Float64Array
+  voting?: VotingMethod
+  task?: TaskType
+}
+
+export interface StackingEnsembleParams {
+  estimators?: EstimatorSpec[]
+  finalEstimator?: EstimatorSpec
+  cv?: number
+  task?: TaskType
+  passthrough?: boolean
+  seed?: number
+}
+
+export interface CaruanaResult {
+  indices: Int32Array
+  weights: Float64Array
+  scores: Float64Array
+}
+
+export interface CaruanaOpts {
+  maxSize?: number
+  scoring?: ScoringName | ScoringFn
+  task?: TaskType
+  nClasses?: number
+}
+
+export declare function caruanaSelect(
+  oofPredictions: Float64Array[],
+  yTrue: Labels,
+  opts?: CaruanaOpts
+): CaruanaResult
+
+export interface OofOpts {
+  cv?: number
+  seed?: number
+  task?: TaskType
+}
+
+export interface OofResult {
+  oofPreds: Float64Array[]
+  classes: Int32Array | null
+}
+
+export declare function getOofPredictions(
+  estimatorSpecs: EstimatorSpec[],
+  X: Matrix | number[][],
+  y: Labels | number[],
+  opts?: OofOpts
+): Promise<OofResult>
+
+// AutoML types
+export interface ModelSpec {
+  name: string
+  cls: EstimatorClass
+  searchSpace?: SearchSpace
+  params?: Record<string, unknown>
+}
+
+export interface CandidateResult {
+  id: number
+  modelName: string
+  params: Record<string, unknown>
+  scores: Float64Array
+  meanScore: number
+  stdScore: number
+  fitTimeMs: number
+  rank: number
+}
+
+export interface SearchOpts {
+  scoring?: ScoringName | ScoringFn
+  cv?: number
+  seed?: number
+  task?: TaskType
+  nIter?: number
+  maxTimeMs?: number
+}
+
+export interface HalvingOpts extends SearchOpts {
+  factor?: number
+  minResources?: number
+}
+
+export interface AutoFitOpts extends SearchOpts {
+  ensemble?: boolean
+  ensembleSize?: number
+  refit?: boolean
+}
+
+export interface AutoFitResult {
+  model: Estimator | null
+  leaderboard: CandidateResult[]
+  bestParams: Record<string, unknown>
+  bestModelName: string
+  bestScore: number
+}
+
+export declare function sampleParam(param: SearchParam, rng: RngFn): unknown
+export declare function sampleConfig(space: SearchSpace, rng: RngFn): Record<string, unknown>
+export declare function randomConfigs(space: SearchSpace, n: number, opts?: { seed?: number }): Record<string, unknown>[]
+export declare function gridConfigs(space: SearchSpace, opts?: { steps?: number }): Record<string, unknown>[]
+export declare function autoFit(
+  models: (ModelSpec | EstimatorSpec)[],
+  X: Matrix | number[][],
+  y: Labels | number[],
+  opts?: AutoFitOpts
+): Promise<AutoFitResult>
