@@ -1,22 +1,8 @@
-import { crossValScore, stratifiedKFold, kFold, normalizeX, normalizeY,
-  makeLCG, ValidationError } from '@wlearn/core'
-import { randomConfigs } from './sampler.js'
-import { Leaderboard } from './leaderboard.js'
-
-function _now() {
-  if (typeof performance !== 'undefined') return performance.now()
-  return Date.now()
-}
-
-function _detectTask(y) {
-  if (y instanceof Int32Array) return 'classification'
-  const unique = new Set()
-  for (let i = 0; i < y.length; i++) {
-    if (y[i] !== Math.round(y[i])) return 'regression'
-    unique.add(y[i])
-  }
-  return unique.size <= 20 ? 'classification' : 'regression'
-}
+import { stratifiedKFold, kFold, normalizeX, normalizeY,
+  ValidationError } from '@wlearn/core'
+import { Executor } from './executor.js'
+import { RandomStrategy } from './strategy-random.js'
+import { detectTask, scorerGreaterIsBetter } from './common.js'
 
 /**
  * Random hyperparameter search with cross-validation.
@@ -53,7 +39,7 @@ export class RandomSearch {
   async fit(X, y) {
     const Xn = normalizeX(X)
     const yn = normalizeY(y)
-    const task = this.#opts.task || _detectTask(yn)
+    const task = this.#opts.task || detectTask(yn)
     const scoring = this.#opts.scoring || (task === 'classification' ? 'accuracy' : 'r2')
     const { cv, seed, nIter, maxTimeMs } = this.#opts
 
@@ -62,48 +48,18 @@ export class RandomSearch {
       ? stratifiedKFold(yn, cv, { shuffle: true, seed })
       : kFold(yn.length, cv, { shuffle: true, seed })
 
-    const leaderboard = new Leaderboard()
-    const rng = makeLCG(seed)
-    const startTime = _now()
+    const executor = new Executor({
+      folds,
+      scoring,
+      X: Xn,
+      y: yn,
+      timeLimitMs: maxTimeMs,
+      seed,
+    })
 
-    for (const model of this.#models) {
-      const space = model.searchSpace || model.cls.defaultSearchSpace?.() || {}
-      // Remove fixed params from search space
-      const effectiveSpace = { ...space }
-      if (model.params) {
-        for (const key of Object.keys(model.params)) {
-          delete effectiveSpace[key]
-        }
-      }
+    const strategy = new RandomStrategy(this.#models, { nIter, seed })
 
-      const configs = randomConfigs(effectiveSpace, nIter, {
-        seed: (rng() * 0x7fffffff) | 0,
-      })
-
-      for (const config of configs) {
-        if (maxTimeMs > 0 && (_now() - startTime) > maxTimeMs) break
-
-        const mergedParams = { ...config, ...(model.params || {}) }
-        const t0 = _now()
-
-        const scores = await crossValScore(model.cls, Xn, yn, {
-          cv: folds,
-          scoring,
-          seed,
-          params: mergedParams,
-        })
-
-        const fitTimeMs = _now() - t0
-        leaderboard.add({
-          modelName: model.name,
-          params: mergedParams,
-          scores,
-          fitTimeMs,
-        })
-      }
-
-      if (maxTimeMs > 0 && (_now() - startTime) > maxTimeMs) break
-    }
+    const { leaderboard } = await executor.runStrategy(strategy)
 
     if (leaderboard.length === 0) {
       throw new ValidationError('RandomSearch: no candidates were evaluated')

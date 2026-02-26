@@ -1,6 +1,9 @@
 import { normalizeX, normalizeY, ValidationError } from '@wlearn/core'
 import { getOofPredictions, caruanaSelect, VotingEnsemble } from '@wlearn/ensemble'
 import { RandomSearch } from './search.js'
+import { SuccessiveHalvingSearch } from './halving.js'
+import { PortfolioSearch } from './portfolio.js'
+import { detectTask } from './common.js'
 
 /**
  * Normalize model specs: accept both ModelSpec objects and [name, cls, params?] tuples.
@@ -28,6 +31,7 @@ export async function autoFit(models, X, y, opts = {}) {
     ensemble = false,
     ensembleSize = 20,
     refit = true,
+    strategy = 'random',
     ...searchOpts
   } = opts
 
@@ -37,13 +41,20 @@ export async function autoFit(models, X, y, opts = {}) {
   }
 
   // Run search
-  const search = new RandomSearch(specs, searchOpts)
+  let search
+  if (strategy === 'portfolio') {
+    search = new PortfolioSearch(specs, searchOpts)
+  } else if (strategy === 'halving') {
+    search = new SuccessiveHalvingSearch(specs, searchOpts)
+  } else {
+    search = new RandomSearch(specs, searchOpts)
+  }
   const { leaderboard, bestResult } = await search.fit(X, y)
   const ranked = leaderboard.ranked()
 
   const Xn = normalizeX(X)
   const yn = normalizeY(y)
-  const task = searchOpts.task || _detectTask(yn)
+  const task = searchOpts.task || detectTask(yn)
   const scoring = searchOpts.scoring || (task === 'classification' ? 'accuracy' : 'r2')
   const cv = searchOpts.cv || 5
   const seed = searchOpts.seed || 42
@@ -119,12 +130,3 @@ export async function autoFit(models, X, y, opts = {}) {
   }
 }
 
-function _detectTask(y) {
-  if (y instanceof Int32Array) return 'classification'
-  const unique = new Set()
-  for (let i = 0; i < y.length; i++) {
-    if (y[i] !== Math.round(y[i])) return 'regression'
-    unique.add(y[i])
-  }
-  return unique.size <= 20 ? 'classification' : 'regression'
-}
