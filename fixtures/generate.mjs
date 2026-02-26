@@ -25,7 +25,7 @@ const PORTS_DIR = process.env.WLEARN_PORTS_DIR
 async function importPort(name) {
   if (PORTS_DIR) {
     // dev mode: absolute path to sibling repo
-    const map = { liblinear: 'liblinear-wasm', libsvm: 'libsvm-wasm', xgboost: 'xgboost-wasm', nanoflann: 'nanoflann-wasm', ebm: 'ebm-wasm' }
+    const map = { liblinear: 'liblinear-wasm', libsvm: 'libsvm-wasm', xgboost: 'xgboost-wasm', nanoflann: 'nanoflann-wasm', ebm: 'ebm-wasm', lightgbm: 'lightgbm-wasm' }
     const dir = map[name]
     if (!dir) throw new Error(`Unknown port: ${name}`)
     return import(`${PORTS_DIR}/${dir}/src/index.js`)
@@ -255,6 +255,51 @@ async function main() {
     const preds = model.predict(X)
     const bundle = model.save()
     writeFixture('ebm-regressor', bundle,
+      makeSidecar(bundle, model.getParams(), X, y, preds))
+    model.dispose()
+  }
+
+  // 11. lightgbm-binary
+  {
+    const { LGBModel } = await importPort('lightgbm')
+    const rng = makeLCG(1100)
+    const { X, y } = makeClassificationData(rng, 50, 3)
+    const params = { objective: 'binary', max_depth: 3, learning_rate: 0.1, numRound: 20, verbosity: -1 }
+    const model = await LGBModel.create(params)
+    model.fit(X, y)
+    const preds = model.predict(X)
+    const bundle = model.save()
+    writeFixture('lightgbm-binary', bundle,
+      makeSidecar(bundle, model.getParams(), X, y, preds))
+    model.dispose()
+  }
+
+  // 12. lightgbm-multiclass
+  {
+    const { LGBModel } = await importPort('lightgbm')
+    const rng = makeLCG(1200)
+    const { X, y } = makeClassificationData(rng, 75, 3, 3)
+    const params = { objective: 'multiclass', num_class: 3, max_depth: 3, learning_rate: 0.1, numRound: 20, verbosity: -1 }
+    const model = await LGBModel.create(params)
+    model.fit(X, y)
+    const preds = model.predict(X)
+    const bundle = model.save()
+    writeFixture('lightgbm-multiclass', bundle,
+      makeSidecar(bundle, model.getParams(), X, y, preds))
+    model.dispose()
+  }
+
+  // 13. lightgbm-regressor
+  {
+    const { LGBModel } = await importPort('lightgbm')
+    const rng = makeLCG(1300)
+    const { X, y } = makeRegressionData(rng, 50, 2)
+    const params = { objective: 'regression', max_depth: 3, learning_rate: 0.1, numRound: 20, verbosity: -1 }
+    const model = await LGBModel.create(params)
+    model.fit(X, y)
+    const preds = model.predict(X)
+    const bundle = model.save()
+    writeFixture('lightgbm-regressor', bundle,
       makeSidecar(bundle, model.getParams(), X, y, preds))
     model.dispose()
   }

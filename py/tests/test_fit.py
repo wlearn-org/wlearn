@@ -282,3 +282,74 @@ class TestNanoflann:
         model.dispose()
         with pytest.raises(DisposedError):
             model.predict(X)
+
+
+# ===========================================================================
+# LightGBM
+# ===========================================================================
+
+class TestLightGBM:
+    def test_binary_classification(self):
+        from wlearn.lightgbm import LGBModel
+        X, y = make_binary_data()
+        model = LGBModel.create({'objective': 'binary', 'numRound': 50, 'verbosity': -1})
+        model.fit(X, y)
+        assert model.is_fitted
+        accuracy = model.score(X, y)
+        assert accuracy > 0.7
+
+    def test_regression(self):
+        from wlearn.lightgbm import LGBModel
+        X, y = make_regression_data()
+        model = LGBModel.create({'objective': 'regression', 'numRound': 50, 'verbosity': -1})
+        model.fit(X, y)
+        r2 = model.score(X, y)
+        assert r2 > 0.5
+
+    def test_multiclass(self):
+        from wlearn.lightgbm import LGBModel
+        X, y = make_multiclass_data()
+        model = LGBModel.create({'objective': 'multiclass', 'numRound': 50, 'verbosity': -1})
+        model.fit(X, y)
+        preds = model.predict(X)
+        assert len(preds) == len(y)
+        assert set(preds).issubset({0, 1, 2})
+
+    def test_predict_proba(self):
+        from wlearn.lightgbm import LGBModel
+        X, y = make_binary_data()
+        model = LGBModel.create({'objective': 'binary', 'numRound': 50, 'verbosity': -1})
+        model.fit(X, y)
+        proba = model.predict_proba(X)
+        proba_2d = proba.reshape(-1, 2)
+        assert np.allclose(proba_2d.sum(axis=1), 1.0, atol=1e-6)
+        assert np.all(proba >= 0)
+
+    def test_save_load_roundtrip(self):
+        from wlearn.lightgbm import LGBModel
+        X, y = make_binary_data()
+        model = LGBModel.create({'objective': 'binary', 'numRound': 50, 'verbosity': -1})
+        model.fit(X, y)
+        preds_orig = model.predict(X)
+
+        bundle = model.save()
+        manifest, toc, blobs = decode_bundle(bundle)
+        loaded = LGBModel._from_bundle(manifest, toc, blobs)
+        preds_loaded = loaded.predict(X)
+        assert np.array_equal(preds_orig, preds_loaded)
+
+    def test_create_unfitted(self):
+        from wlearn.lightgbm import LGBModel
+        model = LGBModel.create()
+        assert not model.is_fitted
+        with pytest.raises(NotFittedError):
+            model.predict(np.zeros((1, 2)))
+
+    def test_dispose(self):
+        from wlearn.lightgbm import LGBModel
+        X, y = make_binary_data()
+        model = LGBModel.create({'objective': 'binary', 'numRound': 20, 'verbosity': -1})
+        model.fit(X, y)
+        model.dispose()
+        with pytest.raises(DisposedError):
+            model.predict(X)

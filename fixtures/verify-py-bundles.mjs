@@ -20,12 +20,14 @@ async function tryLoadModels() {
       await import(`${PORTS_DIR}/xgboost-wasm/src/index.js`)
       await import(`${PORTS_DIR}/nanoflann-wasm/src/index.js`)
       await import(`${PORTS_DIR}/ebm-wasm/src/index.js`)
+      await import(`${PORTS_DIR}/lightgbm-wasm/src/index.js`)
     } else {
       await import('@wlearn/liblinear')
       await import('@wlearn/libsvm')
       await import('@wlearn/xgboost')
       await import('@wlearn/nanoflann')
       await import('@wlearn/ebm')
+      await import('@wlearn/lightgbm')
     }
     return true
   } catch {
@@ -73,10 +75,15 @@ async function main() {
         throw new Error(`params differ`)
       }
 
-      // 3. Compare blob hashes (should be identical)
-      for (let i = 0; i < jsToc.length; i++) {
-        if (pyToc[i].sha256 !== jsToc[i].sha256) {
-          throw new Error(`blob "${jsToc[i].id}" sha256 differs`)
+      // 3. Compare blob hashes (should be identical for most models)
+      // LightGBM text format is not byte-stable across C API (WASM) vs Python
+      // save_model() -- skip hash check, rely on prediction verification instead.
+      const skipBlobHash = name.startsWith('lightgbm-')
+      if (!skipBlobHash) {
+        for (let i = 0; i < jsToc.length; i++) {
+          if (pyToc[i].sha256 !== jsToc[i].sha256) {
+            throw new Error(`blob "${jsToc[i].id}" sha256 differs`)
+          }
         }
       }
 

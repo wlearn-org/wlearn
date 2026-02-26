@@ -26,12 +26,14 @@ async function tryLoadModels() {
       await import(`${PORTS_DIR}/xgboost-wasm/src/index.js`)
       await import(`${PORTS_DIR}/nanoflann-wasm/src/index.js`)
       await import(`${PORTS_DIR}/ebm-wasm/src/index.js`)
+      await import(`${PORTS_DIR}/lightgbm-wasm/src/index.js`)
     } else {
       await import('@wlearn/liblinear')
       await import('@wlearn/libsvm')
       await import('@wlearn/xgboost')
       await import('@wlearn/nanoflann')
       await import('@wlearn/ebm')
+      await import('@wlearn/lightgbm')
     }
     modelsAvailable = true
   } catch {
