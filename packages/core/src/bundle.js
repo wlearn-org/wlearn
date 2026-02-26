@@ -125,6 +125,15 @@ export function decodeBundle(bytes) {
   return { manifest, toc, blobs }
 }
 
+export function encodeJSON(obj) {
+  return textEncoder.encode(stableStringify(obj))
+}
+
+export function decodeJSON(bytes) {
+  const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
+  return JSON.parse(textDecoder.decode(buf))
+}
+
 export function validateBundle(bytes) {
   const { manifest, toc, blobs } = decodeBundle(bytes)
 

@@ -15,7 +15,7 @@ export { normalizeX, normalizeY, makeDense, validateMatrix } from './matrix.js'
 export { sha256Sync } from './hash.js'
 
 // bundle
-export { encodeBundle, decodeBundle, validateBundle } from './bundle.js'
+export { encodeBundle, decodeBundle, validateBundle, encodeJSON, decodeJSON } from './bundle.js'
 
 // registry
 export { register, load, loadSync, getRegistry } from './registry.js'
@@ -26,6 +26,7 @@ export { Step } from './step.js'
 
 // preprocessing
 export { Preprocessor } from './preprocess.js'
+export { StandardScaler, MinMaxScaler } from './scalers.js'
 
 // rng
 export { makeLCG, shuffle } from './rng.js'

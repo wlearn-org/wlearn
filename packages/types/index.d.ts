@@ -70,6 +70,18 @@ export interface Classifier extends Estimator {
   readonly classes: Int32Array
 }
 
+// Transformer contract
+export interface Transformer {
+  fit(X: Matrix | number[][], y?: Labels | number[]): this
+  transform(X: Matrix | number[][]): DenseMatrix
+  fitTransform(X: Matrix | number[][], y?: Labels | number[]): DenseMatrix
+  save(): Uint8Array
+  dispose(): void
+  getParams(): Record<string, unknown>
+  setParams(p: Record<string, unknown>): this
+  readonly isFitted: boolean
+}
+
 // Search space IR (for AutoML)
 export type SearchParam =
   | { type: 'categorical'; values: unknown[] }
@@ -122,7 +134,7 @@ export type LoaderFn = (
   manifest: BundleManifest,
   toc: BundleTOCEntry[],
   blobs: Uint8Array
-) => Estimator | Promise<Estimator>
+) => Estimator | Transformer | Promise<Estimator | Transformer>
 
 // RNG
 export type RngFn = () => number

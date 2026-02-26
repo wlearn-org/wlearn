@@ -8,8 +8,8 @@ PIPELINE_TYPE_ID = 'wlearn.pipeline@1'
 class Pipeline:
     """Pipeline estimator: chains transformer steps + final estimator.
 
-    Currently supports load-only (from WLRN bundles). Full fit/predict
-    will be added when Python model wrappers are available.
+    Supports fit/predict/score with transformer + estimator chains,
+    as well as save/load from WLRN bundles.
     """
 
     def __init__(self, steps):
@@ -23,6 +23,58 @@ class Pipeline:
         self._steps = list(steps)
         self._fitted = False
         self._disposed = False
+
+    def fit(self, X, y):
+        """Fit the pipeline: transform through intermediates, fit last step.
+
+        For intermediate steps that have a transform method:
+        - If fit_transform exists, use it (avoids fitting + transforming separately)
+        - Otherwise, call fit() then transform()
+        The last step is only fitted (not transformed).
+        """
+        self._ensure_alive()
+        current = X
+        for i, (_, est) in enumerate(self._steps[:-1]):
+            if hasattr(est, 'fit_transform'):
+                current = est.fit_transform(current, y)
+            else:
+                est.fit(current, y)
+                current = est.transform(current)
+        # Last step: fit only
+        _, last = self._steps[-1]
+        last.fit(current, y)
+        self._fitted = True
+        return self
+
+    def _transform_through(self, X):
+        """Transform X through all intermediate steps (not the last)."""
+        current = X
+        for _, est in self._steps[:-1]:
+            current = est.transform(current)
+        return current
+
+    def predict(self, X):
+        """Transform through intermediates, predict with last step."""
+        self._ensure_fitted()
+        transformed = self._transform_through(X)
+        _, last = self._steps[-1]
+        return last.predict(transformed)
+
+    def predict_proba(self, X):
+        """Transform through intermediates, predict_proba with last step."""
+        self._ensure_fitted()
+        _, last = self._steps[-1]
+        if not hasattr(last, 'predict_proba'):
+            raise ValidationError('Last step does not support predict_proba')
+        transformed = self._transform_through(X)
+        return last.predict_proba(transformed)
+
+    def score(self, X, y):
+        """Transform through intermediates, score with last step."""
+        self._ensure_fitted()
+        transformed = self._transform_through(X)
+        _, last = self._steps[-1]
+        return last.score(transformed, y)
 
     @classmethod
     def load(cls, data):
