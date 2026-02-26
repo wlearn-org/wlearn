@@ -55,21 +55,57 @@ PORTFOLIO = {
             {'objective': 'multi:softprob', 'eta': 0.3, 'max_depth': 3,
              'numRound': 50, 'subsample': 0.9, 'colsample_bytree': 0.9,
              'min_child_weight': 1.0, 'lambda': 1.0, 'alpha': 0.0},
+            # 9. RF-mode (low correlation with boosting for ensemble diversity)
+            {'objective': 'multi:softprob', 'num_parallel_tree': 100,
+             'numRound': 1, 'subsample': 0.8, 'colsample_bynode': 0.8,
+             'learning_rate': 1.0},
+            # 10. RF-mode large
+            {'objective': 'multi:softprob', 'num_parallel_tree': 200,
+             'numRound': 1, 'subsample': 0.7, 'colsample_bynode': 0.6,
+             'learning_rate': 1.0},
+        ],
+        'lgb': [
+            # 1. Default balanced
+            {'objective': 'multiclass', 'learning_rate': 0.05, 'max_depth': 6,
+             'numRound': 200, 'num_leaves': 63, 'subsample': 0.8,
+             'colsample_bytree': 0.8, 'min_child_weight': 1.0,
+             'reg_lambda': 1.0, 'reg_alpha': 0.0},
+            # 2. Deep + slow
+            {'objective': 'multiclass', 'learning_rate': 0.01, 'max_depth': -1,
+             'numRound': 500, 'num_leaves': 127, 'subsample': 0.7,
+             'colsample_bytree': 0.65, 'reg_lambda': 0.1, 'reg_alpha': 0.0},
+            # 3. Shallow + fast
+            {'objective': 'multiclass', 'learning_rate': 0.1, 'max_depth': 4,
+             'numRound': 100, 'num_leaves': 15, 'subsample': 0.9,
+             'colsample_bytree': 0.9, 'reg_lambda': 1.0, 'reg_alpha': 0.0},
+            # 4. Extra trees mode
+            {'objective': 'multiclass', 'learning_rate': 0.05,
+             'numRound': 200, 'num_leaves': 63, 'subsample': 0.8,
+             'colsample_bytree': 0.8, 'extra_trees': True,
+             'reg_lambda': 1.0, 'reg_alpha': 0.0},
+            # 5. Heavy regularization
+            {'objective': 'multiclass', 'learning_rate': 0.03, 'max_depth': 7,
+             'numRound': 300, 'num_leaves': 63, 'subsample': 0.8,
+             'colsample_bytree': 0.7, 'reg_lambda': 5.0, 'reg_alpha': 1.0},
+            # 6. Large ensemble
+            {'objective': 'multiclass', 'learning_rate': 0.01, 'max_depth': 8,
+             'numRound': 500, 'num_leaves': 95, 'subsample': 0.75,
+             'colsample_bytree': 0.55, 'reg_lambda': 0.5, 'reg_alpha': 0.0},
         ],
         'ebm': [
             # 1. Default
             {'objective': 'classification', 'learningRate': 0.01,
-             'maxRounds': 5000, 'maxLeaves': 3, 'maxBins': 256},
+             'maxRounds': 500, 'maxLeaves': 3, 'maxBins': 256},
             # 2. More interactions
             {'objective': 'classification', 'learningRate': 0.01,
-             'maxRounds': 5000, 'maxLeaves': 4, 'maxInteractions': 15,
+             'maxRounds': 500, 'maxLeaves': 4, 'maxInteractions': 15,
              'maxBins': 256},
             # 3. Fast
             {'objective': 'classification', 'learningRate': 0.05,
-             'maxRounds': 2000, 'maxLeaves': 3, 'maxBins': 128},
+             'maxRounds': 300, 'maxLeaves': 3, 'maxBins': 128},
             # 4. Deep with more bins
             {'objective': 'classification', 'learningRate': 0.005,
-             'maxRounds': 8000, 'maxLeaves': 5, 'maxBins': 512},
+             'maxRounds': 800, 'maxLeaves': 5, 'maxBins': 512},
         ],
         'linear': [
             # 1. L2-regularized logistic regression (primal)
@@ -83,13 +119,13 @@ PORTFOLIO = {
         ],
         'svm': [
             # 1. C-SVC, RBF kernel, default
-            {'svmType': 0, 'kernel': 2, 'C': 1.0, 'gamma': 0},
+            {'svmType': 0, 'kernel': 2, 'C': 1.0, 'gamma': 0, 'probability': 1},
             # 2. C-SVC, RBF kernel, high C
-            {'svmType': 0, 'kernel': 2, 'C': 10.0, 'gamma': 0.01},
+            {'svmType': 0, 'kernel': 2, 'C': 10.0, 'gamma': 0.01, 'probability': 1},
             # 3. C-SVC, polynomial kernel
-            {'svmType': 0, 'kernel': 1, 'C': 1.0, 'degree': 3, 'gamma': 0},
+            {'svmType': 0, 'kernel': 1, 'C': 1.0, 'degree': 3, 'gamma': 0, 'probability': 1},
             # 4. C-SVC, linear kernel
-            {'svmType': 0, 'kernel': 0, 'C': 1.0},
+            {'svmType': 0, 'kernel': 0, 'C': 1.0, 'probability': 1},
         ],
         'knn': [
             # 1. Default k=5
@@ -145,21 +181,57 @@ PORTFOLIO = {
             {'objective': 'reg:squarederror', 'eta': 0.3, 'max_depth': 3,
              'numRound': 50, 'subsample': 0.9, 'colsample_bytree': 0.9,
              'min_child_weight': 1.0, 'lambda': 1.0, 'alpha': 0.0},
+            # 9. RF-mode (low correlation with boosting for ensemble diversity)
+            {'objective': 'reg:squarederror', 'num_parallel_tree': 100,
+             'numRound': 1, 'subsample': 0.8, 'colsample_bynode': 0.8,
+             'learning_rate': 1.0},
+            # 10. RF-mode large
+            {'objective': 'reg:squarederror', 'num_parallel_tree': 200,
+             'numRound': 1, 'subsample': 0.7, 'colsample_bynode': 0.6,
+             'learning_rate': 1.0},
+        ],
+        'lgb': [
+            # 1. Default balanced
+            {'objective': 'regression', 'learning_rate': 0.05, 'max_depth': 6,
+             'numRound': 200, 'num_leaves': 63, 'subsample': 0.8,
+             'colsample_bytree': 0.8, 'min_child_weight': 1.0,
+             'reg_lambda': 1.0, 'reg_alpha': 0.0},
+            # 2. Deep + slow
+            {'objective': 'regression', 'learning_rate': 0.01, 'max_depth': -1,
+             'numRound': 500, 'num_leaves': 127, 'subsample': 0.7,
+             'colsample_bytree': 0.65, 'reg_lambda': 0.1, 'reg_alpha': 0.0},
+            # 3. Shallow + fast
+            {'objective': 'regression', 'learning_rate': 0.1, 'max_depth': 4,
+             'numRound': 100, 'num_leaves': 15, 'subsample': 0.9,
+             'colsample_bytree': 0.9, 'reg_lambda': 1.0, 'reg_alpha': 0.0},
+            # 4. Extra trees mode
+            {'objective': 'regression', 'learning_rate': 0.05,
+             'numRound': 200, 'num_leaves': 63, 'subsample': 0.8,
+             'colsample_bytree': 0.8, 'extra_trees': True,
+             'reg_lambda': 1.0, 'reg_alpha': 0.0},
+            # 5. Heavy regularization
+            {'objective': 'regression', 'learning_rate': 0.03, 'max_depth': 7,
+             'numRound': 300, 'num_leaves': 63, 'subsample': 0.8,
+             'colsample_bytree': 0.7, 'reg_lambda': 5.0, 'reg_alpha': 1.0},
+            # 6. Large ensemble
+            {'objective': 'regression', 'learning_rate': 0.01, 'max_depth': 8,
+             'numRound': 500, 'num_leaves': 95, 'subsample': 0.75,
+             'colsample_bytree': 0.55, 'reg_lambda': 0.5, 'reg_alpha': 0.0},
         ],
         'ebm': [
             # 1. Default
             {'objective': 'regression', 'learningRate': 0.01,
-             'maxRounds': 5000, 'maxLeaves': 3, 'maxBins': 256},
+             'maxRounds': 500, 'maxLeaves': 3, 'maxBins': 256},
             # 2. More interactions
             {'objective': 'regression', 'learningRate': 0.01,
-             'maxRounds': 5000, 'maxLeaves': 4, 'maxInteractions': 15,
+             'maxRounds': 500, 'maxLeaves': 4, 'maxInteractions': 15,
              'maxBins': 256},
             # 3. Fast
             {'objective': 'regression', 'learningRate': 0.05,
-             'maxRounds': 2000, 'maxLeaves': 3, 'maxBins': 128},
+             'maxRounds': 300, 'maxLeaves': 3, 'maxBins': 128},
             # 4. Deep with more bins
             {'objective': 'regression', 'learningRate': 0.005,
-             'maxRounds': 8000, 'maxLeaves': 5, 'maxBins': 512},
+             'maxRounds': 800, 'maxLeaves': 5, 'maxBins': 512},
         ],
         'linear': [
             # 1. L2-regularized L2-loss SVR (primal)
@@ -205,7 +277,7 @@ PORTFOLIO = {
 
 # Expected config counts per model family
 _EXPECTED_COUNTS = {
-    'xgb': 8, 'ebm': 4, 'linear': 4, 'svm': 4, 'knn': 3, 'tsetlin': 3,
+    'xgb': 10, 'lgb': 6, 'ebm': 4, 'linear': 4, 'svm': 4, 'knn': 3, 'tsetlin': 3,
 }
 
 

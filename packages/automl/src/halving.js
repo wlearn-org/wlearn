@@ -30,6 +30,7 @@ export class SuccessiveHalvingSearch {
       maxTimeMs: 0,
       factor: 3,
       minResources: 0,
+      onProgress: null,
       ...opts,
     }
   }
@@ -41,7 +42,7 @@ export class SuccessiveHalvingSearch {
     const task = this.#opts.task || detectTask(yn)
     const scoring = this.#opts.scoring || (task === 'classification' ? 'accuracy' : 'r2')
     const greaterIsBetter = scorerGreaterIsBetter(scoring)
-    const { cv, seed, nIter, maxTimeMs, factor } = this.#opts
+    const { cv, seed, nIter, maxTimeMs, factor, onProgress } = this.#opts
 
     // Generate base folds on full data
     const folds = task === 'classification'
@@ -55,6 +56,7 @@ export class SuccessiveHalvingSearch {
       y: yn,
       timeLimitMs: maxTimeMs,
       seed,
+      onProgress,
     })
 
     const strategy = new HalvingStrategy(this.#models, {

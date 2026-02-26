@@ -48,11 +48,11 @@ describe('autoFit classification', () => {
     if (result.model) result.model.dispose()
   })
 
-  it('refit=false returns null model', async () => {
+  it('refit=false and ensemble=false returns null model', async () => {
     const result = await autoFit(
       [{ name: 'mock', cls: SearchableMock }],
       X, yCls,
-      { nIter: 2, cv: 2, task: 'classification', refit: false }
+      { nIter: 2, cv: 2, task: 'classification', refit: false, ensemble: false }
     )
     assert.equal(result.model, null)
     assert(result.bestScore >= 0)
@@ -88,6 +88,71 @@ describe('autoFit regression', () => {
     assert(result.model !== null)
     assert(isFinite(result.bestScore))
     result.model.dispose()
+  })
+})
+
+describe('autoFit onProgress', () => {
+  it('calls onProgress for each candidate during search', async () => {
+    const events = []
+    const result = await autoFit(
+      [{ name: 'mock', cls: SearchableMock }],
+      X, yCls,
+      {
+        nIter: 3, cv: 2, task: 'classification',
+        ensemble: false, refit: true,
+        onProgress: (e) => events.push(e),
+      }
+    )
+    assert.equal(events.length, 3)
+    for (const e of events) {
+      assert.equal(e.phase, 'search')
+      assert.equal(typeof e.candidatesDone, 'number')
+      assert.equal(typeof e.bestScore, 'number')
+      assert.equal(typeof e.bestModel, 'string')
+      assert.equal(typeof e.lastCandidate.model, 'string')
+      assert.equal(typeof e.lastCandidate.score, 'number')
+      assert.equal(typeof e.lastCandidate.timeMs, 'number')
+      assert.equal(typeof e.elapsedMs, 'number')
+    }
+    assert.equal(events[0].candidatesDone, 1)
+    assert.equal(events[2].candidatesDone, 3)
+    if (result.model) result.model.dispose()
+  })
+
+  it('emits ensemble phase event when ensemble=true', async () => {
+    const events = []
+    const result = await autoFit(
+      [
+        { name: 'm1', cls: SearchableMock },
+        { name: 'm2', cls: SearchableMock },
+      ],
+      X, yCls,
+      {
+        nIter: 2, cv: 2, task: 'classification',
+        ensemble: true, ensembleSize: 3,
+        onProgress: (e) => events.push(e),
+      }
+    )
+    const phases = events.map(e => e.phase)
+    assert(phases.includes('search'))
+    assert(phases.includes('ensemble'))
+    if (result.model) result.model.dispose()
+  })
+
+  it('works with portfolio strategy', async () => {
+    const events = []
+    const result = await autoFit(
+      [{ name: 'mock', cls: SearchableMock }],
+      X, yCls,
+      {
+        strategy: 'portfolio', cv: 2, task: 'classification',
+        ensemble: false, refit: true,
+        onProgress: (e) => events.push(e),
+      }
+    )
+    assert(events.length > 0)
+    assert.equal(events[0].phase, 'search')
+    if (result.model) result.model.dispose()
   })
 })
 

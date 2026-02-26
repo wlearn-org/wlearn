@@ -21,7 +21,7 @@ export function caruanaSelect(oofPredictions, yTrue, {
   scoring = 'accuracy',
   task = 'classification',
   nClasses = 0,
-  refineWeights = false,
+  refineWeights = true,
 } = {}) {
   const yn = normalizeY(yTrue)
   const n = yn.length

@@ -555,7 +555,7 @@ class TestAutoFit:
     def test_no_refit(self):
         X, y = make_cls_data(n=60, n_classes=2)
         models = [{'name': 'mock', 'cls': MockModel, 'params': {}}]
-        result = auto_fit(models, X, y, refit=False, n_iter=3, cv=3, seed=42)
+        result = auto_fit(models, X, y, refit=False, ensemble=False, n_iter=3, cv=3, seed=42)
         assert result['model'] is None
 
     def test_tuple_specs(self):
@@ -598,7 +598,7 @@ class TestGetPortfolio:
             assert name in p, f'Missing family: {name}'
 
     def test_config_counts(self):
-        expected = {'xgb': 8, 'ebm': 4, 'linear': 4, 'svm': 4, 'knn': 3, 'tsetlin': 3}
+        expected = {'xgb': 10, 'lgb': 6, 'ebm': 4, 'linear': 4, 'svm': 4, 'knn': 3, 'tsetlin': 3}
         for task in ('classification', 'regression'):
             p = get_portfolio(task)
             for name, count in expected.items():
@@ -674,7 +674,7 @@ class TestPortfolioStrategy:
             count += 1
             # XGB configs should have objective
             assert 'objective' in cand['params']
-        assert count == 8
+        assert count == 10  # 8 boosting + 2 RF-mode
 
     def test_multiple_models(self):
         models = [
@@ -687,7 +687,7 @@ class TestPortfolioStrategy:
             if strategy.next() is None:
                 break
             count += 1
-        assert count == 8 + 3  # xgb=8, knn=3
+        assert count == 10 + 3  # xgb=10, knn=3
 
     def test_fixed_params_override(self):
         models = [
@@ -759,13 +759,13 @@ class TestPortfolioSearch:
             PortfolioSearch([], cv=3, seed=42)
 
     def test_portfolio_model_evaluated(self):
-        """XGB portfolio should produce 8 leaderboard entries."""
+        """XGB portfolio should produce 10 leaderboard entries (8 boosting + 2 RF)."""
         X, y = make_cls_data(n=60, n_classes=2)
         models = [{'name': 'xgb', 'cls': MockModel, 'params': {}}]
         search = PortfolioSearch(models, cv=3, seed=42, task='classification')
         result = search.fit(X, y)
         ranked = result['leaderboard'].ranked()
-        assert len(ranked) == 8
+        assert len(ranked) == 10
 
 
 # ===========================================================================

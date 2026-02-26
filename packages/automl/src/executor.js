@@ -44,6 +44,7 @@ export class Executor {
   #seed
   #startTime
   #leaderboard
+  #onProgress
 
   /**
    * @param {object} opts
@@ -53,8 +54,9 @@ export class Executor {
    * @param {TypedArray} opts.y - normalized labels
    * @param {number} opts.timeLimitMs - global time limit (0 = no limit)
    * @param {number} opts.seed - base seed for reproducibility
+   * @param {Function} opts.onProgress - optional progress callback
    */
-  constructor({ folds, scoring, X, y, timeLimitMs = 0, seed = 42 }) {
+  constructor({ folds, scoring, X, y, timeLimitMs = 0, seed = 42, onProgress }) {
     this.#folds = folds
     this.#scorerFn = getScorer(scoring)
     this.#X = X
@@ -63,6 +65,7 @@ export class Executor {
     this.#seed = seed
     this.#startTime = now()
     this.#leaderboard = new Leaderboard()
+    this.#onProgress = onProgress || null
   }
 
   get leaderboard() {
@@ -172,6 +175,7 @@ export class Executor {
    * Returns { leaderboard } only. Callers decide "best".
    */
   async runStrategy(strategy) {
+    let done = 0
     while (!strategy.isDone()) {
       if (this.isTimedOut) break
       const task = strategy.next()
@@ -179,7 +183,24 @@ export class Executor {
       try {
         const result = await this.evaluateCandidate(task)
         strategy.report(result)
+        done++
+        if (this.#onProgress) {
+          const best = this.#leaderboard.best()
+          this.#onProgress({
+            phase: 'search',
+            candidatesDone: done,
+            bestScore: best ? best.meanScore : null,
+            bestModel: best ? best.modelName : null,
+            lastCandidate: {
+              model: result.candidateId.split(':')[0],
+              score: result.meanScore,
+              timeMs: result.fitTimeMs,
+            },
+            elapsedMs: now() - this.#startTime,
+          })
+        }
       } catch {
+        done++
         // Skip failed candidates (invalid params, create errors, etc.)
       }
     }

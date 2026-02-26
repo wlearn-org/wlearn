@@ -7,7 +7,7 @@ from ..automl._cv import get_scorer
 
 
 def caruana_select(oof_predictions, y_true, max_size=20, scoring='accuracy',
-                   task='classification', n_classes=0, refine_weights=False):
+                   task='classification', n_classes=0, refine_weights=True):
     """Greedy ensemble selection (Caruana et al., 2004).
 
     Selects a weighted subset from a pool of OOF predictions by greedily

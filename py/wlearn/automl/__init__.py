@@ -8,6 +8,8 @@ from ._auto_fit import auto_fit
 from ._executor import Executor
 from ._strategy_random import RandomStrategy
 from ._strategy_halving import HalvingStrategy
+from ._strategy_progressive import ProgressiveStrategy
+from ._progressive import ProgressiveSearch
 from ._common import detect_task, make_candidate_id, seed_for
 from ._cv import (
     k_fold, stratified_k_fold, cross_val_score,

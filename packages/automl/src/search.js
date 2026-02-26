@@ -29,6 +29,7 @@ export class RandomSearch {
       task: null, // auto-detect
       nIter: 20,
       maxTimeMs: 0,
+      onProgress: null,
       ...opts,
     }
   }
@@ -41,7 +42,7 @@ export class RandomSearch {
     const yn = normalizeY(y)
     const task = this.#opts.task || detectTask(yn)
     const scoring = this.#opts.scoring || (task === 'classification' ? 'accuracy' : 'r2')
-    const { cv, seed, nIter, maxTimeMs } = this.#opts
+    const { cv, seed, nIter, maxTimeMs, onProgress } = this.#opts
 
     // Generate folds once, shared across all candidates
     const folds = task === 'classification'
@@ -55,6 +56,7 @@ export class RandomSearch {
       y: yn,
       timeLimitMs: maxTimeMs,
       seed,
+      onProgress,
     })
 
     const strategy = new RandomStrategy(this.#models, { nIter, seed })

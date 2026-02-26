@@ -1,9 +1,72 @@
-import { normalizeX, normalizeY, ValidationError } from '@wlearn/core'
-import { getOofPredictions, caruanaSelect, VotingEnsemble } from '@wlearn/ensemble'
+import { normalizeX, normalizeY, ValidationError, Preprocessor } from '@wlearn/core'
+import { getOofPredictions, caruanaSelect, VotingEnsemble, StackingEnsemble } from '@wlearn/ensemble'
 import { RandomSearch } from './search.js'
 import { SuccessiveHalvingSearch } from './halving.js'
 import { PortfolioSearch } from './portfolio.js'
+import { ProgressiveSearch } from './progressive.js'
 import { detectTask } from './common.js'
+
+/**
+ * Compute pairwise disagreement rate between two prediction vectors.
+ * For classification: fraction of samples where argmax differs.
+ * For regression: 1 - correlation (capped at [0,1]).
+ */
+function _disagreementRate(a, b, n, task) {
+  if (task === 'classification') {
+    const nClasses = a.length / n
+    let disagree = 0
+    for (let i = 0; i < n; i++) {
+      let bestA = 0, bestB = 0, bestVA = -Infinity, bestVB = -Infinity
+      for (let c = 0; c < nClasses; c++) {
+        const idx = i * nClasses + c
+        if (a[idx] > bestVA) { bestVA = a[idx]; bestA = c }
+        if (b[idx] > bestVB) { bestVB = b[idx]; bestB = c }
+      }
+      if (bestA !== bestB) disagree++
+    }
+    return disagree / n
+  }
+  // Regression: 1 - abs(correlation)
+  let sumA = 0, sumB = 0, sumAA = 0, sumBB = 0, sumAB = 0
+  for (let i = 0; i < n; i++) {
+    sumA += a[i]; sumB += b[i]
+    sumAA += a[i] * a[i]; sumBB += b[i] * b[i]
+    sumAB += a[i] * b[i]
+  }
+  const denom = Math.sqrt((sumAA - sumA * sumA / n) * (sumBB - sumB * sumB / n))
+  if (denom < 1e-12) return 1
+  const corr = (sumAB - sumA * sumB / n) / denom
+  return 1 - Math.abs(corr)
+}
+
+/**
+ * Filter pool by minimum pairwise disagreement.
+ * Always keeps index 0 (best model). Greedily adds candidates that
+ * have at least minDisagreement with all already-selected members.
+ * Returns array of retained indices.
+ */
+function _filterByDisagreement(oofPreds, yn, task, minDisagreement) {
+  const n = yn.length
+  if (oofPreds.length <= 2 || minDisagreement <= 0) {
+    return oofPreds.map((_, i) => i)
+  }
+  const kept = [0]
+  for (let i = 1; i < oofPreds.length; i++) {
+    let diverse = true
+    for (const j of kept) {
+      if (_disagreementRate(oofPreds[i], oofPreds[j], n, task) < minDisagreement) {
+        diverse = false
+        break
+      }
+    }
+    if (diverse) kept.push(i)
+  }
+  // Always keep at least 2 for ensemble
+  if (kept.length < 2 && oofPreds.length >= 2) {
+    if (!kept.includes(1)) kept.push(1)
+  }
+  return kept
+}
 
 /**
  * Normalize model specs: accept both ModelSpec objects and [name, cls, params?] tuples.
@@ -28,10 +91,15 @@ function _normalizeSpecs(models) {
  */
 export async function autoFit(models, X, y, opts = {}) {
   const {
-    ensemble = false,
+    ensemble = true,
     ensembleSize = 20,
     refit = true,
     strategy = 'random',
+    minDisagreement = 0.05,
+    stacking = 'auto',
+    metaEstimator = null,
+    preprocess = false,
+    onProgress = null,
     ...searchOpts
   } = opts
 
@@ -40,14 +108,28 @@ export async function autoFit(models, X, y, opts = {}) {
     throw new ValidationError('autoFit: at least one model is required')
   }
 
+  // Optional preprocessing
+  let preprocessor = null
+  if (preprocess) {
+    const ppConfig = typeof preprocess === 'object' ? preprocess : {}
+    preprocessor = new Preprocessor(ppConfig)
+    const Xpre = normalizeX(X)
+    const ypre = normalizeY(y)
+    const Xt = preprocessor.fitTransform(Xpre, ypre)
+    X = Xt
+  }
+
   // Run search
+  const searchOptsWithProgress = { ...searchOpts, onProgress }
   let search
   if (strategy === 'portfolio') {
-    search = new PortfolioSearch(specs, searchOpts)
+    search = new PortfolioSearch(specs, searchOptsWithProgress)
   } else if (strategy === 'halving') {
-    search = new SuccessiveHalvingSearch(specs, searchOpts)
+    search = new SuccessiveHalvingSearch(specs, searchOptsWithProgress)
+  } else if (strategy === 'progressive') {
+    search = new ProgressiveSearch(specs, searchOptsWithProgress)
   } else {
-    search = new RandomSearch(specs, searchOpts)
+    search = new RandomSearch(specs, searchOptsWithProgress)
   }
   const { leaderboard, bestResult } = await search.fit(X, y)
   const ranked = leaderboard.ranked()
@@ -62,17 +144,34 @@ export async function autoFit(models, X, y, opts = {}) {
   let model = null
 
   if (ensemble) {
-    // Select best config per model family, then fill with more
+    if (onProgress) {
+      onProgress({ phase: 'ensemble', message: 'building ensemble' })
+    }
+    // Diversity-aware pool: best per family + top overall with disagreement filter
     const familyBest = new Map()
+    const familySecond = new Map()
     for (const entry of ranked) {
       if (!familyBest.has(entry.modelName)) {
         familyBest.set(entry.modelName, entry)
+      } else if (!familySecond.has(entry.modelName)) {
+        familySecond.set(entry.modelName, entry)
       }
     }
 
-    // Build pool: best per family + top remaining up to ensembleSize * 2
+    // Seed pool: best per family (guaranteed diversity)
     const pool = [...familyBest.values()]
     const poolIds = new Set(pool.map(e => e.id))
+
+    // Add second-best per family if available (for intra-family diversity)
+    for (const entry of familySecond.values()) {
+      if (pool.length >= ensembleSize * 2) break
+      if (!poolIds.has(entry.id)) {
+        pool.push(entry)
+        poolIds.add(entry.id)
+      }
+    }
+
+    // Fill remaining slots from top overall
     for (const entry of ranked) {
       if (pool.length >= ensembleSize * 2) break
       if (!poolIds.has(entry.id)) {
@@ -98,31 +197,61 @@ export async function autoFit(models, X, y, opts = {}) {
       cv, seed, task,
     })
 
-    // Caruana selection
-    const { indices, weights } = caruanaSelect(oofPreds, yn, {
+    // Disagreement filter: remove near-duplicate predictions
+    const filteredIdx = _filterByDisagreement(oofPreds, yn, task, minDisagreement)
+    const filteredOofs = filteredIdx.map(i => oofPreds[i])
+    const filteredSpecs = filteredIdx.map(i => estSpecs[i])
+
+    // Caruana selection on filtered pool
+    const { indices: selIndices, weights } = caruanaSelect(filteredOofs, yn, {
       maxSize: ensembleSize,
       scoring,
       task,
     })
 
-    // Build VotingEnsemble from selected
-    const selectedSpecs = Array.from(indices, i => estSpecs[i])
+    // Build ensemble from selected
+    const indices = selIndices
+    const selectedSpecs = Array.from(indices, i => filteredSpecs[i])
     const selectedWeights = weights
 
-    const ens = await VotingEnsemble.create({
-      estimators: selectedSpecs,
-      weights: selectedWeights,
-      voting: task === 'classification' ? 'soft' : undefined,
-      task,
-    })
-    await ens.fit(Xn, yn)
-    model = ens
+    // Determine if two-layer stacking should be used
+    const selectedFamilies = new Set(selectedSpecs.map(s => s[0].split('_')[0]))
+    const useStacking = stacking === true ||
+      (stacking === 'auto' && selectedFamilies.size >= 3 && metaEstimator)
+
+    if (useStacking && metaEstimator) {
+      // Two-layer stacking: L0 = selected base models, L1 = meta-model
+      const metaSpec = Array.isArray(metaEstimator)
+        ? metaEstimator
+        : ['meta', metaEstimator.cls || metaEstimator, metaEstimator.params || {}]
+      const ens = await StackingEnsemble.create({
+        estimators: selectedSpecs,
+        finalEstimator: metaSpec,
+        passthrough: true,
+        task,
+        cv,
+        seed,
+      })
+      await ens.fit(Xn, yn)
+      model = ens
+    } else {
+      // Default: VotingEnsemble
+      const ens = await VotingEnsemble.create({
+        estimators: selectedSpecs,
+        weights: selectedWeights,
+        voting: task === 'classification' ? 'soft' : undefined,
+        task,
+      })
+      await ens.fit(Xn, yn)
+      model = ens
+    }
   } else if (refit) {
     model = await search.refitBest(X, y)
   }
 
   return {
     model,
+    preprocessor,
     leaderboard: ranked,
     bestParams: bestResult.params,
     bestModelName: bestResult.modelName,

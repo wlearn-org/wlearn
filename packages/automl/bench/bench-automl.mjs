@@ -30,6 +30,7 @@ async function loadModels() {
   await tryImport('svm', base + 'libsvm-wasm/src/index.js', 'SVMModel')
   await tryImport('knn', base + 'nanoflann-wasm/src/index.js', 'KNNModel')
   await tryImport('ebm', base + 'ebm-wasm/src/index.js', 'EBMModel')
+  await tryImport('lgb', base + 'lightgbm-wasm/src/index.js', 'LGBModel')
   await tryImport('tsetlin', base + 'tsetlin-wasm/src/index.js', 'TsetlinModel')
 
   return models
@@ -42,6 +43,7 @@ function makeRegSpecs(modelMap) {
   if (modelMap.svm) specs.push({ name: 'svm', cls: modelMap.svm, params: { svmType: 3, kernel: 2, C: 1.0, gamma: 0 } })
   if (modelMap.knn) specs.push({ name: 'knn', cls: modelMap.knn, params: { k: 5, task: 'regression' } })
   if (modelMap.ebm) specs.push({ name: 'ebm', cls: modelMap.ebm, params: { objective: 'regression' } })
+  if (modelMap.lgb) specs.push({ name: 'lgb', cls: modelMap.lgb, params: { objective: 'regression', numRound: 100, verbosity: -1 } })
   return specs
 }
 
@@ -49,9 +51,10 @@ function makeClsSpecs(modelMap) {
   const specs = []
   if (modelMap.xgb) specs.push({ name: 'xgb', cls: modelMap.xgb, params: { objective: 'multi:softprob', numRound: 100 } })
   if (modelMap.linear) specs.push({ name: 'linear', cls: modelMap.linear, params: { solver: 0, C: 1.0 } })
-  if (modelMap.svm) specs.push({ name: 'svm', cls: modelMap.svm, params: { svmType: 0, kernel: 2, C: 1.0, gamma: 0 } })
+  if (modelMap.svm) specs.push({ name: 'svm', cls: modelMap.svm, params: { svmType: 0, kernel: 2, C: 1.0, gamma: 0, probability: 1 } })
   if (modelMap.knn) specs.push({ name: 'knn', cls: modelMap.knn, params: { k: 5, task: 'classification' } })
   if (modelMap.ebm) specs.push({ name: 'ebm', cls: modelMap.ebm, params: { objective: 'classification' } })
+  if (modelMap.lgb) specs.push({ name: 'lgb', cls: modelMap.lgb, params: { objective: 'binary', numRound: 100, verbosity: -1 } })
   return specs
 }
 
@@ -140,7 +143,7 @@ async function main() {
     process.exit(1)
   }
 
-  const sizes = [500, 2000, 10000]
+  const sizes = [500, 2000]
   const datasets = {
     friedman1: (n, seed) => ({ ...makeFriedman1(n, { seed }), task: 'regression' }),
     friedman2: (n, seed) => ({ ...makeFriedman2(n, { seed }), task: 'regression' }),

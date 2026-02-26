@@ -28,7 +28,7 @@ describe('getPortfolio', () => {
 
   it('has correct config counts', () => {
     const cls = getPortfolio('classification')
-    assert.equal(cls.xgb.length, 8)
+    assert.equal(cls.xgb.length, 10)
     assert.equal(cls.ebm.length, 4)
     assert.equal(cls.linear.length, 4)
     assert.equal(cls.svm.length, 4)
@@ -86,7 +86,7 @@ describe('PortfolioStrategy', () => {
       if (task === null) break
       count++
     }
-    assert.equal(count, 8) // 8 XGB configs
+    assert.equal(count, 10) // 10 XGB configs (8 boosting + 2 RF-mode)
   })
 
   it('yields correct total for multiple models', () => {
@@ -103,7 +103,7 @@ describe('PortfolioStrategy', () => {
       if (task === null) break
       count++
     }
-    assert.equal(count, 11) // 8 XGB + 3 KNN
+    assert.equal(count, 13) // 10 XGB + 3 KNN
   })
 
   it('fixed params override portfolio configs', () => {

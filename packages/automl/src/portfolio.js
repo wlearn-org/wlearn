@@ -43,15 +43,42 @@ export const PORTFOLIO = {
       { objective: 'multi:softprob', eta: 0.3, max_depth: 3, numRound: 50,
         subsample: 0.9, colsample_bytree: 0.9, min_child_weight: 1.0,
         lambda: 1.0, alpha: 0.0 },
+      // RF-mode configs (low correlation with boosting for ensemble diversity)
+      { objective: 'multi:softprob', num_parallel_tree: 100, numRound: 1,
+        subsample: 0.8, colsample_bynode: 0.8, learning_rate: 1.0 },
+      { objective: 'multi:softprob', num_parallel_tree: 200, numRound: 1,
+        subsample: 0.7, colsample_bynode: 0.6, learning_rate: 1.0 },
+    ],
+    lgb: [
+      { objective: 'multiclass', learning_rate: 0.05, max_depth: 6,
+        numRound: 200, num_leaves: 63, subsample: 0.8,
+        colsample_bytree: 0.8, min_child_weight: 1.0,
+        reg_lambda: 1.0, reg_alpha: 0.0, verbosity: -1 },
+      { objective: 'multiclass', learning_rate: 0.01, max_depth: -1,
+        numRound: 500, num_leaves: 127, subsample: 0.7,
+        colsample_bytree: 0.65, reg_lambda: 0.1, reg_alpha: 0.0, verbosity: -1 },
+      { objective: 'multiclass', learning_rate: 0.1, max_depth: 4,
+        numRound: 100, num_leaves: 15, subsample: 0.9,
+        colsample_bytree: 0.9, reg_lambda: 1.0, reg_alpha: 0.0, verbosity: -1 },
+      { objective: 'multiclass', learning_rate: 0.05,
+        numRound: 200, num_leaves: 63, subsample: 0.8,
+        colsample_bytree: 0.8, extra_trees: true,
+        reg_lambda: 1.0, reg_alpha: 0.0, verbosity: -1 },
+      { objective: 'multiclass', learning_rate: 0.03, max_depth: 7,
+        numRound: 300, num_leaves: 63, subsample: 0.8,
+        colsample_bytree: 0.7, reg_lambda: 5.0, reg_alpha: 1.0, verbosity: -1 },
+      { objective: 'multiclass', learning_rate: 0.01, max_depth: 8,
+        numRound: 500, num_leaves: 95, subsample: 0.75,
+        colsample_bytree: 0.55, reg_lambda: 0.5, reg_alpha: 0.0, verbosity: -1 },
     ],
     ebm: [
-      { objective: 'classification', learningRate: 0.01, maxRounds: 5000,
+      { objective: 'classification', learningRate: 0.01, maxRounds: 500,
         maxLeaves: 3, maxBins: 256 },
-      { objective: 'classification', learningRate: 0.01, maxRounds: 5000,
+      { objective: 'classification', learningRate: 0.01, maxRounds: 500,
         maxLeaves: 4, maxInteractions: 15, maxBins: 256 },
-      { objective: 'classification', learningRate: 0.05, maxRounds: 2000,
+      { objective: 'classification', learningRate: 0.05, maxRounds: 300,
         maxLeaves: 3, maxBins: 128 },
-      { objective: 'classification', learningRate: 0.005, maxRounds: 8000,
+      { objective: 'classification', learningRate: 0.005, maxRounds: 800,
         maxLeaves: 5, maxBins: 512 },
     ],
     linear: [
@@ -61,10 +88,10 @@ export const PORTFOLIO = {
       { solver: 6, C: 0.1 },
     ],
     svm: [
-      { svmType: 0, kernel: 2, C: 1.0, gamma: 0 },
-      { svmType: 0, kernel: 2, C: 10.0, gamma: 0.01 },
-      { svmType: 0, kernel: 1, C: 1.0, degree: 3, gamma: 0 },
-      { svmType: 0, kernel: 0, C: 1.0 },
+      { svmType: 0, kernel: 2, C: 1.0, gamma: 0, probability: 1 },
+      { svmType: 0, kernel: 2, C: 10.0, gamma: 0.01, probability: 1 },
+      { svmType: 0, kernel: 1, C: 1.0, degree: 3, gamma: 0, probability: 1 },
+      { svmType: 0, kernel: 0, C: 1.0, probability: 1 },
     ],
     knn: [
       { k: 5, metric: 'l2', task: 'classification' },
@@ -103,15 +130,42 @@ export const PORTFOLIO = {
       { objective: 'reg:squarederror', eta: 0.3, max_depth: 3, numRound: 50,
         subsample: 0.9, colsample_bytree: 0.9, min_child_weight: 1.0,
         lambda: 1.0, alpha: 0.0 },
+      // RF-mode configs (low correlation with boosting for ensemble diversity)
+      { objective: 'reg:squarederror', num_parallel_tree: 100, numRound: 1,
+        subsample: 0.8, colsample_bynode: 0.8, learning_rate: 1.0 },
+      { objective: 'reg:squarederror', num_parallel_tree: 200, numRound: 1,
+        subsample: 0.7, colsample_bynode: 0.6, learning_rate: 1.0 },
+    ],
+    lgb: [
+      { objective: 'regression', learning_rate: 0.05, max_depth: 6,
+        numRound: 200, num_leaves: 63, subsample: 0.8,
+        colsample_bytree: 0.8, min_child_weight: 1.0,
+        reg_lambda: 1.0, reg_alpha: 0.0, verbosity: -1 },
+      { objective: 'regression', learning_rate: 0.01, max_depth: -1,
+        numRound: 500, num_leaves: 127, subsample: 0.7,
+        colsample_bytree: 0.65, reg_lambda: 0.1, reg_alpha: 0.0, verbosity: -1 },
+      { objective: 'regression', learning_rate: 0.1, max_depth: 4,
+        numRound: 100, num_leaves: 15, subsample: 0.9,
+        colsample_bytree: 0.9, reg_lambda: 1.0, reg_alpha: 0.0, verbosity: -1 },
+      { objective: 'regression', learning_rate: 0.05,
+        numRound: 200, num_leaves: 63, subsample: 0.8,
+        colsample_bytree: 0.8, extra_trees: true,
+        reg_lambda: 1.0, reg_alpha: 0.0, verbosity: -1 },
+      { objective: 'regression', learning_rate: 0.03, max_depth: 7,
+        numRound: 300, num_leaves: 63, subsample: 0.8,
+        colsample_bytree: 0.7, reg_lambda: 5.0, reg_alpha: 1.0, verbosity: -1 },
+      { objective: 'regression', learning_rate: 0.01, max_depth: 8,
+        numRound: 500, num_leaves: 95, subsample: 0.75,
+        colsample_bytree: 0.55, reg_lambda: 0.5, reg_alpha: 0.0, verbosity: -1 },
     ],
     ebm: [
-      { objective: 'regression', learningRate: 0.01, maxRounds: 5000,
+      { objective: 'regression', learningRate: 0.01, maxRounds: 500,
         maxLeaves: 3, maxBins: 256 },
-      { objective: 'regression', learningRate: 0.01, maxRounds: 5000,
+      { objective: 'regression', learningRate: 0.01, maxRounds: 500,
         maxLeaves: 4, maxInteractions: 15, maxBins: 256 },
-      { objective: 'regression', learningRate: 0.05, maxRounds: 2000,
+      { objective: 'regression', learningRate: 0.05, maxRounds: 300,
         maxLeaves: 3, maxBins: 128 },
-      { objective: 'regression', learningRate: 0.005, maxRounds: 8000,
+      { objective: 'regression', learningRate: 0.005, maxRounds: 800,
         maxLeaves: 5, maxBins: 512 },
     ],
     linear: [
@@ -221,6 +275,7 @@ export class PortfolioSearch {
       seed: 42,
       task: null,
       maxTimeMs: 0,
+      onProgress: null,
       ...opts,
     }
   }
@@ -230,7 +285,7 @@ export class PortfolioSearch {
     const yn = normalizeY(y)
     const task = this.#opts.task || detectTask(yn)
     const scoring = this.#opts.scoring || (task === 'classification' ? 'accuracy' : 'r2')
-    const { cv, seed, maxTimeMs } = this.#opts
+    const { cv, seed, maxTimeMs, onProgress } = this.#opts
 
     const folds = task === 'classification'
       ? stratifiedKFold(yn, cv, { shuffle: true, seed })
@@ -243,6 +298,7 @@ export class PortfolioSearch {
       y: yn,
       timeLimitMs: maxTimeMs,
       seed,
+      onProgress,
     })
 
     const strategy = new PortfolioStrategy(this.#models, { task, seed })

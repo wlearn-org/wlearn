@@ -9,5 +9,6 @@ from .errors import (
 from .bundle import encode_bundle, decode_bundle, validate_bundle
 from .registry import register, load, get_registry
 from .pipeline import Pipeline
+from .preprocess import Preprocessor
 from . import automl
 from . import ensemble

@@ -24,6 +24,9 @@ export { register, load, loadSync, getRegistry } from './registry.js'
 export { Pipeline } from './pipeline.js'
 export { Step } from './step.js'
 
+// preprocessing
+export { Preprocessor } from './preprocess.js'
+
 // rng
 export { makeLCG, shuffle } from './rng.js'
 
