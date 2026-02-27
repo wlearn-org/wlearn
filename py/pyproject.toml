@@ -44,6 +44,9 @@ all = [
 ]
 test = ["pytest>=7.0"]
 
+[tool.setuptools.packages.find]
+include = ["wlearn*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
