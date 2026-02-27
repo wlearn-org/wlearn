@@ -27,6 +27,7 @@ async function tryLoadModels() {
       await import(`${PORTS_DIR}/nanoflann-wasm/src/index.js`)
       await import(`${PORTS_DIR}/ebm-wasm/src/index.js`)
       await import(`${PORTS_DIR}/lightgbm-wasm/src/index.js`)
+      await import(`${PORTS_DIR}/stochtree-wasm/src/index.js`)
     } else {
       await import('@wlearn/liblinear')
       await import('@wlearn/libsvm')
@@ -34,6 +35,7 @@ async function tryLoadModels() {
       await import('@wlearn/nanoflann')
       await import('@wlearn/ebm')
       await import('@wlearn/lightgbm')
+      await import('@wlearn/stochtree')
     }
     modelsAvailable = true
   } catch {

@@ -25,7 +25,7 @@ const PORTS_DIR = process.env.WLEARN_PORTS_DIR
 async function importPort(name) {
   if (PORTS_DIR) {
     // dev mode: absolute path to sibling repo
-    const map = { liblinear: 'liblinear-wasm', libsvm: 'libsvm-wasm', xgboost: 'xgboost-wasm', nanoflann: 'nanoflann-wasm', ebm: 'ebm-wasm', lightgbm: 'lightgbm-wasm' }
+    const map = { liblinear: 'liblinear-wasm', libsvm: 'libsvm-wasm', xgboost: 'xgboost-wasm', nanoflann: 'nanoflann-wasm', ebm: 'ebm-wasm', lightgbm: 'lightgbm-wasm', stochtree: 'stochtree-wasm' }
     const dir = map[name]
     if (!dir) throw new Error(`Unknown port: ${name}`)
     return import(`${PORTS_DIR}/${dir}/src/index.js`)
@@ -300,6 +300,36 @@ async function main() {
     const preds = model.predict(X)
     const bundle = model.save()
     writeFixture('lightgbm-regressor', bundle,
+      makeSidecar(bundle, model.getParams(), X, y, preds))
+    model.dispose()
+  }
+
+  // 14. stochtree-regressor
+  {
+    const { BARTModel } = await importPort('stochtree')
+    const rng = makeLCG(1400)
+    const { X, y } = makeRegressionData(rng, 50, 2)
+    const params = { numTrees: 30, numGfr: 5, numBurnin: 20, numSamples: 20, seed: 42 }
+    const model = await BARTModel.create(params)
+    model.fit(X, y)
+    const preds = model.predict(X)
+    const bundle = model.save()
+    writeFixture('stochtree-regressor', bundle,
+      makeSidecar(bundle, model.getParams(), X, y, preds))
+    model.dispose()
+  }
+
+  // 15. stochtree-classifier
+  {
+    const { BARTModel } = await importPort('stochtree')
+    const rng = makeLCG(1500)
+    const { X, y } = makeClassificationData(rng, 50, 2)
+    const params = { numTrees: 30, numGfr: 5, numBurnin: 20, numSamples: 20, seed: 42, objective: 'classification' }
+    const model = await BARTModel.create(params)
+    model.fit(X, y)
+    const preds = model.predict(X)
+    const bundle = model.save()
+    writeFixture('stochtree-classifier', bundle,
       makeSidecar(bundle, model.getParams(), X, y, preds))
     model.dispose()
   }
