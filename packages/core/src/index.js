@@ -40,3 +40,6 @@ export {
 
 // cross-validation
 export { kFold, stratifiedKFold, trainTestSplit, crossValScore, getScorer } from './cv.js'
+
+// lift (MaybePromise utilities)
+export { isPromiseLike, lift } from './lift.js'

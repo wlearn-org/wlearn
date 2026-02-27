@@ -114,7 +114,7 @@ export class Executor {
       const model = await cls.create(effectiveParams)
       try {
         model.fit(Xtrain, ytrain)
-        const preds = model.predict(Xtest)
+        const preds = await model.predict(Xtest)
         scores[f] = this.#scorerFn(ytest, preds)
       } finally {
         model.dispose()

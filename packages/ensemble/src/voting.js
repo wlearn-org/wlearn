@@ -1,7 +1,8 @@
 import {
   encodeBundle, decodeBundle, register, load as registryLoad,
   normalizeX, normalizeY, accuracy, r2Score,
-  ValidationError, NotFittedError, DisposedError
+  ValidationError, NotFittedError, DisposedError,
+  lift
 } from '@wlearn/core'
 
 const TYPE_ID_CLS = 'wlearn.ensemble.voting.classifier@1'
@@ -80,16 +81,18 @@ export class VotingEnsemble {
 
     if (this.#voting === 'soft') {
       const proba = this.predictProba(Xn)
-      const nc = this.#classes.length
-      const out = new Float64Array(n)
-      for (let i = 0; i < n; i++) {
-        let bestC = 0, bestV = -Infinity
-        for (let c = 0; c < nc; c++) {
-          if (proba[i * nc + c] > bestV) { bestV = proba[i * nc + c]; bestC = c }
+      return lift(proba, p => {
+        const nc = this.#classes.length
+        const out = new Float64Array(n)
+        for (let i = 0; i < n; i++) {
+          let bestC = 0, bestV = -Infinity
+          for (let c = 0; c < nc; c++) {
+            if (p[i * nc + c] > bestV) { bestV = p[i * nc + c]; bestC = c }
+          }
+          out[i] = this.#classes[bestC]
         }
-        out[i] = this.#classes[bestC]
-      }
-      return out
+        return out
+      })
     }
 
     // Hard voting: majority vote
@@ -108,23 +111,37 @@ export class VotingEnsemble {
     const Xn = normalizeX(X)
     const n = Xn.rows
     const nc = this.#classes.length
-    const out = new Float64Array(n * nc)
 
+    // Collect predictions from all models
+    const rawOutputs = []
+    let hasPromise = false
     for (let m = 0; m < this.#models.length; m++) {
-      const proba = this.#models[m].predictProba(Xn)
-      const w = this.#weights[m]
-      for (let i = 0; i < n * nc; i++) {
-        out[i] += w * proba[i]
-      }
+      const out = this.#models[m].predictProba(Xn)
+      if (out != null && typeof out.then === 'function') hasPromise = true
+      rawOutputs.push(out)
     }
-    return out
+
+    const assemble = (outputs) => {
+      const result = new Float64Array(n * nc)
+      for (let m = 0; m < outputs.length; m++) {
+        const proba = outputs[m]
+        const w = this.#weights[m]
+        for (let i = 0; i < n * nc; i++) {
+          result[i] += w * proba[i]
+        }
+      }
+      return result
+    }
+
+    return hasPromise ? Promise.all(rawOutputs).then(assemble) : assemble(rawOutputs)
   }
 
   score(X, y) {
     this.#ensureFitted()
     const preds = this.predict(X)
     const yn = normalizeY(y)
-    return this.#task === 'classification' ? accuracy(yn, preds) : r2Score(yn, preds)
+    const scorer = this.#task === 'classification' ? accuracy : r2Score
+    return lift(preds, p => scorer(yn, p))
   }
 
   save() {
@@ -214,32 +231,51 @@ export class VotingEnsemble {
   // --- Private helpers ---
 
   #weightedAverage(Xn, n) {
-    const out = new Float64Array(n)
+    const rawOutputs = []
+    let hasPromise = false
     for (let m = 0; m < this.#models.length; m++) {
-      const preds = this.#models[m].predict(Xn)
-      const w = this.#weights[m]
-      for (let i = 0; i < n; i++) out[i] += w * preds[i]
+      const out = this.#models[m].predict(Xn)
+      if (out != null && typeof out.then === 'function') hasPromise = true
+      rawOutputs.push(out)
     }
-    return out
+    const assemble = (outputs) => {
+      const result = new Float64Array(n)
+      for (let m = 0; m < outputs.length; m++) {
+        const w = this.#weights[m]
+        for (let i = 0; i < n; i++) result[i] += w * outputs[m][i]
+      }
+      return result
+    }
+    return hasPromise ? Promise.all(rawOutputs).then(assemble) : assemble(rawOutputs)
   }
 
   #majorityVote(Xn, n) {
-    const out = new Float64Array(n)
-    const nc = this.#classes.length
-    for (let i = 0; i < n; i++) {
-      const votes = new Float64Array(nc)
-      for (let m = 0; m < this.#models.length; m++) {
-        const pred = this.#models[m].predict(Xn)[i]
-        const classIdx = this.#classes.indexOf(pred)
-        if (classIdx >= 0) votes[classIdx] += this.#weights[m]
-      }
-      let bestC = 0, bestV = -Infinity
-      for (let c = 0; c < nc; c++) {
-        if (votes[c] > bestV) { bestV = votes[c]; bestC = c }
-      }
-      out[i] = this.#classes[bestC]
+    const rawOutputs = []
+    let hasPromise = false
+    for (let m = 0; m < this.#models.length; m++) {
+      const out = this.#models[m].predict(Xn)
+      if (out != null && typeof out.then === 'function') hasPromise = true
+      rawOutputs.push(out)
     }
-    return out
+    const assemble = (outputs) => {
+      const nc = this.#classes.length
+      const result = new Float64Array(n)
+      for (let i = 0; i < n; i++) {
+        const votes = new Float64Array(nc)
+        for (let m = 0; m < outputs.length; m++) {
+          const pred = outputs[m][i]
+          const classIdx = this.#classes.indexOf(pred)
+          if (classIdx >= 0) votes[classIdx] += this.#weights[m]
+        }
+        let bestC = 0, bestV = -Infinity
+        for (let c = 0; c < nc; c++) {
+          if (votes[c] > bestV) { bestV = votes[c]; bestC = c }
+        }
+        result[i] = this.#classes[bestC]
+      }
+      return result
+    }
+    return hasPromise ? Promise.all(rawOutputs).then(assemble) : assemble(rawOutputs)
   }
 
   static _register() {

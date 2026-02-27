@@ -139,7 +139,7 @@ export async function crossValScore(EstimatorClass, X, y, {
     const model = await EstimatorClass.create(params)
     try {
       model.fit(Xtrain, ytrain)
-      const preds = model.predict(Xtest)
+      const preds = await model.predict(Xtest)
       scores[f] = scorerFn(ytest, preds)
     } finally {
       model.dispose()

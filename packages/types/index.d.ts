@@ -53,10 +53,16 @@ export interface Capabilities {
   [key: string]: boolean
 }
 
+/**
+ * MaybePromise<T> allows methods to return T (sync) or Promise<T> (async).
+ * Sync WASM models always return T directly. Async models (ONNX, WebGPU) may return Promise<T>.
+ */
+export type MaybePromise<T> = T | Promise<T>
+
 export interface Estimator {
   fit(X: Matrix | number[][], y: Labels | number[]): this
-  predict(X: Matrix | number[][]): Labels
-  score(X: Matrix | number[][], y: Labels | number[]): number
+  predict(X: Matrix | number[][]): MaybePromise<Labels>
+  score(X: Matrix | number[][], y: Labels | number[]): MaybePromise<number>
   save(): Uint8Array
   dispose(): void
   getParams(): Record<string, unknown>
@@ -66,7 +72,7 @@ export interface Estimator {
 }
 
 export interface Classifier extends Estimator {
-  predictProba(X: Matrix | number[][]): Float64Array
+  predictProba(X: Matrix | number[][]): MaybePromise<Float64Array>
   readonly classes: Int32Array
 }
 
@@ -135,6 +141,10 @@ export type LoaderFn = (
   toc: BundleTOCEntry[],
   blobs: Uint8Array
 ) => Estimator | Transformer | Promise<Estimator | Transformer>
+
+// Promise-lifting utilities
+export declare function isPromiseLike(x: unknown): x is PromiseLike<unknown>
+export declare function lift<T, U>(x: MaybePromise<T>, f: (value: T) => U): MaybePromise<U>
 
 // RNG
 export type RngFn = () => number

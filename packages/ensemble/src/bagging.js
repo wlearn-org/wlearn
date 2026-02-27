@@ -2,7 +2,8 @@ import {
   encodeBundle, decodeBundle, register, load as registryLoad,
   normalizeX, normalizeY, accuracy, r2Score,
   stratifiedKFold, kFold,
-  ValidationError, NotFittedError, DisposedError
+  ValidationError, NotFittedError, DisposedError,
+  lift
 } from '@wlearn/core'
 
 const TYPE_ID_CLS = 'wlearn.ensemble.bagged.classifier@1'
@@ -99,7 +100,7 @@ export class BaggedEstimator {
 
         // Accumulate OOF predictions
         if (this.#task === 'classification') {
-          const proba = model.predictProba(Xtest)
+          const proba = await model.predictProba(Xtest)
           const nc = this.#nClasses
           for (let i = 0; i < test.length; i++) {
             const row = test[i]
@@ -108,7 +109,7 @@ export class BaggedEstimator {
             }
           }
         } else {
-          const preds = model.predict(Xtest)
+          const preds = await model.predict(Xtest)
           for (let i = 0; i < test.length; i++) {
             this.#oofAccum[test[i]] += preds[i]
           }
@@ -132,31 +133,26 @@ export class BaggedEstimator {
     const n = Xn.rows
 
     if (this.#task === 'regression') {
-      const out = new Float64Array(n)
-      const nModels = this.#foldModels.length
-      for (const model of this.#foldModels) {
-        const preds = model.predict(Xn)
-        for (let i = 0; i < n; i++) out[i] += preds[i]
-      }
-      for (let i = 0; i < n; i++) out[i] /= nModels
-      return out
+      return this.#averagePredictions(Xn, n)
     }
 
     // Classification: average probabilities, then argmax
     const proba = this.predictProba(Xn)
-    const nc = this.#nClasses
-    const out = new Float64Array(n)
-    for (let i = 0; i < n; i++) {
-      let bestC = 0, bestV = -Infinity
-      for (let c = 0; c < nc; c++) {
-        if (proba[i * nc + c] > bestV) {
-          bestV = proba[i * nc + c]
-          bestC = c
+    return lift(proba, p => {
+      const nc = this.#nClasses
+      const out = new Float64Array(n)
+      for (let i = 0; i < n; i++) {
+        let bestC = 0, bestV = -Infinity
+        for (let c = 0; c < nc; c++) {
+          if (p[i * nc + c] > bestV) {
+            bestV = p[i * nc + c]
+            bestC = c
+          }
         }
+        out[i] = this.#classes[bestC]
       }
-      out[i] = this.#classes[bestC]
-    }
-    return out
+      return out
+    })
   }
 
   predictProba(X) {
@@ -168,26 +164,54 @@ export class BaggedEstimator {
     const Xn = normalizeX(X)
     const n = Xn.rows
     const nc = this.#nClasses
-    const out = new Float64Array(n * nc)
     const nModels = this.#foldModels.length
 
+    const rawOutputs = []
+    let hasPromise = false
     for (const model of this.#foldModels) {
-      const proba = model.predictProba(Xn)
-      for (let i = 0; i < n * nc; i++) {
-        out[i] += proba[i]
+      const out = model.predictProba(Xn)
+      if (out != null && typeof out.then === 'function') hasPromise = true
+      rawOutputs.push(out)
+    }
+
+    const assemble = (outputs) => {
+      const result = new Float64Array(n * nc)
+      for (const proba of outputs) {
+        for (let i = 0; i < n * nc; i++) result[i] += proba[i]
       }
+      for (let i = 0; i < n * nc; i++) result[i] /= nModels
+      return result
     }
-    for (let i = 0; i < n * nc; i++) {
-      out[i] /= nModels
-    }
-    return out
+
+    return hasPromise ? Promise.all(rawOutputs).then(assemble) : assemble(rawOutputs)
   }
 
   score(X, y) {
     this.#ensureFitted()
     const preds = this.predict(X)
     const yn = normalizeY(y)
-    return this.#task === 'classification' ? accuracy(yn, preds) : r2Score(yn, preds)
+    const scorer = this.#task === 'classification' ? accuracy : r2Score
+    return lift(preds, p => scorer(yn, p))
+  }
+
+  #averagePredictions(Xn, n) {
+    const nModels = this.#foldModels.length
+    const rawOutputs = []
+    let hasPromise = false
+    for (const model of this.#foldModels) {
+      const out = model.predict(Xn)
+      if (out != null && typeof out.then === 'function') hasPromise = true
+      rawOutputs.push(out)
+    }
+    const assemble = (outputs) => {
+      const result = new Float64Array(n)
+      for (const preds of outputs) {
+        for (let i = 0; i < n; i++) result[i] += preds[i]
+      }
+      for (let i = 0; i < n; i++) result[i] /= nModels
+      return result
+    }
+    return hasPromise ? Promise.all(rawOutputs).then(assemble) : assemble(rawOutputs)
   }
 
   /**

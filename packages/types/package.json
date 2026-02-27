@@ -11,6 +11,10 @@
       "default": "./index.js"
     }
   },
+  "files": [
+    "index.js",
+    "index.d.ts"
+  ],
   "scripts": {
     "test": "echo 'no tests (types-only package)'"
   },

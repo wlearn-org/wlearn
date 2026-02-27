@@ -51,7 +51,7 @@ export async function getOofPredictions(estimatorSpecs, X, y, {
       try {
         model.fit(Xtrain, ytrain)
         if (task === 'classification') {
-          const proba = model.predictProba(Xtest)
+          const proba = await model.predictProba(Xtest)
           for (let i = 0; i < test.length; i++) {
             const row = test[i]
             for (let c = 0; c < nClasses; c++) {
@@ -59,7 +59,7 @@ export async function getOofPredictions(estimatorSpecs, X, y, {
             }
           }
         } else {
-          const preds = model.predict(Xtest)
+          const preds = await model.predict(Xtest)
           for (let i = 0; i < test.length; i++) {
             oof[test[i]] = preds[i]
           }

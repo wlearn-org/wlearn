@@ -7,6 +7,9 @@
   "exports": {
     ".": "./src/index.js"
   },
+  "files": [
+    "src/"
+  ],
   "sideEffects": false,
   "dependencies": {
     "@wlearn/core": "0.1.0",

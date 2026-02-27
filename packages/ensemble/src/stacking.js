@@ -2,7 +2,8 @@ import {
   encodeBundle, decodeBundle, register, load as registryLoad,
   normalizeX, normalizeY, accuracy, r2Score,
   stratifiedKFold, kFold,
-  ValidationError, NotFittedError, DisposedError
+  ValidationError, NotFittedError, DisposedError,
+  lift
 } from '@wlearn/core'
 
 const TYPE_ID_CLS = 'wlearn.ensemble.stacking.classifier@1'
@@ -92,7 +93,7 @@ export class StackingEnsemble {
         try {
           model.fit(Xtrain, ytrain)
           if (this.#task === 'classification') {
-            const proba = model.predictProba(Xtest)
+            const proba = await model.predictProba(Xtest)
             for (let i = 0; i < test.length; i++) {
               const row = test[i]
               for (let c = 0; c < this.#nClasses; c++) {
@@ -100,7 +101,7 @@ export class StackingEnsemble {
               }
             }
           } else {
-            const preds = model.predict(Xtest)
+            const preds = await model.predict(Xtest)
             for (let i = 0; i < test.length; i++) {
               oofData[test[i] * oofCols + b] = preds[i]
             }
@@ -154,7 +155,7 @@ export class StackingEnsemble {
   predict(X) {
     this.#ensureFitted()
     const metaX = this.#buildMetaFeatures(X)
-    return this.#metaModel.predict(metaX)
+    return lift(metaX, mx => this.#metaModel.predict(mx))
   }
 
   predictProba(X) {
@@ -166,14 +167,15 @@ export class StackingEnsemble {
       throw new ValidationError('Meta-model does not support predictProba')
     }
     const metaX = this.#buildMetaFeatures(X)
-    return this.#metaModel.predictProba(metaX)
+    return lift(metaX, mx => this.#metaModel.predictProba(mx))
   }
 
   score(X, y) {
     this.#ensureFitted()
     const preds = this.predict(X)
     const yn = normalizeY(y)
-    return this.#task === 'classification' ? accuracy(yn, preds) : r2Score(yn, preds)
+    const scorer = this.#task === 'classification' ? accuracy : r2Score
+    return lift(preds, p => scorer(yn, p))
   }
 
   save() {
@@ -262,33 +264,46 @@ export class StackingEnsemble {
     const colsPerModel = this.#task === 'classification' ? this.#nClasses : 1
     const oofCols = nBase * colsPerModel
 
-    const metaData = new Float64Array(n * this.#nMetaCols)
+    // Collect predictions from all base models
+    const rawOutputs = []
+    let hasPromise = false
     for (let b = 0; b < nBase; b++) {
-      if (this.#task === 'classification') {
-        const proba = this.#baseModels[b].predictProba(Xn)
-        for (let i = 0; i < n; i++) {
-          for (let c = 0; c < this.#nClasses; c++) {
-            metaData[i * this.#nMetaCols + b * colsPerModel + c] = proba[i * this.#nClasses + c]
+      const out = this.#task === 'classification'
+        ? this.#baseModels[b].predictProba(Xn)
+        : this.#baseModels[b].predict(Xn)
+      if (out != null && typeof out.then === 'function') hasPromise = true
+      rawOutputs.push(out)
+    }
+
+    const assemble = (outputs) => {
+      const metaData = new Float64Array(n * this.#nMetaCols)
+      for (let b = 0; b < nBase; b++) {
+        if (this.#task === 'classification') {
+          const proba = outputs[b]
+          for (let i = 0; i < n; i++) {
+            for (let c = 0; c < this.#nClasses; c++) {
+              metaData[i * this.#nMetaCols + b * colsPerModel + c] = proba[i * this.#nClasses + c]
+            }
+          }
+        } else {
+          const preds = outputs[b]
+          for (let i = 0; i < n; i++) {
+            metaData[i * this.#nMetaCols + b] = preds[i]
           }
         }
-      } else {
-        const preds = this.#baseModels[b].predict(Xn)
+      }
+      if (this.#passthrough) {
         for (let i = 0; i < n; i++) {
-          metaData[i * this.#nMetaCols + b] = preds[i]
+          metaData.set(
+            Xn.data.subarray(i * Xn.cols, (i + 1) * Xn.cols),
+            i * this.#nMetaCols + oofCols
+          )
         }
       }
+      return { data: metaData, rows: n, cols: this.#nMetaCols }
     }
 
-    if (this.#passthrough) {
-      for (let i = 0; i < n; i++) {
-        metaData.set(
-          Xn.data.subarray(i * Xn.cols, (i + 1) * Xn.cols),
-          i * this.#nMetaCols + oofCols
-        )
-      }
-    }
-
-    return { data: metaData, rows: n, cols: this.#nMetaCols }
+    return hasPromise ? Promise.all(rawOutputs).then(assemble) : assemble(rawOutputs)
   }
 
   static _register() {
