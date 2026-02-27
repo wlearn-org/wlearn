@@ -16,6 +16,16 @@ function stableStringify(val) {
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
+/**
+ * Encode a wlearn bundle (WLRN format).
+ *
+ * @param {Object} manifest - Bundle manifest. Must include `typeId` (e.g. `'wlearn.xgboost.classifier@1'`).
+ *   May include `params`, `requires`, `seed`, or any model-specific metadata.
+ * @param {Array<{id: string, mediaType?: string, data: Uint8Array}>} artifacts - Artifact blobs.
+ *   Each entry has `id` (unique within the bundle), optional `mediaType`, and `data` (raw bytes).
+ *   Artifacts are sorted by `id` for determinism; SHA-256 hashes are computed automatically.
+ * @returns {Uint8Array} The encoded bundle bytes (header + manifest JSON + TOC JSON + blob region).
+ */
 export function encodeBundle(manifest, artifacts) {
   // Sort artifacts by id for determinism
   const sorted = [...artifacts].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
@@ -62,6 +72,16 @@ export function encodeBundle(manifest, artifacts) {
   return out
 }
 
+/**
+ * Decode a wlearn bundle (WLRN format).
+ *
+ * @param {Uint8Array|ArrayBuffer} bytes - Raw bundle bytes.
+ * @returns {{manifest: Object, toc: Array<{id: string, offset: number, length: number, sha256: string, mediaType?: string}>, blobs: Uint8Array}}
+ *   `manifest` is the parsed manifest object. `toc` is an array of blob descriptors.
+ *   `blobs` is the concatenated blob region -- slice individual blobs with
+ *   `blobs.subarray(entry.offset, entry.offset + entry.length)`.
+ * @throws {BundleError} On invalid magic, unsupported version, truncated data, or malformed JSON.
+ */
 export function decodeBundle(bytes) {
   const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
 
@@ -125,15 +145,31 @@ export function decodeBundle(bytes) {
   return { manifest, toc, blobs }
 }
 
+/**
+ * Encode a value as deterministic JSON bytes (sorted keys, no whitespace).
+ * @param {*} obj - Value to serialize.
+ * @returns {Uint8Array} UTF-8 encoded JSON bytes.
+ */
 export function encodeJSON(obj) {
   return textEncoder.encode(stableStringify(obj))
 }
 
+/**
+ * Decode UTF-8 JSON bytes to a JS value.
+ * @param {Uint8Array|ArrayBuffer} bytes - UTF-8 encoded JSON.
+ * @returns {*} Parsed value.
+ */
 export function decodeJSON(bytes) {
   const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
   return JSON.parse(textDecoder.decode(buf))
 }
 
+/**
+ * Decode and validate a bundle, verifying SHA-256 hashes of all blobs.
+ * @param {Uint8Array|ArrayBuffer} bytes - Raw bundle bytes.
+ * @returns {{manifest: Object, toc: Array, blobs: Uint8Array}} Same shape as `decodeBundle`.
+ * @throws {BundleError} On format errors or hash mismatch.
+ */
 export function validateBundle(bytes) {
   const { manifest, toc, blobs } = decodeBundle(bytes)
 

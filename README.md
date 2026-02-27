@@ -64,6 +64,9 @@ restored.dispose()
 |---------|-------------|
 | `@wlearn/types` | TypeScript interfaces and constants. Zero runtime. |
 | `@wlearn/core` | Matrix helpers, bundle encode/decode, loader registry, pipeline, error classes. Small, no WASM. |
+| `@wlearn/ensemble` | Stacking, voting, and bagging ensembles. |
+| `@wlearn/automl` | Automated model selection with `autoFit()`. Requires model packages. |
+| `@wlearn/sdk` | Convenience barrel for Node.js. Re-exports all model classes + core + automl + ensemble. |
 
 ### Model ports
 
@@ -71,8 +74,8 @@ restored.dispose()
 |---------|----------|--------------|-------|
 | `@wlearn/liblinear` | LIBLINEAR v2.50 | Linear SVM and logistic regression. Fast on large sparse datasets. | 23 |
 | `@wlearn/libsvm` | LIBSVM v3.37 | Kernel SVM (RBF, polynomial, sigmoid). Classification, regression, one-class novelty detection. | 27 |
-| `@wlearn/xgboost` | XGBoost v3.2.0 | Gradient-boosted trees, random forests. Classification, regression, ranking. | 46 |
-| `@wlearn/lightgbm` | LightGBM | Gradient-boosted trees, fast histogram-based. Classification, regression. | 29 |
+| `@wlearn/xgboost` | XGBoost v3.2.0 | Gradient-boosted trees, random forests. Classification, regression, ranking. | 51 |
+| `@wlearn/lightgbm` | LightGBM | Gradient-boosted trees, fast histogram-based. Classification, regression. | 34 |
 | `@wlearn/nanoflann` | nanoflann v1.6.3 | k-nearest neighbors via KD-trees. Classification and regression. | 27 |
 | `@wlearn/ebm` | InterpretML v0.7.5 | Explainable boosting machines (GAM). Per-feature shape functions with interpretability. | 27 |
 | `@wlearn/xlearn` | xLearn v0.44 | Factorization machines (LR, FM, FFM). Tuned for sparse CTR/recommender data. | 44 |
@@ -92,7 +95,7 @@ WASM modules load asynchronously. Use the static `create()` factory:
 const model = await LinearModel.create({ solver: 'L2R_LR', C: 1.0 })
 ```
 
-After construction, all methods are synchronous.
+After construction, `fit`, `save`, and `dispose` are synchronous. `predict`, `predictProba`, and `score` are synchronous for WASM-backed models but return Promises for async backends (e.g. `@wlearn/mitra` uses ONNX Runtime).
 
 ### fit / predict / score
 
@@ -135,6 +138,29 @@ const restored = await load(bytes)  // works for any registered model type
 ```
 
 The universal `load()` reads the bundle header, finds the registered loader for that model type, and returns a fitted estimator. This means you can load any wlearn model without knowing its type in advance -- useful for pipelines, ensemble systems, and model serving.
+
+### Pipeline
+
+Compose multiple steps into a single estimator. Steps are `[name, estimator]` tuples.
+
+```js
+import { Pipeline, load } from '@wlearn/core'
+import { LinearModel } from '@wlearn/liblinear'
+
+const model = await LinearModel.create({ task: 'classification' })
+const pipe = new Pipeline([['clf', model]])
+
+pipe.fit(X, y)
+const preds = pipe.predict(X)
+
+// Save/load works the same as individual models
+const bytes = pipe.save()
+const restored = await load(bytes)
+restored.predict(X)
+
+pipe.dispose()
+restored.dispose()
+```
 
 ### Parameters
 
@@ -299,12 +325,12 @@ const rf = await XGBModel.create({
 Gradient-boosted trees with histogram-based learning. Fast training on large datasets.
 
 ```js
-import { LGBMModel } from '@wlearn/lightgbm'
+import { LGBModel } from '@wlearn/lightgbm'
 
-const clf = await LGBMModel.create({
+const clf = await LGBModel.create({
   objective: 'binary',
-  numLeaves: 31,
-  learningRate: 0.1,
+  num_leaves: 31,
+  learning_rate: 0.1,
   numRound: 100
 })
 clf.fit(X, y)
@@ -413,14 +439,61 @@ model.predict(X)
 Pretrained Mitra Tab2D models for tabular data. ONNX-based inference via ONNX Runtime.
 
 ```js
-import { MitraModel } from '@wlearn/mitra'
+import { MitraClassifier, MitraRegressor } from '@wlearn/mitra'
 
-const model = await MitraModel.create({ modelSize: 'small' })
-model.fit(X, y)       // uses pretrained backbone + task head
-model.predict(Xtest)
+// Classification
+const clf = await MitraClassifier.create({ nFeatures: 10 })
+clf.fit(X, y)
+const preds = await clf.predict(Xtest)  // async (ONNX inference)
+
+// Regression
+const reg = await MitraRegressor.create({ nFeatures: 10 })
+reg.fit(X, y)
+const rPreds = await reg.predict(Xtest)
 ```
 
-Requires `onnxruntime-node` (Node.js) or `onnxruntime-web` (browser) as peer dependency.
+Requires `onnxruntime-node` (Node.js) or `onnxruntime-web` (browser) as peer dependency. ONNX model files must be downloaded separately (see package README).
+
+### @wlearn/ensemble
+
+Ensemble methods that combine multiple models for better predictions.
+
+```js
+import { StackingEnsemble, VotingEnsemble, BaggedEstimator } from '@wlearn/ensemble'
+```
+
+`StackingEnsemble` trains base models with out-of-fold predictions and feeds them to a meta-learner. `VotingEnsemble` averages predictions (soft vote) or takes majority class (hard vote). `BaggedEstimator` trains multiple copies of a single model on bootstrap samples.
+
+### @wlearn/automl
+
+Automated model selection: searches hyperparameter spaces across multiple model families, selects the best via cross-validation, and optionally builds an ensemble.
+
+```js
+import { autoFit } from '@wlearn/automl'
+import { LinearModel } from '@wlearn/liblinear'
+import { XGBModel } from '@wlearn/xgboost'
+
+const models = [
+  ['linear', LinearModel, { task: 'classification' }],
+  ['xgb', XGBModel, { task: 'classification' }]
+]
+
+const result = await autoFit(models, X, y, {
+  strategy: 'random',    // 'random' | 'halving' | 'portfolio' | 'progressive'
+  ensemble: true,         // build Caruana ensemble from top candidates
+  ensembleSize: 20,
+  refit: true,            // refit best model on full data
+  onProgress: ({ phase, progress }) => console.log(phase, progress)
+})
+
+result.model           // best fitted estimator (or ensemble)
+result.leaderboard     // ranked candidate results
+result.bestScore       // best CV score
+result.bestModelName   // e.g. 'xgb'
+result.bestParams      // winning hyperparameters
+```
+
+`@wlearn/automl` requires at least one model package (e.g. `@wlearn/xgboost`) to do anything useful.
 
 ## Python
 
@@ -481,13 +554,22 @@ wlearn uses a compact binary format (WLRN v1) for model persistence. Every bundl
 The `typeId` field (e.g., `wlearn.liblinear.classifier@1`, `wlearn.xgboost.regressor@1`) tells the loader registry which deserializer to use. This makes bundles portable across languages and runtimes.
 
 ```js
-import { decodeBundle } from '@wlearn/core'
+import { encodeBundle, decodeBundle } from '@wlearn/core'
 
+// Encode a bundle
+const artifacts = [{ id: 'model', mediaType: 'application/octet-stream', data: modelBytes }]
+const manifest = { typeId: 'my.custom.model@1', params: { lr: 0.01 } }
+const bundle = encodeBundle(manifest, artifacts)  // Uint8Array
+
+// Decode a bundle
 const { manifest, toc, blobs } = decodeBundle(bundle)
 console.log(manifest.typeId)    // 'wlearn.liblinear.classifier@1'
 console.log(manifest.params)    // { solver: 'L2R_LR', C: 1.0, ... }
 console.log(toc[0].id)          // 'model'
 console.log(toc[0].sha256)      // hex hash of model blob
+
+// blobs is a single concatenated Uint8Array; slice using toc offsets:
+const modelBlob = blobs.slice(toc[0].offset, toc[0].offset + toc[0].length)
 ```
 
 ## Performance tips
@@ -521,11 +603,36 @@ npm install @wlearn/ebm          # explainable boosting machines
 npm install @wlearn/xlearn       # factorization machines (LR/FM/FFM)
 npm install @wlearn/stochtree    # BART
 npm install @wlearn/tsetlin      # Tsetlin machine
-npm install @wlearn/mitra        # pretrained tabular models (ONNX)
+npm install @wlearn/mitra onnxruntime-node   # pretrained tabular models (ONNX, Node.js)
+npm install @wlearn/mitra onnxruntime-web    # pretrained tabular models (ONNX, browser)
+npm install @wlearn/ensemble     # stacking, voting, bagging
+npm install @wlearn/automl       # automated model selection (needs model packages)
 npm install @wlearn/core         # just the core (bundle format, registry, pipeline)
 ```
 
+Install everything at once (Node.js scripting):
+
+```
+npm install @wlearn/sdk
+```
+
+`@wlearn/sdk` re-exports all model classes, `autoFit`, `Pipeline`, `load`, metrics, and cross-validation utilities. It does not include `@wlearn/mitra` (requires ONNX Runtime peer dep); install that separately if needed. Browser users should import individual packages to avoid bundling unused WASM binaries.
+
+Or install packages individually:
+
+```
+npm install @wlearn/core @wlearn/automl @wlearn/ensemble @wlearn/liblinear @wlearn/libsvm @wlearn/xgboost @wlearn/lightgbm @wlearn/nanoflann @wlearn/ebm @wlearn/xlearn @wlearn/stochtree @wlearn/tsetlin @wlearn/mitra onnxruntime-node
+```
+
 All packages are ESM-only (`"type": "module"`). They work in Node.js 18+ and modern browsers.
+
+```js
+// CommonJS: use dynamic import inside an async function
+async function main() {
+  const { LinearModel } = await import('@wlearn/liblinear')
+}
+main()
+```
 
 ## Repository structure
 

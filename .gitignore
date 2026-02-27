@@ -15,3 +15,9 @@ package-lock.json
 fixtures/*.wlrn
 fixtures/*.json
 fixtures/py-produced/
+
+# Jekyll
+_site/
+.jekyll-cache/
+.jekyll-metadata
+Gemfile.lock

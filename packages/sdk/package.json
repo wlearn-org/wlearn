@@ -1,0 +1,36 @@
+{
+  "name": "@wlearn/sdk",
+  "version": "0.1.0",
+  "description": "Convenience barrel: re-exports all wlearn model classes, automl, ensemble, pipeline, and core utilities",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js"
+  ],
+  "sideEffects": false,
+  "dependencies": {
+    "@wlearn/core": "0.1.0",
+    "@wlearn/automl": "0.1.0",
+    "@wlearn/ensemble": "0.1.0",
+    "@wlearn/liblinear": "0.1.0",
+    "@wlearn/libsvm": "0.1.0",
+    "@wlearn/xgboost": "0.1.1",
+    "@wlearn/lightgbm": "0.1.0",
+    "@wlearn/nanoflann": "0.1.0",
+    "@wlearn/ebm": "0.1.0",
+    "@wlearn/xlearn": "0.1.0",
+    "@wlearn/stochtree": "0.1.0",
+    "@wlearn/tsetlin": "0.1.0"
+  },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "Anton Zemlyansky",
+  "license": "MIT"
+}

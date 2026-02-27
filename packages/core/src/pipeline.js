@@ -6,11 +6,29 @@ import { register, load as registryLoad } from './registry.js'
 const PIPELINE_TYPE_ID = 'wlearn.pipeline@1'
 let registered = false
 
+/**
+ * A pipeline of named estimator steps executed sequentially.
+ *
+ * Intermediate steps must implement `transform()` (or `fitTransform()`).
+ * The last step is the final estimator (predict/score).
+ *
+ * @example
+ * const pipe = new Pipeline([['scaler', scaler], ['clf', model]])
+ * pipe.fit(X, y)
+ * pipe.predict(X)
+ * const bytes = pipe.save()   // WLRN bundle
+ * const restored = await load(bytes)
+ */
 export class Pipeline {
   #steps
   #fitted = false
   #disposed = false
 
+  /**
+   * @param {Array<[string, Object]>} steps - Array of `[name, estimator]` tuples.
+   *   Each estimator must implement the wlearn estimator contract (`fit`, `predict`, `save`, `dispose`).
+   * @throws {ValidationError} If steps is empty.
+   */
   constructor(steps) {
     this.#steps = steps.map(([name, estimator]) => new Step(name, estimator))
     if (this.#steps.length === 0) {
@@ -36,6 +54,12 @@ export class Pipeline {
     return current
   }
 
+  /**
+   * Fit all steps. Intermediate steps are fit-transformed; the last step is fit only.
+   * @param {Object} X - Feature matrix (`{ data, rows, cols }` or `number[][]`).
+   * @param {Float64Array|Int32Array|number[]} y - Target labels/values.
+   * @returns {this}
+   */
   fit(X, y) {
     this.#ensureAlive()
     let current = X
@@ -55,12 +79,23 @@ export class Pipeline {
     return this
   }
 
+  /**
+   * Transform through intermediate steps, then predict with the last step.
+   * @param {Object} X - Feature matrix.
+   * @returns {Float64Array|Int32Array|Promise<Float64Array|Int32Array>}
+   */
   predict(X) {
     this.#ensureFitted()
     const transformed = this.#transformThrough(X)
     return this.#steps[this.#steps.length - 1].estimator.predict(transformed)
   }
 
+  /**
+   * Transform through intermediate steps, then call `predictProba` on the last step.
+   * @param {Object} X - Feature matrix.
+   * @returns {Float64Array|Promise<Float64Array>} Class probability estimates.
+   * @throws {ValidationError} If the last step does not support `predictProba`.
+   */
   predictProba(X) {
     this.#ensureFitted()
     const last = this.#steps[this.#steps.length - 1].estimator
@@ -71,12 +106,23 @@ export class Pipeline {
     return last.predictProba(transformed)
   }
 
+  /**
+   * Transform through intermediate steps, then score with the last step.
+   * @param {Object} X - Feature matrix.
+   * @param {Float64Array|Int32Array|number[]} y - True labels/values.
+   * @returns {number|Promise<number>} Score (accuracy for classifiers, R2 for regressors).
+   */
   score(X, y) {
     this.#ensureFitted()
     const transformed = this.#transformThrough(X)
     return this.#steps[this.#steps.length - 1].estimator.score(transformed, y)
   }
 
+  /**
+   * Serialize the fitted pipeline as a WLRN bundle.
+   * Each step's model is saved as a nested artifact.
+   * @returns {Uint8Array} Bundle bytes (loadable via `load()` from `@wlearn/core`).
+   */
   save() {
     this.#ensureFitted()
     const manifest = {
@@ -94,6 +140,12 @@ export class Pipeline {
     return encodeBundle(manifest, artifacts)
   }
 
+  /**
+   * Load a pipeline from WLRN bundle bytes.
+   * Dispatches each step's blob through the global registry to reconstruct estimators.
+   * @param {Uint8Array} bytes - Bundle bytes produced by `pipeline.save()`.
+   * @returns {Promise<Pipeline>} A fitted pipeline ready for predict/score.
+   */
   static async load(bytes) {
     const { manifest, toc, blobs } = decodeBundle(bytes)
     const steps = []
@@ -111,6 +163,7 @@ export class Pipeline {
     return pipeline
   }
 
+  /** Dispose all step estimators and mark the pipeline as disposed. */
   dispose() {
     if (this.#disposed) return
     this.#disposed = true

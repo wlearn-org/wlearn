@@ -1,0 +1,45 @@
+title: "wlearn"
+description: >
+  Classical machine learning in the browser and Node.js via WebAssembly
+
+show_excerpts: false
+
+logo_header:
+  src: /assets/wlearn_logo.svg
+  href: https://wlearn.org/
+  width: 80
+
+logo_footer:
+  src: /assets/wlearn_logo.svg
+  href: https://wlearn.org/
+  width: 50
+
+header_pages:
+  -
+
+minima:
+  social_links:
+    github: wlearn-org
+
+remote_theme: "jseeio/minima"
+
+defaults:
+  - scope:
+      path: "README.md"
+    values:
+      layout: page
+      title: wlearn
+      show_title: false
+      permalink: /
+
+exclude:
+  - packages/
+  - py/
+  - fixtures/
+  - node_modules/
+  - package.json
+  - package-lock.json
+  - Gemfile.lock
+  - AGENTS.md
+  - PLAN.md
+  - CLAUDE.md
