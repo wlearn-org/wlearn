@@ -10,3 +10,8 @@ build/
 coverage/
 references/
 package-lock.json
+
+# Generated fixtures (deterministic, regenerate with: node fixtures/generate.mjs)
+fixtures/*.wlrn
+fixtures/*.json
+fixtures/py-produced/

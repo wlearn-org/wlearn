@@ -29,6 +29,7 @@ libsvm = ["libsvm-official>=3.30", "numpy>=1.22"]
 nanoflann = ["pynanoflann>=0.10", "numpy>=1.22"]
 ebm = ["numpy>=1.22"]
 ebm-fit = ["interpret>=0.6", "numpy>=1.22"]
+xlearn = ["numpy>=1.22"]
 tsetlin = ["numpy>=1.22"]
 tsetlin-fit = ["tmu>=0.7", "numpy>=1.22"]
 all = [

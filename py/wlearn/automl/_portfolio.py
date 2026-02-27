@@ -146,6 +146,34 @@ PORTFOLIO = {
             {'task': 'classification', 'nClauses': 50, 'threshold': 25,
              's': 2.0, 'nEpochs': 60},
         ],
+        'stochtree': [
+            # 1. Default
+            {'objective': 'classification', 'numTrees': 200, 'numGfr': 5,
+             'numBurnin': 0, 'numSamples': 100, 'alpha': 0.95, 'beta': 2.0,
+             'seed': 42},
+            # 2. More trees, deeper
+            {'objective': 'classification', 'numTrees': 300, 'numGfr': 10,
+             'numBurnin': 0, 'numSamples': 50, 'alpha': 0.99, 'beta': 1.5,
+             'seed': 42},
+            # 3. Fewer trees, conservative
+            {'objective': 'classification', 'numTrees': 100, 'numGfr': 5,
+             'numBurnin': 0, 'numSamples': 50, 'alpha': 0.8, 'beta': 3.0,
+             'minSamplesLeaf': 10, 'seed': 42},
+        ],
+        'xlearn': [
+            # 1. FM default
+            {'algo': 'fm', 'epoch': 10, 'k': 4, 'lr': 0.2,
+             'lambda': 0.00002, 'opt': 'adagrad'},
+            # 2. FM slow + more factors
+            {'algo': 'fm', 'epoch': 20, 'k': 8, 'lr': 0.05,
+             'lambda': 0.0001, 'opt': 'adagrad'},
+            # 3. LR (linear)
+            {'algo': 'linear', 'epoch': 10, 'lr': 0.2,
+             'lambda': 0.00002, 'opt': 'adagrad'},
+            # 4. LR with FTRL
+            {'algo': 'linear', 'epoch': 10, 'lr': 0.1,
+             'opt': 'ftrl', 'alpha': 0.01, 'beta': 1.0},
+        ],
     },
     'regression': {
         'xgb': [
@@ -272,12 +300,41 @@ PORTFOLIO = {
             {'task': 'regression', 'nClauses': 50, 'threshold': 25,
              's': 2.0, 'nEpochs': 60},
         ],
+        'stochtree': [
+            # 1. Default
+            {'objective': 'regression', 'numTrees': 200, 'numGfr': 5,
+             'numBurnin': 0, 'numSamples': 100, 'alpha': 0.95, 'beta': 2.0,
+             'seed': 42},
+            # 2. More trees, deeper
+            {'objective': 'regression', 'numTrees': 300, 'numGfr': 10,
+             'numBurnin': 0, 'numSamples': 50, 'alpha': 0.99, 'beta': 1.5,
+             'seed': 42},
+            # 3. Fewer trees, conservative
+            {'objective': 'regression', 'numTrees': 100, 'numGfr': 5,
+             'numBurnin': 0, 'numSamples': 50, 'alpha': 0.8, 'beta': 3.0,
+             'minSamplesLeaf': 10, 'seed': 42},
+        ],
+        'xlearn': [
+            # 1. FM default
+            {'algo': 'fm', 'epoch': 10, 'k': 4, 'lr': 0.2,
+             'lambda': 0.00002, 'opt': 'adagrad'},
+            # 2. FM slow + more factors
+            {'algo': 'fm', 'epoch': 20, 'k': 8, 'lr': 0.05,
+             'lambda': 0.0001, 'opt': 'adagrad'},
+            # 3. LR (linear)
+            {'algo': 'linear', 'epoch': 10, 'lr': 0.2,
+             'lambda': 0.00002, 'opt': 'adagrad'},
+            # 4. LR with FTRL
+            {'algo': 'linear', 'epoch': 10, 'lr': 0.1,
+             'opt': 'ftrl', 'alpha': 0.01, 'beta': 1.0},
+        ],
     },
 }
 
 # Expected config counts per model family
 _EXPECTED_COUNTS = {
-    'xgb': 10, 'lgb': 6, 'ebm': 4, 'linear': 4, 'svm': 4, 'knn': 3, 'tsetlin': 3,
+    'xgb': 10, 'lgb': 6, 'ebm': 4, 'linear': 4, 'svm': 4, 'knn': 3,
+    'tsetlin': 3, 'stochtree': 3, 'xlearn': 4,
 }
 
 

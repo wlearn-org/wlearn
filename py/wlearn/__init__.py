@@ -14,3 +14,4 @@ from .scalers import StandardScaler, MinMaxScaler
 from . import automl
 from . import ensemble
 from . import stochtree
+from . import xlearn

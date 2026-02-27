@@ -1,15 +1,23 @@
 #!/usr/bin/env node
 
-// Golden fixture generator for wlearn cross-language compatibility tests.
+// Fixture generator for wlearn cross-language compatibility tests.
+//
+// Generates .wlrn bundles + .json sidecars. Deterministic (LCG PRNG with
+// fixed seeds), so output is always identical. Fixtures are gitignored;
+// regenerate locally before running cross-language tests.
 //
 // Import modes:
 //   normal:  import @wlearn/* from node_modules (npm install)
-//   dev:     WLEARN_PORTS_DIR=/path/to/wlearn → import from sibling dirs
-//   CI:      fixtures are committed; CI only runs verify.mjs
+//   dev:     WLEARN_PORTS_DIR=/path/to/wlearn -> import from sibling dirs
 //
 // Usage:
 //   node fixtures/generate.mjs                              # normal mode
 //   WLEARN_PORTS_DIR=/home/user/projects/wlearn node fixtures/generate.mjs  # dev mode
+//
+// Cross-language test workflow:
+//   1. node fixtures/generate.mjs              # JS generates fixtures
+//   2. cd py && pytest tests/test_compat.py    # Python verifies JS bundles
+//   3. node fixtures/verify-py-bundles.mjs     # JS verifies Python bundles
 
 import { writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -25,7 +33,7 @@ const PORTS_DIR = process.env.WLEARN_PORTS_DIR
 async function importPort(name) {
   if (PORTS_DIR) {
     // dev mode: absolute path to sibling repo
-    const map = { liblinear: 'liblinear-wasm', libsvm: 'libsvm-wasm', xgboost: 'xgboost-wasm', nanoflann: 'nanoflann-wasm', ebm: 'ebm-wasm', lightgbm: 'lightgbm-wasm', stochtree: 'stochtree-wasm' }
+    const map = { liblinear: 'liblinear-wasm', libsvm: 'libsvm-wasm', xgboost: 'xgboost-wasm', nanoflann: 'nanoflann-wasm', ebm: 'ebm-wasm', lightgbm: 'lightgbm-wasm', stochtree: 'stochtree-wasm', xlearn: 'xlearn-wasm' }
     const dir = map[name]
     if (!dir) throw new Error(`Unknown port: ${name}`)
     return import(`${PORTS_DIR}/${dir}/src/index.js`)
@@ -330,6 +338,36 @@ async function main() {
     const preds = model.predict(X)
     const bundle = model.save()
     writeFixture('stochtree-classifier', bundle,
+      makeSidecar(bundle, model.getParams(), X, y, preds))
+    model.dispose()
+  }
+
+  // 16. xlearn-classifier
+  {
+    const { XLearnFMClassifier } = await importPort('xlearn')
+    const rng = makeLCG(1600)
+    const { X, y } = makeClassificationData(rng, 50, 2)
+    const params = { epoch: 10, k: 4, lr: 0.2 }
+    const model = await XLearnFMClassifier.create(params)
+    model.fit(X, y)
+    const preds = model.predict(X)
+    const bundle = model.save()
+    writeFixture('xlearn-classifier', bundle,
+      makeSidecar(bundle, model.getParams(), X, y, preds))
+    model.dispose()
+  }
+
+  // 17. xlearn-regressor
+  {
+    const { XLearnFMRegressor } = await importPort('xlearn')
+    const rng = makeLCG(1700)
+    const { X, y } = makeRegressionData(rng, 50, 2)
+    const params = { epoch: 10, k: 4, lr: 0.2 }
+    const model = await XLearnFMRegressor.create(params)
+    model.fit(X, y)
+    const preds = model.predict(X)
+    const bundle = model.save()
+    writeFixture('xlearn-regressor', bundle,
       makeSidecar(bundle, model.getParams(), X, y, preds))
     model.dispose()
   }
