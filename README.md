@@ -2,7 +2,7 @@
 
 Classical machine learning that runs entirely in the browser and Node.js. No server, no Python runtime, no data leaving your machine.
 
-wlearn compiles battle-tested C/C++ ML libraries (LIBLINEAR, LIBSVM, XGBoost, nanoflann, LightGBM) to WebAssembly and wraps them in a unified, sklearn-style JavaScript API. Train a model, serialize it to a portable binary bundle, load it anywhere -- same predictions, same format, JS or Python.
+wlearn compiles battle-tested C/C++ ML libraries to WebAssembly and wraps them in a unified, sklearn-style JavaScript API. Train a model, serialize it to a portable binary bundle, load it anywhere -- same predictions, same format, JS or Python.
 
 ## Why
 
@@ -12,7 +12,7 @@ WebAssembly makes this possible. The same optimized C code that powers scikit-le
 
 ## How it works
 
-**WASM ports, not reimplementations.** Each model package compiles the original upstream C/C++ source (LIBLINEAR v2.50, LIBSVM v3.37, etc.) to WebAssembly via Emscripten. The numerical results match the native libraries.
+**WASM ports, not reimplementations.** Each model package compiles the original upstream C/C++ source to WebAssembly via Emscripten. The numerical results match the native libraries.
 
 **Unified API.** Every model follows the same pattern: async construction (WASM must load), then synchronous `fit`, `predict`, `score`, `save`, `dispose`. No surprises if you know scikit-learn.
 
@@ -67,14 +67,18 @@ restored.dispose()
 
 ### Model ports
 
-| Package | Upstream | What it does |
-|---------|----------|--------------|
-| `@wlearn/liblinear` | LIBLINEAR v2.50 | Linear SVM and logistic regression. Fast on large sparse datasets. |
-| `@wlearn/libsvm` | LIBSVM v3.37 | Kernel SVM (RBF, polynomial, sigmoid). Classification, regression, one-class novelty detection. |
-| `@wlearn/xgboost` | XGBoost v2.1.4 | Gradient-boosted trees, random forests. Classification, regression, ranking. |
-| `@wlearn/lightgbm` | LightGBM | Gradient-boosted trees, fast histogram-based. (Planned) |
-| `@wlearn/nanoflann` | nanoflann v1.6.3 | k-nearest neighbors via KD-trees. Classification and regression. |
-| `@wlearn/ebm` | InterpretML | Explainable boosting machines. (Planned) |
+| Package | Upstream | What it does | Tests |
+|---------|----------|--------------|-------|
+| `@wlearn/liblinear` | LIBLINEAR v2.50 | Linear SVM and logistic regression. Fast on large sparse datasets. | 23 |
+| `@wlearn/libsvm` | LIBSVM v3.37 | Kernel SVM (RBF, polynomial, sigmoid). Classification, regression, one-class novelty detection. | 27 |
+| `@wlearn/xgboost` | XGBoost v3.2.0 | Gradient-boosted trees, random forests. Classification, regression, ranking. | 46 |
+| `@wlearn/lightgbm` | LightGBM | Gradient-boosted trees, fast histogram-based. Classification, regression. | 29 |
+| `@wlearn/nanoflann` | nanoflann v1.6.3 | k-nearest neighbors via KD-trees. Classification and regression. | 27 |
+| `@wlearn/ebm` | InterpretML v0.7.5 | Explainable boosting machines (GAM). Per-feature shape functions with interpretability. | 27 |
+| `@wlearn/xlearn` | xLearn v0.44 | Factorization machines (LR, FM, FFM). Tuned for sparse CTR/recommender data. | 44 |
+| `@wlearn/stochtree` | StochTree | Bayesian additive regression trees (BART). Uncertainty-aware predictions. | 27 |
+| `@wlearn/tsetlin` | TMU | Tsetlin machine. Interpretable propositional logic classifier. | 26 |
+| `@wlearn/mitra` | Mitra Tab2D | Pretrained ONNX tabular models. Zero-shot and fine-tuned inference via ONNX Runtime. | 26 |
 
 ## API overview
 
@@ -290,6 +294,24 @@ const rf = await XGBModel.create({
 
 **Key parameters:** `max_depth`, `eta` (learning rate), `nRounds` (number of boosting rounds), `subsample`, `colsample_bytree`, `lambda` (L2 reg), `alpha` (L1 reg), `num_parallel_tree` (for RF mode)
 
+### @wlearn/lightgbm
+
+Gradient-boosted trees with histogram-based learning. Fast training on large datasets.
+
+```js
+import { LGBMModel } from '@wlearn/lightgbm'
+
+const clf = await LGBMModel.create({
+  objective: 'binary',
+  numLeaves: 31,
+  learningRate: 0.1,
+  numRound: 100
+})
+clf.fit(X, y)
+clf.predict(X)
+clf.predictProba(X)
+```
+
 ### @wlearn/nanoflann
 
 k-nearest neighbors via KD-trees. Fast exact neighbor search for classification and regression.
@@ -316,10 +338,89 @@ const { indices, distances, k: kUsed } = clf.kneighbors(X, 3)
 
 **Parameters:** `k` (number of neighbors, default 5), `metric` (`'l2'` or `'l1'`), `leafMaxSize` (KD-tree leaf size, default 10), `task` (`'classification'` or `'regression'`)
 
-**Notes:**
-- L2 distances are Euclidean (sqrt of squared distance). L1 distances are Manhattan.
-- k is clamped to n_samples when k > n_samples.
-- Classification ties are broken by smallest class label.
+### @wlearn/ebm
+
+Explainable boosting machines -- interpretable GAMs with per-feature shape functions.
+
+```js
+import { EBMModel } from '@wlearn/ebm'
+
+const model = await EBMModel.create({ maxRounds: 500, seed: 42 })
+model.fit(X, y)
+
+// Standard predict/score
+model.predict(X)
+model.predictProba(X)
+
+// Explainability
+const expl = model.explain(X)          // per-sample, per-term additive contributions
+const imp = model.featureImportances() // mean absolute score per term
+const shape = model.getShapeFunction(0) // { x, y } for plotting
+```
+
+### @wlearn/xlearn
+
+Factorization machines for sparse/CTR data. LR, FM, and FFM with CSR sparse input support.
+
+```js
+import { XLearnFMClassifier, XLearnFFMClassifier } from '@wlearn/xlearn'
+
+// FM classifier
+const fm = await XLearnFMClassifier.create({ epoch: 10, k: 4 })
+fm.fit(X, y)
+fm.predict(X)
+fm.predictProba(X)
+
+// FFM with field mapping
+const featureFields = new Int32Array([0, 0, 1, 1])
+const ffm = await XLearnFFMClassifier.create({ epoch: 10, k: 4, featureFields })
+ffm.fit(X, y)
+
+// CSR sparse input
+const csr = { rows, cols, data: Float64Array, indices: Int32Array, indptr: Int32Array }
+fm.fit(csr, y)
+```
+
+Six classes: `XLearnLRClassifier`, `XLearnLRRegressor`, `XLearnFMClassifier`, `XLearnFMRegressor`, `XLearnFFMClassifier`, `XLearnFFMRegressor`.
+
+### @wlearn/stochtree
+
+Bayesian additive regression trees (BART). Uncertainty-aware ensemble of shallow trees.
+
+```js
+import { BARTModel } from '@wlearn/stochtree'
+
+const model = await BARTModel.create({ numTrees: 200, numBurnin: 100, numSamples: 50 })
+model.fit(X, y)
+model.predict(X)
+model.score(X, y)
+```
+
+### @wlearn/tsetlin
+
+Tsetlin machine. Interpretable propositional logic classifier using automata-based learning.
+
+```js
+import { TsetlinModel } from '@wlearn/tsetlin'
+
+const model = await TsetlinModel.create({ numClauses: 100, T: 10, s: 3.0 })
+model.fit(X, y)
+model.predict(X)
+```
+
+### @wlearn/mitra
+
+Pretrained Mitra Tab2D models for tabular data. ONNX-based inference via ONNX Runtime.
+
+```js
+import { MitraModel } from '@wlearn/mitra'
+
+const model = await MitraModel.create({ modelSize: 'small' })
+model.fit(X, y)       // uses pretrained backbone + task head
+model.predict(Xtest)
+```
+
+Requires `onnxruntime-node` (Node.js) or `onnxruntime-web` (browser) as peer dependency.
 
 ## Python
 
@@ -337,13 +438,24 @@ model.score(X, y)
 bundle = model.save()
 ```
 
-Python wrappers are thin: `wlearn.xgboost` wraps the native `xgboost` package, `wlearn.liblinear` wraps `liblinear-official`, `wlearn.libsvm` wraps `libsvm-official`, `wlearn.nanoflann` wraps `pynanoflann`. Model blob bytes are identical across languages (same upstream serialization format), so bundles are fully interoperable.
+Python wrappers exist for: xgboost, liblinear, libsvm, nanoflann, lightgbm, ebm, stochtree, tsetlin. Each wraps the native upstream package for training and provides pure-Python inference for bundle loading.
+
+```
+pip install wlearn               # bundle/registry/pipeline only
+pip install wlearn[xgboost]      # + xgboost support
+pip install wlearn[liblinear]    # + liblinear support
+pip install wlearn[libsvm]       # + libsvm support
+pip install wlearn[nanoflann]    # + k-nearest neighbors support
+pip install wlearn[all]          # everything
+```
+
+Requires Python 3.9+.
 
 ## Cross-language interop
 
 Bundles are portable between JS and Python. The WLRN format guarantees:
 
-- **Identical blob bytes**: upstream serialization (xgboost UBJ, liblinear text, libsvm text) produces the same bytes regardless of host language
+- **Identical blob bytes**: upstream serialization produces the same bytes regardless of host language
 - **Identical predictions**: models loaded from the same bundle produce identical predictions in both languages (within floating-point tolerance)
 - **Round-trip safe**: JS -> Python -> JS preserves model bytes exactly
 
@@ -366,7 +478,7 @@ wlearn uses a compact binary format (WLRN v1) for model persistence. Every bundl
 [... ]     blob data (raw model weights)
 ```
 
-The `typeId` field (e.g., `wlearn.liblinear.classifier@1`, `wlearn.libsvm.regressor@1`) tells the loader registry which deserializer to use. This makes bundles portable across languages and runtimes.
+The `typeId` field (e.g., `wlearn.liblinear.classifier@1`, `wlearn.xgboost.regressor@1`) tells the loader registry which deserializer to use. This makes bundles portable across languages and runtimes.
 
 ```js
 import { decodeBundle } from '@wlearn/core'
@@ -391,12 +503,6 @@ const X = {
 model.fit(X, y)
 ```
 
-Set `coerce: 'warn'` to get notified when implicit copies happen:
-
-```js
-const model = await LinearModel.create({ solver: 'L2R_LR', coerce: 'warn' })
-```
-
 **Batch predictions are fast.** The predict loop runs entirely in C/WASM. One JS-to-WASM call predicts all rows -- no per-row overhead.
 
 **Dispose promptly in loops.** If you are training many models (grid search, cross-validation), dispose each one before creating the next. WASM heap memory is not garbage collected.
@@ -409,37 +515,36 @@ const model = await LinearModel.create({ solver: 'L2R_LR', coerce: 'warn' })
 npm install @wlearn/liblinear    # linear SVM + logistic regression
 npm install @wlearn/libsvm       # kernel SVM
 npm install @wlearn/xgboost      # gradient-boosted trees + random forests
+npm install @wlearn/lightgbm     # histogram-based gradient boosting
 npm install @wlearn/nanoflann    # k-nearest neighbors (KD-tree)
+npm install @wlearn/ebm          # explainable boosting machines
+npm install @wlearn/xlearn       # factorization machines (LR/FM/FFM)
+npm install @wlearn/stochtree    # BART
+npm install @wlearn/tsetlin      # Tsetlin machine
+npm install @wlearn/mitra        # pretrained tabular models (ONNX)
 npm install @wlearn/core         # just the core (bundle format, registry, pipeline)
 ```
 
 All packages are ESM-only (`"type": "module"`). They work in Node.js 18+ and modern browsers.
 
-### Python
-
-```
-pip install wlearn               # bundle/registry/pipeline only
-pip install wlearn[xgboost]      # + xgboost support
-pip install wlearn[liblinear]    # + liblinear support
-pip install wlearn[libsvm]       # + libsvm support
-pip install wlearn[nanoflann]    # + k-nearest neighbors support
-pip install wlearn[all]          # everything
-```
-
-Requires Python 3.9+. Model wrappers are thin: they wrap native upstream packages (`xgboost`, `liblinear-official`, `libsvm-official`, `pynanoflann`) and add WLRN bundle save/load.
-
 ## Repository structure
 
 ```
 wlearn-org/wlearn             core monorepo (@wlearn/types, @wlearn/core, Python wlearn)
-wlearn-org/liblinear-wasm     @wlearn/liblinear (separate repo)
-wlearn-org/libsvm-wasm        @wlearn/libsvm (separate repo)
-wlearn-org/xgboost-wasm       @wlearn/xgboost (separate repo)
-wlearn-org/nanoflann-wasm     @wlearn/nanoflann (separate repo)
+wlearn-org/liblinear-wasm     @wlearn/liblinear
+wlearn-org/libsvm-wasm        @wlearn/libsvm
+wlearn-org/xgboost-wasm       @wlearn/xgboost
+wlearn-org/lightgbm-wasm      @wlearn/lightgbm
+wlearn-org/nanoflann-wasm     @wlearn/nanoflann
+wlearn-org/ebm-wasm           @wlearn/ebm
+wlearn-org/xlearn-wasm        @wlearn/xlearn
+wlearn-org/stochtree-wasm     @wlearn/stochtree
+wlearn-org/tsetlin-wasm       @wlearn/tsetlin
+wlearn-org/mitra-onnx         @wlearn/mitra
 ```
 
-Model port repos carry large WASM binaries and upstream C/C++ source as git submodules. They depend on `@wlearn/types` and `@wlearn/core` from this repo. All Python lives in the core repo.
+Model port repos carry WASM binaries and upstream C/C++ source as git submodules. They depend on `@wlearn/types` and `@wlearn/core` from the core repo. All Python lives in the core repo.
 
 ## License
 
-MIT. Model packages carry their upstream licenses: BSD for LIBLINEAR, LIBSVM, and nanoflann, Apache-2.0 for XGBoost, MIT for LightGBM.
+MIT. Model packages carry their upstream licenses: BSD for LIBLINEAR, LIBSVM, and nanoflann; Apache-2.0 for XGBoost and xLearn; MIT for LightGBM, InterpretML, StochTree, TMU, and Mitra.
