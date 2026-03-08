@@ -51,6 +51,30 @@ result.model.dispose()
 
 Each model provides a default search space via `Model.defaultSearchSpace()`. AutoML samples from these automatically.
 
+## Portfolio
+
+The portfolio contains pre-tuned hyperparameter configs for 15 model families:
+
+| Model | Configs | Package |
+|-------|---------|---------|
+| xgb | 10 | `@wlearn/xgboost` |
+| lgb | 6 | `@wlearn/lightgbm` |
+| ebm | 4 | `@wlearn/ebm` |
+| linear | 4 | `@wlearn/liblinear` |
+| svm | 4 | `@wlearn/libsvm` |
+| knn | 3 | `@wlearn/nanoflann` |
+| tsetlin | 3 | `@wlearn/tsetlin` |
+| rf | 4 | `@wlearn/rf` |
+| mlp | 3 | `@wlearn/nn` (MLPClassifier/Regressor) |
+| tabm | 3 | `@wlearn/nn` (TabMClassifier/Regressor) |
+| nam | 3 | `@wlearn/nn` (NAMClassifier/Regressor) |
+| gam | 4 | `@wlearn/gam` |
+| bart | 3 | `@wlearn/stochtree` |
+| fm | 2 | `@wlearn/xlearn` (FM) |
+| xlr | 2 | `@wlearn/xlearn` (LR) |
+
+Classification and regression have separate config sets with task-appropriate parameters.
+
 ## autoFit options
 
 - `scoring` -- metric name (`'accuracy'`, `'r2'`, `'neg_mse'`) or custom function
@@ -81,4 +105,4 @@ Each model provides a default search space via `Model.defaultSearchSpace()`. Aut
 
 ## License
 
-MIT
+Apache-2.0

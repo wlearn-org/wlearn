@@ -36,6 +36,11 @@ Models:
 | `TsetlinModel` | `@wlearn/tsetlin` |
 | `BARTModel` | `@wlearn/stochtree` |
 | `XLearnFMClassifier`, `XLearnFMRegressor`, `XLearnFFMClassifier`, `XLearnFFMRegressor`, `XLearnLRClassifier`, `XLearnLRRegressor` | `@wlearn/xlearn` |
+| `MLPClassifier`, `MLPRegressor`, `TabMClassifier`, `TabMRegressor`, `NAMClassifier`, `NAMRegressor` | `@wlearn/nn` |
+| `RFModel`, `loadRF` | `@wlearn/rf` |
+| `GAMModel`, `loadGAM` | `@wlearn/gam` |
+| `ClusterModel`, `silhouette`, `calinskiHarabasz`, `daviesBouldin`, `adjustedRand`, `loadCluster` | `@wlearn/cluster` |
+| `MitraClassifier`, `MitraRegressor`, `registerMitraLoaders` | `@wlearn/mitra` (optional) |
 
 AutoML and ensemble:
 
@@ -54,9 +59,9 @@ Core utilities:
 ## Caveats
 
 - **Node/scripting only.** Browser users should import individual packages so bundlers can tree-shake unused WASM binaries. The SDK pulls in all WASM modules (~30 MB total).
-- Does not include `@wlearn/mitra` (requires `onnxruntime-node` or `onnxruntime-web` as a peer dependency).
+- `@wlearn/mitra` is an optional peer dependency (requires `onnxruntime-node` or `onnxruntime-web`). If installed, its exports are available; otherwise they are `undefined`.
 - May lag behind individual model package releases.
 
 ## License
 
-MIT
+Apache-2.0
