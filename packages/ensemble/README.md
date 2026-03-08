@@ -89,4 +89,4 @@ bag.dispose()
 
 ## License
 
-MIT
+Apache-2.0
