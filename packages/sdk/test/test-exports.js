@@ -67,7 +67,40 @@ test('model exports', () => {
   assert.equal(typeof sdk.XLearnLRRegressor, 'function')
 })
 
-test('no mitra (requires onnxruntime peer dep)', () => {
-  assert.equal(sdk.MitraClassifier, undefined)
-  assert.equal(sdk.MitraRegressor, undefined)
+test('nn exports', () => {
+  assert.equal(typeof sdk.MLPClassifier, 'function')
+  assert.equal(typeof sdk.MLPRegressor, 'function')
+  assert.equal(typeof sdk.TabMClassifier, 'function')
+  assert.equal(typeof sdk.TabMRegressor, 'function')
+  assert.equal(typeof sdk.NAMClassifier, 'function')
+  assert.equal(typeof sdk.NAMRegressor, 'function')
+})
+
+test('rf exports', () => {
+  assert.equal(typeof sdk.RFModel, 'function')
+  assert.equal(typeof sdk.loadRF, 'function')
+})
+
+test('gam exports', () => {
+  assert.equal(typeof sdk.GAMModel, 'function')
+  assert.equal(typeof sdk.loadGAM, 'function')
+})
+
+test('cluster exports', () => {
+  assert.equal(typeof sdk.ClusterModel, 'function')
+  assert.equal(typeof sdk.silhouette, 'function')
+  assert.equal(typeof sdk.calinskiHarabasz, 'function')
+  assert.equal(typeof sdk.daviesBouldin, 'function')
+  assert.equal(typeof sdk.adjustedRand, 'function')
+  assert.equal(typeof sdk.loadCluster, 'function')
+})
+
+test('mitra exports (optional, requires onnxruntime peer dep)', () => {
+  // MitraClassifier/MitraRegressor may be defined if @wlearn/mitra is installed,
+  // or undefined if not. Both states are valid.
+  if (sdk.MitraClassifier) {
+    assert.equal(typeof sdk.MitraClassifier, 'function')
+    assert.equal(typeof sdk.MitraRegressor, 'function')
+    assert.equal(typeof sdk.registerMitraLoaders, 'function')
+  }
 })

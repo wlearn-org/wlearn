@@ -29,6 +29,26 @@ const {
   XLearnFFMClassifier, XLearnFFMRegressor,
   XLearnLRClassifier, XLearnLRRegressor
 } = require('@wlearn/xlearn')
+const {
+  MLPClassifier, MLPRegressor,
+  TabMClassifier, TabMRegressor,
+  NAMClassifier, NAMRegressor
+} = require('@wlearn/nn')
+const { RFModel, loadRF } = require('@wlearn/rf')
+const { GAMModel, loadGAM } = require('@wlearn/gam')
+const {
+  ClusterModel, silhouette, calinskiHarabasz,
+  daviesBouldin, adjustedRand, loadCluster
+} = require('@wlearn/cluster')
+
+// Mitra requires onnxruntime peer dep -- optional
+let MitraClassifier, MitraRegressor, registerMitraLoaders
+try {
+  const mitra = require('@wlearn/mitra')
+  MitraClassifier = mitra.MitraClassifier
+  MitraRegressor = mitra.MitraRegressor
+  registerMitraLoaders = mitra.registerLoaders
+} catch (_) {}
 
 module.exports = {
   // Core
@@ -49,4 +69,17 @@ module.exports = {
   XLearnFMClassifier, XLearnFMRegressor,
   XLearnFFMClassifier, XLearnFFMRegressor,
   XLearnLRClassifier, XLearnLRRegressor,
+  // NN (polygrad)
+  MLPClassifier, MLPRegressor,
+  TabMClassifier, TabMRegressor,
+  NAMClassifier, NAMRegressor,
+  // RF
+  RFModel, loadRF,
+  // GAM
+  GAMModel, loadGAM,
+  // Cluster
+  ClusterModel, silhouette, calinskiHarabasz,
+  daviesBouldin, adjustedRand, loadCluster,
+  // Mitra (optional)
+  MitraClassifier, MitraRegressor, registerMitraLoaders,
 }

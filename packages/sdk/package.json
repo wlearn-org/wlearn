@@ -29,7 +29,17 @@
     "@wlearn/ebm": "0.1.0",
     "@wlearn/xlearn": "0.1.0",
     "@wlearn/stochtree": "0.1.0",
-    "@wlearn/tsetlin": "0.1.0"
+    "@wlearn/tsetlin": "0.1.0",
+    "@wlearn/nn": "0.1.0",
+    "@wlearn/rf": "0.1.0",
+    "@wlearn/gam": "0.1.0",
+    "@wlearn/cluster": "0.1.0"
+  },
+  "peerDependencies": {
+    "@wlearn/mitra": "0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@wlearn/mitra": { "optional": true }
   },
   "scripts": {
     "test": "node --test test/*.js"
