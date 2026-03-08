@@ -2,24 +2,30 @@
   "name": "@wlearn/core",
   "version": "0.1.0",
   "description": "Runtime core for wlearn: matrix helpers, bundle format, registry, pipeline",
-  "type": "module",
+  "type": "commonjs",
   "main": "src/index.js",
   "exports": {
-    ".": "./src/index.js"
+    ".": {
+      "require": "./src/index.js",
+      "default": "./src/index.js"
+    }
   },
   "files": [
-    "src/"
+    "src/",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
   ],
   "sideEffects": false,
   "dependencies": {
     "@wlearn/types": "0.1.0"
   },
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test 'test/*.js'"
   },
   "publishConfig": {
     "access": "public"
   },
   "author": "Anton Zemlyansky",
-  "license": "MIT"
+  "license": "Apache-2.0"
 }

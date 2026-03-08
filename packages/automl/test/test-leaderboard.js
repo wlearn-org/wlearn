@@ -1,6 +1,6 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
-import { Leaderboard } from '../src/leaderboard.js'
+const { describe, it } = require('node:test')
+const assert = require('node:assert/strict')
+const { Leaderboard } = require('../src/leaderboard.js')
 
 function makeScores(...vals) {
   return new Float64Array(vals)

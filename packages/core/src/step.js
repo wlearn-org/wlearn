@@ -1,4 +1,4 @@
-export class Step {
+class Step {
   #name
   #estimator
 
@@ -12,3 +12,5 @@ export class Step {
   get isFitted() { return this.#estimator.isFitted }
   get isTransformer() { return typeof this.#estimator.transform === 'function' }
 }
+
+module.exports = { Step }

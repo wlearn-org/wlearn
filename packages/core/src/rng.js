@@ -3,7 +3,7 @@
  * Same constants used across wlearn fixtures (generate.mjs).
  */
 
-export function makeLCG(seed = 42) {
+function makeLCG(seed = 42) {
   let s = seed | 0
   return () => {
     s = (s * 1664525 + 1013904223) & 0x7fffffff
@@ -11,7 +11,7 @@ export function makeLCG(seed = 42) {
   }
 }
 
-export function shuffle(arr, rng) {
+function shuffle(arr, rng) {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = (rng() * (i + 1)) | 0
     const tmp = arr[i]
@@ -20,3 +20,5 @@ export function shuffle(arr, rng) {
   }
   return arr
 }
+
+module.exports = { makeLCG, shuffle }

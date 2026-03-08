@@ -6,17 +6,16 @@
  * zeroshot portfolio approach (TabRepo).
  */
 
-import { stratifiedKFold, kFold, normalizeX, normalizeY,
-  ValidationError } from '@wlearn/core'
-import { Executor } from './executor.js'
-import { detectTask } from './common.js'
-import { makeCandidateId } from './common.js'
+const { stratifiedKFold, kFold, normalizeX, normalizeY,
+  ValidationError } = require('@wlearn/core')
+const { Executor } = require('./executor.js')
+const { detectTask, makeCandidateId } = require('./common.js')
 
 // ---------------------------------------------------------------------------
 // Portfolio configs: task -> model_name -> list of param dicts
 // ---------------------------------------------------------------------------
 
-export const PORTFOLIO = {
+const PORTFOLIO = {
   classification: {
     xgb: [
       { objective: 'multi:softprob', eta: 0.05, max_depth: 6, numRound: 200,
@@ -198,7 +197,7 @@ export const PORTFOLIO = {
  * @param {string} task - 'classification' or 'regression'
  * @returns {Object} model name -> config list
  */
-export function getPortfolio(task = 'classification') {
+function getPortfolio(task = 'classification') {
   return PORTFOLIO[task] || PORTFOLIO.classification
 }
 
@@ -210,7 +209,7 @@ export function getPortfolio(task = 'classification') {
  * Yields pre-tuned configs from the zeroshot portfolio.
  * Same interface as RandomStrategy / HalvingStrategy.
  */
-export class PortfolioStrategy {
+class PortfolioStrategy {
   #queue = []
   #index = 0
   #total = 0
@@ -258,7 +257,7 @@ export class PortfolioStrategy {
 /**
  * Evaluate pre-tuned portfolio configs with cross-validation.
  */
-export class PortfolioSearch {
+class PortfolioSearch {
   #models
   #opts
   #leaderboard = null
@@ -330,3 +329,5 @@ export class PortfolioSearch {
   get leaderboard() { return this.#leaderboard }
   get bestResult() { return this.#bestResult }
 }
+
+module.exports = { PORTFOLIO, getPortfolio, PortfolioStrategy, PortfolioSearch }

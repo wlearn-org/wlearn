@@ -7,7 +7,7 @@ name = "wlearn"
 version = "0.1.0"
 description = "Portable ML computation primitives"
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
 requires-python = ">=3.9"
 authors = [
   { name = "Anton Zemlyansky" },

@@ -1,6 +1,6 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
-import { makeLCG, shuffle } from '../src/rng.js'
+const { describe, it } = require('node:test')
+const assert = require('node:assert/strict')
+const { makeLCG, shuffle } = require('../src/rng.js')
 
 describe('makeLCG', () => {
   it('is deterministic', () => {

@@ -1,6 +1,6 @@
-import { BUNDLE_MAGIC, BUNDLE_VERSION, HEADER_SIZE } from '@wlearn/types'
-import { BundleError } from './errors.js'
-import { sha256Sync } from './hash.js'
+const { BUNDLE_MAGIC, BUNDLE_VERSION, HEADER_SIZE } = require('@wlearn/types')
+const { BundleError } = require('./errors.js')
+const { sha256Sync } = require('./hash.js')
 
 // Deterministic JSON: sorted keys recursively, no whitespace, array order preserved
 function stableStringify(val) {
@@ -26,7 +26,7 @@ const textDecoder = new TextDecoder()
  *   Artifacts are sorted by `id` for determinism; SHA-256 hashes are computed automatically.
  * @returns {Uint8Array} The encoded bundle bytes (header + manifest JSON + TOC JSON + blob region).
  */
-export function encodeBundle(manifest, artifacts) {
+function encodeBundle(manifest, artifacts) {
   // Sort artifacts by id for determinism
   const sorted = [...artifacts].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 
@@ -82,7 +82,7 @@ export function encodeBundle(manifest, artifacts) {
  *   `blobs.subarray(entry.offset, entry.offset + entry.length)`.
  * @throws {BundleError} On invalid magic, unsupported version, truncated data, or malformed JSON.
  */
-export function decodeBundle(bytes) {
+function decodeBundle(bytes) {
   const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
 
   if (buf.length < HEADER_SIZE) {
@@ -150,7 +150,7 @@ export function decodeBundle(bytes) {
  * @param {*} obj - Value to serialize.
  * @returns {Uint8Array} UTF-8 encoded JSON bytes.
  */
-export function encodeJSON(obj) {
+function encodeJSON(obj) {
   return textEncoder.encode(stableStringify(obj))
 }
 
@@ -159,7 +159,7 @@ export function encodeJSON(obj) {
  * @param {Uint8Array|ArrayBuffer} bytes - UTF-8 encoded JSON.
  * @returns {*} Parsed value.
  */
-export function decodeJSON(bytes) {
+function decodeJSON(bytes) {
   const buf = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
   return JSON.parse(textDecoder.decode(buf))
 }
@@ -170,7 +170,7 @@ export function decodeJSON(bytes) {
  * @returns {{manifest: Object, toc: Array, blobs: Uint8Array}} Same shape as `decodeBundle`.
  * @throws {BundleError} On format errors or hash mismatch.
  */
-export function validateBundle(bytes) {
+function validateBundle(bytes) {
   const { manifest, toc, blobs } = decodeBundle(bytes)
 
   for (const entry of toc) {
@@ -183,3 +183,5 @@ export function validateBundle(bytes) {
 
   return { manifest, toc, blobs }
 }
+
+module.exports = { encodeBundle, decodeBundle, encodeJSON, decodeJSON, validateBundle }

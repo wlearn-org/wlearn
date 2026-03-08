@@ -1,6 +1,6 @@
-import { test } from 'node:test'
-import assert from 'node:assert/strict'
-import * as sdk from '@wlearn/sdk'
+const { test } = require('node:test')
+const assert = require('node:assert/strict')
+const sdk = require('@wlearn/sdk')
 
 test('core exports', () => {
   assert.equal(typeof sdk.Pipeline, 'function')

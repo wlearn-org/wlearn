@@ -1,13 +1,10 @@
-import { ValidationError } from '@wlearn/core'
+const { ValidationError } = require('@wlearn/core')
 
 /**
  * Project vector onto the probability simplex {w: w >= 0, sum(w) = 1}.
  * O(n log n) algorithm from Duchi et al. 2008.
- *
- * @param {Float64Array} v - input vector
- * @returns {Float64Array} - projected vector
  */
-export function projectSimplex(v) {
+function projectSimplex(v) {
   const n = v.length
   if (n === 0) return new Float64Array(0)
   if (n === 1) return new Float64Array([1.0])
@@ -47,17 +44,8 @@ export function projectSimplex(v) {
 
 /**
  * Optimize ensemble weights via projected gradient descent on the simplex.
- *
- * Classification: minimizes negative log-loss.
- * Regression: minimizes MSE.
- *
- * @param {Float64Array[]} oofPredictions - per-model OOF predictions
- * @param {TypedArray} yTrue - true labels
- * @param {Float64Array} initWeights - initial weights (e.g. from Caruana)
- * @param {object} opts
- * @returns {Float64Array} - optimized weights (>= 0, sum = 1)
  */
-export function optimizeWeights(oofPredictions, yTrue, initWeights, {
+function optimizeWeights(oofPredictions, yTrue, initWeights, {
   task = 'classification',
   lr = 0.05,
   nIter = 100,
@@ -141,3 +129,5 @@ export function optimizeWeights(oofPredictions, yTrue, initWeights, {
 
   return w
 }
+
+module.exports = { optimizeWeights, projectSimplex }

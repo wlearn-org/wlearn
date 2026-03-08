@@ -1,16 +1,16 @@
-import {
-  encodeBundle, decodeBundle, register, load as registryLoad,
+const {
+  encodeBundle, decodeBundle, register, load: registryLoad,
   normalizeX, normalizeY, accuracy, r2Score,
   stratifiedKFold, kFold,
   ValidationError, NotFittedError, DisposedError,
   lift
-} from '@wlearn/core'
+} = require('@wlearn/core')
 
 const TYPE_ID_CLS = 'wlearn.ensemble.stacking.classifier@1'
 const TYPE_ID_REG = 'wlearn.ensemble.stacking.regressor@1'
 let _registered = false
 
-export class StackingEnsemble {
+class StackingEnsemble {
   #baseSpecs      // [name, Class, params][]
   #metaSpec       // [name, Class, params]
   #baseModels     // fitted base model instances (on full data)
@@ -370,3 +370,5 @@ function _subsetY(y, indices) {
   }
   return out
 }
+
+module.exports = { StackingEnsemble }

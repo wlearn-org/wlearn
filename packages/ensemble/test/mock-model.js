@@ -1,4 +1,4 @@
-import { encodeBundle, decodeBundle, register, normalizeX, normalizeY } from '@wlearn/core'
+const { encodeBundle, decodeBundle, register, normalizeX, normalizeY } = require('@wlearn/core')
 
 const TYPE_ID = 'wlearn.test.mock@1'
 let _registered = false
@@ -9,7 +9,7 @@ let _registered = false
  * Regression: predicts mean of y.
  * Supports full save/load via WLRN bundles.
  */
-export class MockModel {
+class MockModel {
   #params
   #fitted = false
   #disposed = false
@@ -161,3 +161,5 @@ export class MockModel {
     })
   }
 }
+
+module.exports = { MockModel }

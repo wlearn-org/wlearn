@@ -59,7 +59,7 @@ function compress(state, block, offset) {
   state[7] = (state[7] + h) >>> 0
 }
 
-export function sha256Sync(bytes) {
+function sha256Sync(bytes) {
   const input = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
   const len = input.length
 
@@ -92,3 +92,5 @@ export function sha256Sync(bytes) {
   }
   return hex
 }
+
+module.exports = { sha256Sync }

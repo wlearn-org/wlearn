@@ -1,11 +1,11 @@
-import { makeLCG } from '@wlearn/core'
+const { makeLCG } = require('@wlearn/core')
 
 const { floor, round, log, exp, min, max } = Math
 
 /**
  * Sample a single value from a SearchParam definition.
  */
-export function sampleParam(param, rng) {
+function sampleParam(param, rng) {
   const { type } = param
   switch (type) {
     case 'categorical':
@@ -26,7 +26,7 @@ export function sampleParam(param, rng) {
 /**
  * Sample a complete config from a SearchSpace, respecting conditions.
  */
-export function sampleConfig(space, rng) {
+function sampleConfig(space, rng) {
   const config = {}
   const keys = Object.keys(space)
 
@@ -56,7 +56,7 @@ export function sampleConfig(space, rng) {
 /**
  * Generate n random configs from a SearchSpace.
  */
-export function randomConfigs(space, n, { seed = 42 } = {}) {
+function randomConfigs(space, n, { seed = 42 } = {}) {
   const rng = makeLCG(seed)
   const configs = []
   for (let i = 0; i < n; i++) {
@@ -69,7 +69,7 @@ export function randomConfigs(space, n, { seed = 42 } = {}) {
  * Enumerate grid points from a SearchSpace.
  * Continuous params discretized to `steps` values.
  */
-export function gridConfigs(space, { steps = 5 } = {}) {
+function gridConfigs(space, { steps = 5 } = {}) {
   const keys = Object.keys(space)
   if (keys.length === 0) return [{}]
 
@@ -160,3 +160,5 @@ function _discretize(param, steps) {
       throw new Error(`Unknown SearchParam type: "${type}"`)
   }
 }
+
+module.exports = { sampleParam, sampleConfig, randomConfigs, gridConfigs }

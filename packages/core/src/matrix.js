@@ -1,6 +1,6 @@
-import { ValidationError } from './errors.js'
+const { ValidationError } = require('./errors.js')
 
-export function normalizeX(X, coerce = 'auto') {
+function normalizeX(X, coerce = 'auto') {
   // Fast path: typed matrix { data, rows, cols }
   if (X && typeof X === 'object' && !Array.isArray(X) && X.data) {
     const { data, rows, cols } = X
@@ -34,14 +34,14 @@ export function normalizeX(X, coerce = 'auto') {
   throw new ValidationError('X must be number[][] or { data: Float64Array, rows, cols }')
 }
 
-export function normalizeY(y) {
+function normalizeY(y) {
   if (y instanceof Int32Array) return y
   if (y instanceof Float32Array) return y
   if (y instanceof Float64Array) return y
   return new Float64Array(y)
 }
 
-export function makeDense(data, rows, cols) {
+function makeDense(data, rows, cols) {
   if (!rows || !cols || rows < 1 || cols < 1) {
     throw new ValidationError(`Invalid dimensions: rows=${rows}, cols=${cols}`)
   }
@@ -54,7 +54,7 @@ export function makeDense(data, rows, cols) {
   return { data, rows, cols }
 }
 
-export function validateMatrix(m) {
+function validateMatrix(m) {
   if (!m || typeof m !== 'object') {
     throw new ValidationError('Matrix must be an object')
   }
@@ -70,3 +70,5 @@ export function validateMatrix(m) {
   }
   return m
 }
+
+module.exports = { normalizeX, normalizeY, makeDense, validateMatrix }

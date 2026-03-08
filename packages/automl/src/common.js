@@ -1,11 +1,11 @@
-import { makeLCG } from '@wlearn/core'
+const { makeLCG } = require('@wlearn/core')
 
 const { round } = Math
 
 /**
  * Detect task type from labels.
  */
-export function detectTask(y) {
+function detectTask(y) {
   if (y instanceof Int32Array) return 'classification'
   const unique = new Set()
   for (let i = 0; i < y.length; i++) {
@@ -18,7 +18,7 @@ export function detectTask(y) {
 /**
  * High-resolution timer.
  */
-export function now() {
+function now() {
   if (typeof performance !== 'undefined') return performance.now()
   return Date.now()
 }
@@ -46,7 +46,7 @@ function stableStringify(obj) {
 /**
  * Stable candidate ID from model label and params.
  */
-export function makeCandidateId(modelLabel, params) {
+function makeCandidateId(modelLabel, params) {
   return modelLabel + ':' + stableStringify(params)
 }
 
@@ -65,7 +65,7 @@ function hashString(str) {
 /**
  * Derive a deterministic seed from base seed, candidate ID, and fold index.
  */
-export function seedFor(candidateId, foldIdx, baseSeed) {
+function seedFor(candidateId, foldIdx, baseSeed) {
   const h = hashString(candidateId)
   // Mix: multiply-xor-shift
   let s = (baseSeed * 2654435761 + h * 40503 + foldIdx * 65537) & 0x7fffffff
@@ -77,7 +77,7 @@ export function seedFor(candidateId, foldIdx, baseSeed) {
  * Partial Fisher-Yates: shuffle only first k positions of indices array.
  * O(k) time, mutates indices in-place. Returns indices subarray [0..k-1].
  */
-export function partialShuffle(indices, k, rng) {
+function partialShuffle(indices, k, rng) {
   const n = indices.length
   const m = Math.min(k, n)
   for (let i = 0; i < m; i++) {
@@ -94,7 +94,7 @@ export function partialShuffle(indices, k, rng) {
  * All built-in scorers are greater-is-better (neg_mse, neg_mae are negated).
  * Custom functions default to true.
  */
-export function scorerGreaterIsBetter(scoring) {
+function scorerGreaterIsBetter(scoring) {
   if (typeof scoring === 'function') return true
   switch (scoring) {
     case 'accuracy':
@@ -106,3 +106,5 @@ export function scorerGreaterIsBetter(scoring) {
       return true
   }
 }
+
+module.exports = { detectTask, now, makeCandidateId, seedFor, partialShuffle, scorerGreaterIsBetter }

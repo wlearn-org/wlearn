@@ -1,12 +1,12 @@
-import { makeLCG } from '@wlearn/core'
-import { sampleConfig } from './sampler.js'
-import { makeCandidateId } from './common.js'
+const { makeLCG } = require('@wlearn/core')
+const { sampleConfig } = require('./sampler.js')
+const { makeCandidateId } = require('./common.js')
 
 /**
  * Random search strategy: generates nIter random configs per model,
  * yields them one at a time. No adaptive behavior.
  */
-export class RandomStrategy {
+class RandomStrategy {
   #queue = []
   #index = 0
   #total = 0
@@ -65,3 +65,5 @@ export class RandomStrategy {
     return this.#index >= this.#total
   }
 }
+
+module.exports = { RandomStrategy }

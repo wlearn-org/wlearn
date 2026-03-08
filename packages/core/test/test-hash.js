@@ -1,6 +1,6 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
-import { sha256Sync } from '../src/hash.js'
+const { describe, it } = require('node:test')
+const assert = require('node:assert/strict')
+const { sha256Sync } = require('../src/hash.js')
 
 describe('sha256Sync', () => {
   // NIST test vectors

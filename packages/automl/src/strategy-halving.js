@@ -1,6 +1,6 @@
-import { makeLCG } from '@wlearn/core'
-import { sampleConfig } from './sampler.js'
-import { makeCandidateId } from './common.js'
+const { makeLCG } = require('@wlearn/core')
+const { sampleConfig } = require('./sampler.js')
+const { makeCandidateId } = require('./common.js')
 
 const { ceil, log, max, min, floor } = Math
 
@@ -14,7 +14,7 @@ const { ceil, log, max, min, floor } = Math
  * in the current round have been evaluated. next() returns null
  * only when fully done.
  */
-export class HalvingStrategy {
+class HalvingStrategy {
   #candidates       // all candidates for current round
   #roundIndex = 0   // index within current round's candidates
   #round = 0        // current round number
@@ -155,3 +155,5 @@ export class HalvingStrategy {
     return this.#rounds
   }
 }
+
+module.exports = { HalvingStrategy }

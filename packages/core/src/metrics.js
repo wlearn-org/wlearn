@@ -1,4 +1,4 @@
-import { ValidationError } from './errors.js'
+const { ValidationError } = require('./errors.js')
 
 // --- Internal helpers ---
 
@@ -51,7 +51,7 @@ function _classCounts(cm, nClasses) {
 
 // --- Exports ---
 
-export function accuracy(yTrue, yPred) {
+function accuracy(yTrue, yPred) {
   _validatePair(yTrue, yPred, 'accuracy')
   let correct = 0
   for (let i = 0; i < yTrue.length; i++) {
@@ -60,7 +60,7 @@ export function accuracy(yTrue, yPred) {
   return correct / yTrue.length
 }
 
-export function r2Score(yTrue, yPred) {
+function r2Score(yTrue, yPred) {
   _validatePair(yTrue, yPred, 'r2Score')
   const n = yTrue.length
   let mean = 0
@@ -77,7 +77,7 @@ export function r2Score(yTrue, yPred) {
   return 1 - ssRes / ssTot
 }
 
-export function meanSquaredError(yTrue, yPred) {
+function meanSquaredError(yTrue, yPred) {
   _validatePair(yTrue, yPred, 'meanSquaredError')
   let sum = 0
   for (let i = 0; i < yTrue.length; i++) {
@@ -87,7 +87,7 @@ export function meanSquaredError(yTrue, yPred) {
   return sum / yTrue.length
 }
 
-export function meanAbsoluteError(yTrue, yPred) {
+function meanAbsoluteError(yTrue, yPred) {
   _validatePair(yTrue, yPred, 'meanAbsoluteError')
   let sum = 0
   for (let i = 0; i < yTrue.length; i++) {
@@ -96,7 +96,7 @@ export function meanAbsoluteError(yTrue, yPred) {
   return sum / yTrue.length
 }
 
-export function confusionMatrix(yTrue, yPred) {
+function confusionMatrix(yTrue, yPred) {
   _validatePair(yTrue, yPred, 'confusionMatrix')
   const { labels, labelMap, nClasses } = _classInfo(yTrue, yPred)
   const matrix = _buildCM(yTrue, yPred, labelMap, nClasses)
@@ -113,7 +113,7 @@ function _resolveAverage(average, nClasses, labels) {
   return average || 'binary'
 }
 
-export function precisionScore(yTrue, yPred, { average = 'binary' } = {}) {
+function precisionScore(yTrue, yPred, { average = 'binary' } = {}) {
   _validatePair(yTrue, yPred, 'precisionScore')
   const { labels, labelMap, nClasses } = _classInfo(yTrue, yPred)
   const cm = _buildCM(yTrue, yPred, labelMap, nClasses)
@@ -139,7 +139,7 @@ export function precisionScore(yTrue, yPred, { average = 'binary' } = {}) {
   return sum / nClasses
 }
 
-export function recallScore(yTrue, yPred, { average = 'binary' } = {}) {
+function recallScore(yTrue, yPred, { average = 'binary' } = {}) {
   _validatePair(yTrue, yPred, 'recallScore')
   const { labels, labelMap, nClasses } = _classInfo(yTrue, yPred)
   const cm = _buildCM(yTrue, yPred, labelMap, nClasses)
@@ -165,7 +165,7 @@ export function recallScore(yTrue, yPred, { average = 'binary' } = {}) {
   return sum / nClasses
 }
 
-export function f1Score(yTrue, yPred, { average = 'binary' } = {}) {
+function f1Score(yTrue, yPred, { average = 'binary' } = {}) {
   _validatePair(yTrue, yPred, 'f1Score')
   const { labels, labelMap, nClasses } = _classInfo(yTrue, yPred)
   const cm = _buildCM(yTrue, yPred, labelMap, nClasses)
@@ -193,7 +193,7 @@ export function f1Score(yTrue, yPred, { average = 'binary' } = {}) {
   return sum / nClasses
 }
 
-export function logLoss(yTrue, yProba, { nClasses, eps = 1e-15 } = {}) {
+function logLoss(yTrue, yProba, { nClasses, eps = 1e-15 } = {}) {
   if (!yTrue || yTrue.length === 0) {
     throw new ValidationError('logLoss: yTrue must be non-empty')
   }
@@ -217,7 +217,7 @@ export function logLoss(yTrue, yProba, { nClasses, eps = 1e-15 } = {}) {
   return sum / n
 }
 
-export function rocAuc(yTrue, yProba) {
+function rocAuc(yTrue, yProba) {
   if (!yTrue || yTrue.length === 0) {
     throw new ValidationError('rocAuc: yTrue must be non-empty')
   }
@@ -256,4 +256,10 @@ export function rocAuc(yTrue, yProba) {
     prevFpr = fpr
   }
   return auc
+}
+
+module.exports = {
+  accuracy, r2Score, meanSquaredError, meanAbsoluteError,
+  confusionMatrix, precisionScore, recallScore, f1Score,
+  logLoss, rocAuc
 }

@@ -13,7 +13,7 @@ npm install @wlearn/types
 ## Constants
 
 ```js
-import { BUNDLE_MAGIC, BUNDLE_VERSION, HEADER_SIZE, DTYPE } from '@wlearn/types'
+const { BUNDLE_MAGIC, BUNDLE_VERSION, HEADER_SIZE, DTYPE } = require('@wlearn/types')
 
 BUNDLE_MAGIC    // Uint8Array [0x57, 0x4c, 0x52, 0x4e] ('WLRN')
 BUNDLE_VERSION  // 1

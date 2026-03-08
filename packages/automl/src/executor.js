@@ -1,6 +1,6 @@
-import { normalizeX, normalizeY, makeLCG, getScorer } from '@wlearn/core'
-import { Leaderboard } from './leaderboard.js'
-import { now, seedFor, partialShuffle } from './common.js'
+const { normalizeX, normalizeY, makeLCG, getScorer } = require('@wlearn/core')
+const { Leaderboard } = require('./leaderboard.js')
+const { now, seedFor, partialShuffle } = require('./common.js')
 
 const { ceil, min } = Math
 
@@ -35,7 +35,7 @@ function subsetY(y, indices) {
  * Evaluates candidates across all CV folds, applies budgets,
  * records results in a single Leaderboard instance.
  */
-export class Executor {
+class Executor {
   #folds
   #scorerFn
   #X
@@ -207,3 +207,5 @@ export class Executor {
     return { leaderboard: this.#leaderboard }
   }
 }
+
+module.exports = { Executor }

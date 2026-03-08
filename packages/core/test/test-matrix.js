@@ -1,7 +1,7 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
-import { normalizeX, normalizeY, makeDense, validateMatrix } from '../src/matrix.js'
-import { ValidationError } from '../src/errors.js'
+const { describe, it } = require('node:test')
+const assert = require('node:assert/strict')
+const { normalizeX, normalizeY, makeDense, validateMatrix } = require('../src/matrix.js')
+const { ValidationError } = require('../src/errors.js')
 
 describe('normalizeX', () => {
   it('passes through Float64Array typed matrix', () => {

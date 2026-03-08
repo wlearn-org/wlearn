@@ -13,8 +13,8 @@ npm install @wlearn/core
 ## Quick start
 
 ```js
-import { Pipeline, load, accuracy, crossValScore } from '@wlearn/core'
-import { LinearModel } from '@wlearn/liblinear'
+const { Pipeline, load, accuracy, crossValScore } = require('@wlearn/core')
+const { LinearModel } = require('@wlearn/liblinear')
 
 // Build a pipeline
 const model = await LinearModel.create({ task: 'classification' })
@@ -85,7 +85,7 @@ Classification: `accuracy`, `confusionMatrix`, `precisionScore`, `recallScore`, 
 Regression: `r2Score`, `meanSquaredError`, `meanAbsoluteError`
 
 ```js
-import { accuracy, f1Score, r2Score } from '@wlearn/core'
+const { accuracy, f1Score, r2Score } = require('@wlearn/core')
 
 accuracy(yTrue, yPred)                        // number
 f1Score(yTrue, yPred, { average: 'macro' })   // number

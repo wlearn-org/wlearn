@@ -1,17 +1,17 @@
 // Numeric preprocessing transformers (v1: DenseMatrix only).
 // StandardScaler and MinMaxScaler implement the Transformer interface.
 
-import { NotFittedError, DisposedError, ValidationError } from './errors.js'
-import { normalizeX } from './matrix.js'
-import { encodeBundle, encodeJSON, decodeJSON } from './bundle.js'
-import { register } from './registry.js'
+const { NotFittedError, DisposedError, ValidationError } = require('./errors.js')
+const { normalizeX } = require('./matrix.js')
+const { encodeBundle, encodeJSON, decodeJSON } = require('./bundle.js')
+const { register } = require('./registry.js')
 
 const STANDARD_SCALER_TYPE_ID = 'wlearn.preprocess.standard_scaler@1'
 const MINMAX_SCALER_TYPE_ID = 'wlearn.preprocess.minmax_scaler@1'
 
 // --- StandardScaler ---
 
-export class StandardScaler {
+class StandardScaler {
   #means = null
   #stds = null
   #fitted = false
@@ -125,7 +125,7 @@ export class StandardScaler {
 
 // --- MinMaxScaler ---
 
-export class MinMaxScaler {
+class MinMaxScaler {
   #mins = null
   #maxs = null
   #fitted = false
@@ -231,3 +231,5 @@ export class MinMaxScaler {
 // Auto-register loaders
 register(STANDARD_SCALER_TYPE_ID, StandardScaler._fromBundle)
 register(MINMAX_SCALER_TYPE_ID, MinMaxScaler._fromBundle)
+
+module.exports = { StandardScaler, MinMaxScaler }

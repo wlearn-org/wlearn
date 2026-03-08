@@ -1,8 +1,8 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
-import { RandomSearch } from '../src/search.js'
-import { SuccessiveHalvingSearch } from '../src/halving.js'
-import { SearchableMock, SearchableMockReg } from './mock-model.js'
+const { describe, it } = require('node:test')
+const assert = require('node:assert/strict')
+const { RandomSearch } = require('../src/search.js')
+const { SuccessiveHalvingSearch } = require('../src/halving.js')
+const { SearchableMock, SearchableMockReg } = require('./mock-model.js')
 
 /**
  * Regression snapshot tests: ensure the refactor produces identical

@@ -1,8 +1,8 @@
-import { describe, it, beforeEach } from 'node:test'
-import assert from 'node:assert/strict'
-import { register, load, loadSync, getRegistry } from '../src/registry.js'
-import { encodeBundle } from '../src/bundle.js'
-import { RegistryError } from '../src/errors.js'
+const { describe, it, beforeEach } = require('node:test')
+const assert = require('node:assert/strict')
+const { register, load, loadSync, getRegistry } = require('../src/registry.js')
+const { encodeBundle } = require('../src/bundle.js')
+const { RegistryError } = require('../src/errors.js')
 
 // Helper: create a minimal bundle
 function makeBundle(typeId, data = new Uint8Array([1])) {

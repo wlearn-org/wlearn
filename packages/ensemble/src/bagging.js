@@ -1,10 +1,10 @@
-import {
-  encodeBundle, decodeBundle, register, load as registryLoad,
+const {
+  encodeBundle, decodeBundle, register, load: registryLoad,
   normalizeX, normalizeY, accuracy, r2Score,
   stratifiedKFold, kFold,
   ValidationError, NotFittedError, DisposedError,
   lift
-} from '@wlearn/core'
+} = require('@wlearn/core')
 
 const TYPE_ID_CLS = 'wlearn.ensemble.bagged.classifier@1'
 const TYPE_ID_REG = 'wlearn.ensemble.bagged.regressor@1'
@@ -17,7 +17,7 @@ let _registered = false
  * seed for fold assignment. OOF predictions are accumulated (sum + count)
  * and averaged, matching AutoGluon's BaggedEnsembleModel pattern.
  */
-export class BaggedEstimator {
+class BaggedEstimator {
   #spec         // [name, Class, params]
   #kFold
   #nRepeats
@@ -408,3 +408,5 @@ function _subsetY(y, indices) {
   }
   return out
 }
+
+module.exports = { BaggedEstimator }

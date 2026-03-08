@@ -1,8 +1,8 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
-import { StackingEnsemble } from '../src/stacking.js'
-import { MockModel } from './mock-model.js'
-import { ValidationError, NotFittedError, DisposedError, load } from '@wlearn/core'
+const { describe, it } = require('node:test')
+const assert = require('node:assert/strict')
+const { StackingEnsemble } = require('../src/stacking.js')
+const { MockModel } = require('./mock-model.js')
+const { ValidationError, NotFittedError, DisposedError, load } = require('@wlearn/core')
 
 const X = { data: new Float64Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]), rows: 10, cols: 2 }
 const yCls = new Int32Array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])

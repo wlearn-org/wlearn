@@ -1,22 +1,10 @@
-import { getScorer, normalizeY, ValidationError } from '@wlearn/core'
-import { optimizeWeights } from './weights.js'
+const { getScorer, normalizeY, ValidationError } = require('@wlearn/core')
+const { optimizeWeights } = require('./weights.js')
 
 /**
  * Caruana greedy ensemble selection (Caruana et al., 2004).
- *
- * Selects a weighted subset from a pool of OOF predictions by greedily
- * adding the candidate that most improves the ensemble score at each step.
- * Candidates can be selected multiple times (with replacement).
- *
- * @param {Float64Array[]} oofPredictions - per-candidate OOF predictions
- *   Classification: each is n_samples * n_classes (flat row-major proba)
- *   Regression: each is n_samples
- * @param {TypedArray|number[]} yTrue - true labels
- * @param {Object} opts
- * @param {boolean} opts.refineWeights - if true, optimize weights after selection
- * @returns {{ indices: Int32Array, weights: Float64Array, scores: Float64Array }}
  */
-export function caruanaSelect(oofPredictions, yTrue, {
+function caruanaSelect(oofPredictions, yTrue, {
   maxSize = 20,
   scoring = 'accuracy',
   task = 'classification',
@@ -125,3 +113,5 @@ function _score(preds, yTrue, scorerFn, task, nClasses, n) {
   }
   return scorerFn(yTrue, hardPreds)
 }
+
+module.exports = { caruanaSelect }

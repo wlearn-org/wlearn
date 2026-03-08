@@ -15,9 +15,9 @@ Requires at least one model package (e.g. `@wlearn/xgboost`) to do anything usef
 ## Quick start
 
 ```js
-import { autoFit } from '@wlearn/automl'
-import { LinearModel } from '@wlearn/liblinear'
-import { XGBModel } from '@wlearn/xgboost'
+const { autoFit } = require('@wlearn/automl')
+const { LinearModel } = require('@wlearn/liblinear')
+const { XGBModel } = require('@wlearn/xgboost')
 
 const models = [
   ['linear', LinearModel, { task: 'classification' }],

@@ -1,7 +1,7 @@
-import { Step } from './step.js'
-import { DisposedError, NotFittedError, ValidationError } from './errors.js'
-import { encodeBundle, decodeBundle } from './bundle.js'
-import { register, load as registryLoad } from './registry.js'
+const { Step } = require('./step.js')
+const { DisposedError, NotFittedError, ValidationError } = require('./errors.js')
+const { encodeBundle, decodeBundle } = require('./bundle.js')
+const { register, load: registryLoad } = require('./registry.js')
 
 const PIPELINE_TYPE_ID = 'wlearn.pipeline@1'
 let registered = false
@@ -19,7 +19,7 @@ let registered = false
  * const bytes = pipe.save()   // WLRN bundle
  * const restored = await load(bytes)
  */
-export class Pipeline {
+class Pipeline {
   #steps
   #fitted = false
   #disposed = false
@@ -200,14 +200,6 @@ export class Pipeline {
     if (registered) return
     registered = true
     register(PIPELINE_TYPE_ID, (manifest, toc, blobs) => {
-      // Reconstruct the full bundle bytes so Pipeline.load can decode them
-      // This is called from registry.load, which already decoded once.
-      // We need to pass the original bytes to Pipeline.load, but we only
-      // have the decoded parts. Re-encode is wasteful. Instead, handle
-      // the decoded parts directly.
-      // Actually, Pipeline.load will be called externally with the original
-      // bytes. The registry loader receives (manifest, toc, blobs) and
-      // needs to reconstruct the pipeline from those parts.
       return Pipeline._loadFromParts(manifest, toc, blobs)
     })
   }
@@ -231,3 +223,5 @@ export class Pipeline {
 
 // Auto-register pipeline loader
 Pipeline.registerLoader()
+
+module.exports = { Pipeline }

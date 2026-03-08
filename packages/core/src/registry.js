@@ -1,9 +1,9 @@
-import { RegistryError } from './errors.js'
-import { decodeBundle } from './bundle.js'
+const { RegistryError } = require('./errors.js')
+const { decodeBundle } = require('./bundle.js')
 
 const registry = new Map()
 
-export function register(typeId, loaderFn) {
+function register(typeId, loaderFn) {
   if (typeof typeId !== 'string' || !typeId.includes('@')) {
     throw new RegistryError(`Invalid typeId "${typeId}": must contain "@" (e.g. "wlearn.liblinear.classifier@1")`)
   }
@@ -13,7 +13,7 @@ export function register(typeId, loaderFn) {
   registry.set(typeId, loaderFn)
 }
 
-export async function load(bytes) {
+async function load(bytes) {
   const { manifest, toc, blobs } = decodeBundle(bytes)
   const { typeId } = manifest
 
@@ -36,7 +36,7 @@ export async function load(bytes) {
   return await loaderFn(manifest, toc, blobs)
 }
 
-export function loadSync(bytes) {
+function loadSync(bytes) {
   const { manifest, toc, blobs } = decodeBundle(bytes)
   const { typeId } = manifest
 
@@ -65,6 +65,8 @@ export function loadSync(bytes) {
   return result
 }
 
-export function getRegistry() {
+function getRegistry() {
   return new Map(registry)
 }
+
+module.exports = { register, load, loadSync, getRegistry }

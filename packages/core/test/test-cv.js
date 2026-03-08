@@ -1,7 +1,7 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
-import { kFold, stratifiedKFold, trainTestSplit, crossValScore, getScorer } from '../src/cv.js'
-import { ValidationError } from '../src/errors.js'
+const { describe, it } = require('node:test')
+const assert = require('node:assert/strict')
+const { kFold, stratifiedKFold, trainTestSplit, crossValScore, getScorer } = require('../src/cv.js')
+const { ValidationError } = require('../src/errors.js')
 
 describe('kFold', () => {
   it('produces k folds', () => {

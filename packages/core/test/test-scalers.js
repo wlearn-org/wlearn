@@ -1,8 +1,8 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
-import { StandardScaler, MinMaxScaler } from '../src/scalers.js'
-import { decodeBundle } from '../src/bundle.js'
-import { NotFittedError, DisposedError } from '../src/errors.js'
+const { describe, it } = require('node:test')
+const assert = require('node:assert/strict')
+const { StandardScaler, MinMaxScaler } = require('../src/scalers.js')
+const { decodeBundle } = require('../src/bundle.js')
+const { NotFittedError, DisposedError } = require('../src/errors.js')
 
 function assertClose(a, b, tol = 1e-10) {
   assert.ok(Math.abs(a - b) < tol, `${a} not close to ${b} (tol=${tol})`)

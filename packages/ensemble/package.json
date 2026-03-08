@@ -2,13 +2,19 @@
   "name": "@wlearn/ensemble",
   "version": "0.1.0",
   "description": "Ensemble methods for wlearn: voting, stacking, Caruana selection",
-  "type": "module",
+  "type": "commonjs",
   "main": "src/index.js",
   "exports": {
-    ".": "./src/index.js"
+    ".": {
+      "require": "./src/index.js",
+      "default": "./src/index.js"
+    }
   },
   "files": [
-    "src/"
+    "src/",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
   ],
   "sideEffects": false,
   "dependencies": {
@@ -22,5 +28,5 @@
     "access": "public"
   },
   "author": "Anton Zemlyansky",
-  "license": "MIT"
+  "license": "Apache-2.0"
 }

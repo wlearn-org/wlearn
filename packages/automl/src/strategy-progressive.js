@@ -1,6 +1,6 @@
-import { makeLCG } from '@wlearn/core'
-import { sampleConfig } from './sampler.js'
-import { makeCandidateId } from './common.js'
+const { makeLCG } = require('@wlearn/core')
+const { sampleConfig } = require('./sampler.js')
+const { makeCandidateId } = require('./common.js')
 
 const { max, ceil } = Math
 
@@ -14,7 +14,7 @@ const { max, ceil } = Math
  * This pairs with ProgressiveSearch which manages two Executors
  * (probe executor with 1 fold, full executor with K folds).
  */
-export class ProgressiveStrategy {
+class ProgressiveStrategy {
   #allCandidates = []
   #promotedCandidates = []
   #phase = 'probe'
@@ -124,3 +124,5 @@ export class ProgressiveStrategy {
     return false
   }
 }
+
+module.exports = { ProgressiveStrategy }

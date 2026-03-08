@@ -1,5 +1,5 @@
 // Core
-export {
+const {
   Pipeline, load, loadSync, register,
   encodeBundle, decodeBundle, validateBundle,
   normalizeX, normalizeY,
@@ -7,25 +7,46 @@ export {
   confusionMatrix, precisionScore, recallScore, f1Score, logLoss, rocAuc,
   kFold, stratifiedKFold, trainTestSplit, crossValScore,
   StandardScaler, MinMaxScaler, Preprocessor
-} from '@wlearn/core'
+} = require('@wlearn/core')
 
 // AutoML
-export { autoFit } from '@wlearn/automl'
+const { autoFit } = require('@wlearn/automl')
 
 // Ensemble
-export { StackingEnsemble, VotingEnsemble, BaggedEstimator } from '@wlearn/ensemble'
+const { StackingEnsemble, VotingEnsemble, BaggedEstimator } = require('@wlearn/ensemble')
 
 // Models
-export { LinearModel } from '@wlearn/liblinear'
-export { SVMModel } from '@wlearn/libsvm'
-export { XGBModel } from '@wlearn/xgboost'
-export { LGBModel } from '@wlearn/lightgbm'
-export { KNNModel } from '@wlearn/nanoflann'
-export { EBMModel } from '@wlearn/ebm'
-export { TsetlinModel } from '@wlearn/tsetlin'
-export { BARTModel } from '@wlearn/stochtree'
-export {
+const { LinearModel } = require('@wlearn/liblinear')
+const { SVMModel } = require('@wlearn/libsvm')
+const { XGBModel } = require('@wlearn/xgboost')
+const { LGBModel } = require('@wlearn/lightgbm')
+const { KNNModel } = require('@wlearn/nanoflann')
+const { EBMModel } = require('@wlearn/ebm')
+const { TsetlinModel } = require('@wlearn/tsetlin')
+const { BARTModel } = require('@wlearn/stochtree')
+const {
   XLearnFMClassifier, XLearnFMRegressor,
   XLearnFFMClassifier, XLearnFFMRegressor,
   XLearnLRClassifier, XLearnLRRegressor
-} from '@wlearn/xlearn'
+} = require('@wlearn/xlearn')
+
+module.exports = {
+  // Core
+  Pipeline, load, loadSync, register,
+  encodeBundle, decodeBundle, validateBundle,
+  normalizeX, normalizeY,
+  accuracy, r2Score, meanSquaredError, meanAbsoluteError,
+  confusionMatrix, precisionScore, recallScore, f1Score, logLoss, rocAuc,
+  kFold, stratifiedKFold, trainTestSplit, crossValScore,
+  StandardScaler, MinMaxScaler, Preprocessor,
+  // AutoML
+  autoFit,
+  // Ensemble
+  StackingEnsemble, VotingEnsemble, BaggedEstimator,
+  // Models
+  LinearModel, SVMModel, XGBModel, LGBModel, KNNModel, EBMModel,
+  TsetlinModel, BARTModel,
+  XLearnFMClassifier, XLearnFMRegressor,
+  XLearnFFMClassifier, XLearnFFMRegressor,
+  XLearnLRClassifier, XLearnLRRegressor,
+}

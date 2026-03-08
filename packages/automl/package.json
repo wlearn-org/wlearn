@@ -2,13 +2,19 @@
   "name": "@wlearn/automl",
   "version": "0.1.0",
   "description": "AutoML engine for wlearn: search space sampling, random search, successive halving, ensemble construction",
-  "type": "module",
+  "type": "commonjs",
   "main": "src/index.js",
   "exports": {
-    ".": "./src/index.js"
+    ".": {
+      "require": "./src/index.js",
+      "default": "./src/index.js"
+    }
   },
   "files": [
-    "src/"
+    "src/",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
   ],
   "sideEffects": false,
   "dependencies": {
@@ -23,5 +29,5 @@
     "access": "public"
   },
   "author": "Anton Zemlyansky",
-  "license": "MIT"
+  "license": "Apache-2.0"
 }

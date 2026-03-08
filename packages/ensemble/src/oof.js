@@ -1,15 +1,9 @@
-import { stratifiedKFold, kFold, normalizeX, normalizeY, ValidationError } from '@wlearn/core'
+const { stratifiedKFold, kFold, normalizeX, normalizeY, ValidationError } = require('@wlearn/core')
 
 /**
  * Generate out-of-fold predictions for a list of estimator specs.
- *
- * @param {Array<[string, Function, Object]>} estimatorSpecs - [name, EstimatorClass, params]
- * @param {Object|number[][]} X - feature matrix
- * @param {TypedArray|number[]} y - labels
- * @param {Object} opts
- * @returns {{ oofPreds: Float64Array[], classes: Int32Array|null }}
  */
-export async function getOofPredictions(estimatorSpecs, X, y, {
+async function getOofPredictions(estimatorSpecs, X, y, {
   cv = 5,
   seed = 42,
   task = 'classification',
@@ -94,3 +88,5 @@ function _subsetY(y, indices) {
   }
   return out
 }
+
+module.exports = { getOofPredictions }

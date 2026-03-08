@@ -1,8 +1,8 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
-import { projectSimplex, optimizeWeights } from '../src/weights.js'
-import { caruanaSelect } from '../src/selection.js'
-import { ValidationError } from '@wlearn/core'
+const { describe, it } = require('node:test')
+const assert = require('node:assert/strict')
+const { projectSimplex, optimizeWeights } = require('../src/weights.js')
+const { caruanaSelect } = require('../src/selection.js')
+const { ValidationError } = require('@wlearn/core')
 
 describe('projectSimplex', () => {
   it('projects a vector onto the simplex', () => {

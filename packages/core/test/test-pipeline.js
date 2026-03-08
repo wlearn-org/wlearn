@@ -1,9 +1,9 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
-import { Pipeline } from '../src/pipeline.js'
-import { register } from '../src/registry.js'
-import { encodeBundle, decodeBundle } from '../src/bundle.js'
-import { DisposedError, NotFittedError, ValidationError } from '../src/errors.js'
+const { describe, it } = require('node:test')
+const assert = require('node:assert/strict')
+const { Pipeline } = require('../src/pipeline.js')
+const { register } = require('../src/registry.js')
+const { encodeBundle, decodeBundle } = require('../src/bundle.js')
+const { DisposedError, NotFittedError, ValidationError } = require('../src/errors.js')
 
 // Mock transformer: doubles all values
 function createMockTransformer(name) {

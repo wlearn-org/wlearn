@@ -1,7 +1,7 @@
-import { ValidationError } from './errors.js'
-import { makeLCG, shuffle } from './rng.js'
-import { normalizeX, normalizeY } from './matrix.js'
-import { accuracy, r2Score, meanSquaredError, meanAbsoluteError } from './metrics.js'
+const { ValidationError } = require('./errors.js')
+const { makeLCG, shuffle } = require('./rng.js')
+const { normalizeX, normalizeY } = require('./matrix.js')
+const { accuracy, r2Score, meanSquaredError, meanAbsoluteError } = require('./metrics.js')
 
 // --- Scorer registry ---
 
@@ -12,7 +12,7 @@ const SCORERS = {
   neg_mae: (yTrue, yPred) => -meanAbsoluteError(yTrue, yPred),
 }
 
-export function getScorer(scoring) {
+function getScorer(scoring) {
   if (typeof scoring === 'function') return scoring
   const fn = SCORERS[scoring]
   if (!fn) {
@@ -23,7 +23,7 @@ export function getScorer(scoring) {
 
 // --- Fold generators ---
 
-export function kFold(n, k = 5, { shuffle: doShuffle = true, seed = 42 } = {}) {
+function kFold(n, k = 5, { shuffle: doShuffle = true, seed = 42 } = {}) {
   if (n < k) throw new ValidationError(`kFold: n (${n}) must be >= k (${k})`)
   if (k < 2) throw new ValidationError('kFold: k must be >= 2')
 
@@ -51,7 +51,7 @@ export function kFold(n, k = 5, { shuffle: doShuffle = true, seed = 42 } = {}) {
   return folds
 }
 
-export function stratifiedKFold(y, k = 5, { shuffle: doShuffle = true, seed = 42 } = {}) {
+function stratifiedKFold(y, k = 5, { shuffle: doShuffle = true, seed = 42 } = {}) {
   const n = y.length
   if (n < k) throw new ValidationError(`stratifiedKFold: n (${n}) must be >= k (${k})`)
   if (k < 2) throw new ValidationError('stratifiedKFold: k must be >= 2')
@@ -90,7 +90,7 @@ export function stratifiedKFold(y, k = 5, { shuffle: doShuffle = true, seed = 42
   return folds
 }
 
-export function trainTestSplit(n, { testSize = 0.2, shuffle: doShuffle = true, seed = 42 } = {}) {
+function trainTestSplit(n, { testSize = 0.2, shuffle: doShuffle = true, seed = 42 } = {}) {
   if (n < 2) throw new ValidationError('trainTestSplit: n must be >= 2')
   const nTest = Math.max(1, Math.round(n * testSize))
   const nTrain = n - nTest
@@ -109,7 +109,7 @@ export function trainTestSplit(n, { testSize = 0.2, shuffle: doShuffle = true, s
 
 // --- CV runner ---
 
-export async function crossValScore(EstimatorClass, X, y, {
+async function crossValScore(EstimatorClass, X, y, {
   cv = 5,
   scoring = 'accuracy',
   seed = 42,
@@ -180,3 +180,5 @@ function _subsetY(y, indices) {
   }
   return out
 }
+
+module.exports = { kFold, stratifiedKFold, trainTestSplit, crossValScore, getScorer }

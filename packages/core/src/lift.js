@@ -10,7 +10,7 @@
  * @param {*} x
  * @returns {boolean}
  */
-export function isPromiseLike(x) {
+function isPromiseLike(x) {
   return x != null && typeof x.then === 'function'
 }
 
@@ -23,6 +23,8 @@ export function isPromiseLike(x) {
  * @param {(value: T) => U} f
  * @returns {U | Promise<U>}
  */
-export function lift(x, f) {
+function lift(x, f) {
   return isPromiseLike(x) ? x.then(f) : f(x)
 }
+
+module.exports = { isPromiseLike, lift }

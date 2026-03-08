@@ -1,8 +1,8 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
-import { encodeBundle, decodeBundle, validateBundle } from '../src/bundle.js'
-import { BundleError } from '../src/errors.js'
-import { BUNDLE_MAGIC, BUNDLE_VERSION, HEADER_SIZE } from '@wlearn/types'
+const { describe, it } = require('node:test')
+const assert = require('node:assert/strict')
+const { encodeBundle, decodeBundle, validateBundle } = require('../src/bundle.js')
+const { BundleError } = require('../src/errors.js')
+const { BUNDLE_MAGIC, BUNDLE_VERSION, HEADER_SIZE } = require('@wlearn/types')
 
 describe('encodeBundle + decodeBundle', () => {
   it('round-trips manifest and artifacts', () => {

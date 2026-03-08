@@ -1,7 +1,7 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
-import { caruanaSelect } from '../src/selection.js'
-import { ValidationError } from '@wlearn/core'
+const { describe, it } = require('node:test')
+const assert = require('node:assert/strict')
+const { caruanaSelect } = require('../src/selection.js')
+const { ValidationError } = require('@wlearn/core')
 
 describe('caruanaSelect', () => {
   it('selects from pool of candidates', () => {

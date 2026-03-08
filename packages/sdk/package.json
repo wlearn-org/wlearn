@@ -2,13 +2,19 @@
   "name": "@wlearn/sdk",
   "version": "0.1.0",
   "description": "Convenience barrel: re-exports all wlearn model classes, automl, ensemble, pipeline, and core utilities",
-  "type": "module",
+  "type": "commonjs",
   "main": "index.js",
   "exports": {
-    ".": "./index.js"
+    ".": {
+      "require": "./index.js",
+      "default": "./index.js"
+    }
   },
   "files": [
-    "index.js"
+    "index.js",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
   ],
   "sideEffects": false,
   "dependencies": {
@@ -26,11 +32,11 @@
     "@wlearn/tsetlin": "0.1.0"
   },
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test test/*.js"
   },
   "publishConfig": {
     "access": "public"
   },
   "author": "Anton Zemlyansky",
-  "license": "MIT"
+  "license": "Apache-2.0"
 }

@@ -1,8 +1,8 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
-import { RandomSearch } from '../src/search.js'
-import { SearchableMock, SearchableMockReg } from './mock-model.js'
-import { ValidationError } from '@wlearn/core'
+const { describe, it } = require('node:test')
+const assert = require('node:assert/strict')
+const { RandomSearch } = require('../src/search.js')
+const { SearchableMock, SearchableMockReg } = require('./mock-model.js')
+const { ValidationError } = require('@wlearn/core')
 
 const X = {
   data: new Float64Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]),

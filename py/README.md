@@ -62,6 +62,7 @@ Each wrapper trains with a native Python backend and produces `.wlrn` bundles co
 | `wlearn.ebm` | `EBMModel` | numpy (inference), interpret (fit) | classification, regression |
 | `wlearn.stochtree` | `BARTModel` | stochtree | classification, regression |
 | `wlearn.tsetlin` | `TsetlinModel` | tmu | classification, regression |
+| `wlearn.nn` | `MLPClassifier`, `MLPRegressor`, `TabMClassifier`, `TabMRegressor`, `NAMClassifier`, `NAMRegressor` | polygrad (ctypes) | classification, regression |
 
 All models share a common API:
 

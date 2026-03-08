@@ -1,15 +1,15 @@
-import {
-  encodeBundle, decodeBundle, register, load as registryLoad,
+const {
+  encodeBundle, decodeBundle, register, load: registryLoad,
   normalizeX, normalizeY, accuracy, r2Score,
   ValidationError, NotFittedError, DisposedError,
   lift
-} from '@wlearn/core'
+} = require('@wlearn/core')
 
 const TYPE_ID_CLS = 'wlearn.ensemble.voting.classifier@1'
 const TYPE_ID_REG = 'wlearn.ensemble.voting.regressor@1'
 let _registered = false
 
-export class VotingEnsemble {
+class VotingEnsemble {
   #specs       // [name, Class, params][]
   #models      // fitted instances
   #weights
@@ -309,3 +309,5 @@ export class VotingEnsemble {
     return ens
   }
 }
+
+module.exports = { VotingEnsemble }

@@ -1,8 +1,8 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
-import { RandomStrategy } from '../src/strategy-random.js'
-import { HalvingStrategy } from '../src/strategy-halving.js'
-import { SearchableMock, SearchableMockReg } from './mock-model.js'
+const { describe, it } = require('node:test')
+const assert = require('node:assert/strict')
+const { RandomStrategy } = require('../src/strategy-random.js')
+const { HalvingStrategy } = require('../src/strategy-halving.js')
+const { SearchableMock, SearchableMockReg } = require('./mock-model.js')
 
 describe('RandomStrategy', () => {
   it('yields exactly nIter * nModels candidates', () => {

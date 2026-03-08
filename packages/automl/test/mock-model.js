@@ -1,10 +1,10 @@
-import { MockModel } from '../../ensemble/test/mock-model.js'
+const { MockModel } = require('../../ensemble/test/mock-model.js')
 
 /**
  * Mock model that adds defaultSearchSpace() for automl tests.
  * Wraps MockModel from ensemble tests.
  */
-export class SearchableMock {
+class SearchableMock {
   static defaultSearchSpace() {
     return {
       bias: { type: 'uniform', low: -1, high: 1 },
@@ -20,7 +20,7 @@ export class SearchableMock {
 /**
  * Regression variant.
  */
-export class SearchableMockReg {
+class SearchableMockReg {
   static defaultSearchSpace() {
     return {
       bias: { type: 'uniform', low: -2, high: 2 },
@@ -33,4 +33,4 @@ export class SearchableMockReg {
   }
 }
 
-export { MockModel }
+module.exports = { SearchableMock, SearchableMockReg, MockModel }

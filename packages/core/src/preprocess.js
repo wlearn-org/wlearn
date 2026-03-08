@@ -1,4 +1,5 @@
-import { normalizeX, normalizeY, ValidationError } from './index.js'
+const { normalizeX, normalizeY } = require('./matrix.js')
+const { ValidationError } = require('./errors.js')
 
 /**
  * ML preprocessing: imputation, encoding, scaling.
@@ -8,7 +9,7 @@ import { normalizeX, normalizeY, ValidationError } from './index.js'
  * Designed to be used as a Pipeline step before model fitting.
  * Future: delegate to tranfi transforms once fitted state serialization lands.
  */
-export class Preprocessor {
+class Preprocessor {
   #config
   #fitted = false
   // Learned state
@@ -273,3 +274,5 @@ export class Preprocessor {
 
   dispose() {}
 }
+
+module.exports = { Preprocessor }

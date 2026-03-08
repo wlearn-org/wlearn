@@ -13,7 +13,7 @@ npm install @wlearn/sdk
 ## Usage
 
 ```js
-import { XGBModel, LinearModel, autoFit, Pipeline, accuracy } from '@wlearn/sdk'
+const { XGBModel, LinearModel, autoFit, Pipeline, accuracy } = require('@wlearn/sdk')
 
 const model = await XGBModel.create({ task: 'classification' })
 model.fit(X, y)

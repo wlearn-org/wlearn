@@ -1,9 +1,9 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
-import { PORTFOLIO, getPortfolio, PortfolioStrategy, PortfolioSearch } from '../src/portfolio.js'
-import { autoFit } from '../src/auto-fit.js'
-import { SearchableMock, SearchableMockReg } from './mock-model.js'
-import { ValidationError } from '@wlearn/core'
+const { describe, it } = require('node:test')
+const assert = require('node:assert/strict')
+const { PORTFOLIO, getPortfolio, PortfolioStrategy, PortfolioSearch } = require('../src/portfolio.js')
+const { autoFit } = require('../src/auto-fit.js')
+const { SearchableMock, SearchableMockReg } = require('./mock-model.js')
+const { ValidationError } = require('@wlearn/core')
 
 describe('getPortfolio', () => {
   it('returns classification portfolio', () => {

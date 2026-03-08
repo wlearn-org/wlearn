@@ -1,8 +1,8 @@
-import { stratifiedKFold, kFold, normalizeX, normalizeY,
-  ValidationError } from '@wlearn/core'
-import { Executor } from './executor.js'
-import { ProgressiveStrategy } from './strategy-progressive.js'
-import { detectTask, scorerGreaterIsBetter } from './common.js'
+const { stratifiedKFold, kFold, normalizeX, normalizeY,
+  ValidationError } = require('@wlearn/core')
+const { Executor } = require('./executor.js')
+const { ProgressiveStrategy } = require('./strategy-progressive.js')
+const { detectTask, scorerGreaterIsBetter } = require('./common.js')
 
 /**
  * Progressive search: probe all candidates cheaply (1 fold + subsample),
@@ -12,7 +12,7 @@ import { detectTask, scorerGreaterIsBetter } from './common.js'
  * The probe phase filters out bad configs quickly, saving time
  * for thorough evaluation of promising candidates.
  */
-export class ProgressiveSearch {
+class ProgressiveSearch {
   #models
   #opts
   #leaderboard = null
@@ -154,3 +154,5 @@ export class ProgressiveSearch {
   get leaderboard() { return this.#leaderboard }
   get bestResult() { return this.#bestResult }
 }
+
+module.exports = { ProgressiveSearch }

@@ -1,12 +1,19 @@
-export { sampleParam, sampleConfig, randomConfigs, gridConfigs } from './sampler.js'
-export { RandomSearch } from './search.js'
-export { SuccessiveHalvingSearch } from './halving.js'
-export { PortfolioSearch, PortfolioStrategy, getPortfolio, PORTFOLIO } from './portfolio.js'
-export { Leaderboard } from './leaderboard.js'
-export { autoFit } from './auto-fit.js'
-export { Executor } from './executor.js'
-export { RandomStrategy } from './strategy-random.js'
-export { HalvingStrategy } from './strategy-halving.js'
-export { ProgressiveStrategy } from './strategy-progressive.js'
-export { ProgressiveSearch } from './progressive.js'
-export { detectTask, makeCandidateId, seedFor, partialShuffle, scorerGreaterIsBetter } from './common.js'
+const { sampleParam, sampleConfig, randomConfigs, gridConfigs } = require('./sampler.js')
+const { RandomSearch } = require('./search.js')
+const { SuccessiveHalvingSearch } = require('./halving.js')
+const { PortfolioSearch, PortfolioStrategy, getPortfolio, PORTFOLIO } = require('./portfolio.js')
+const { Leaderboard } = require('./leaderboard.js')
+const { autoFit } = require('./auto-fit.js')
+const { Executor } = require('./executor.js')
+const { RandomStrategy } = require('./strategy-random.js')
+const { HalvingStrategy } = require('./strategy-halving.js')
+const { ProgressiveStrategy } = require('./strategy-progressive.js')
+const { ProgressiveSearch } = require('./progressive.js')
+const { detectTask, makeCandidateId, seedFor, partialShuffle, scorerGreaterIsBetter } = require('./common.js')
+
+module.exports = {
+  sampleParam, sampleConfig, randomConfigs, gridConfigs,
+  RandomSearch, SuccessiveHalvingSearch, PortfolioSearch, PortfolioStrategy, getPortfolio, PORTFOLIO,
+  Leaderboard, autoFit, Executor, RandomStrategy, HalvingStrategy, ProgressiveStrategy, ProgressiveSearch,
+  detectTask, makeCandidateId, seedFor, partialShuffle, scorerGreaterIsBetter,
+}

@@ -1,13 +1,13 @@
-import { stratifiedKFold, kFold, normalizeX, normalizeY,
-  ValidationError } from '@wlearn/core'
-import { Executor } from './executor.js'
-import { RandomStrategy } from './strategy-random.js'
-import { detectTask, scorerGreaterIsBetter } from './common.js'
+const { stratifiedKFold, kFold, normalizeX, normalizeY,
+  ValidationError } = require('@wlearn/core')
+const { Executor } = require('./executor.js')
+const { RandomStrategy } = require('./strategy-random.js')
+const { detectTask, scorerGreaterIsBetter } = require('./common.js')
 
 /**
  * Random hyperparameter search with cross-validation.
  */
-export class RandomSearch {
+class RandomSearch {
   #models
   #opts
   #leaderboard = null
@@ -91,3 +91,5 @@ export class RandomSearch {
   get leaderboard() { return this.#leaderboard }
   get bestResult() { return this.#bestResult }
 }
+
+module.exports = { RandomSearch }

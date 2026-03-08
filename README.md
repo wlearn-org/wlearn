@@ -27,7 +27,7 @@ npm install @wlearn/liblinear
 ```
 
 ```js
-import { LinearModel } from '@wlearn/liblinear'
+const { LinearModel } = require('@wlearn/liblinear')
 
 // 1. Create (async -- loads WASM)
 const model = await LinearModel.create({
@@ -83,6 +83,15 @@ restored.dispose()
 | `@wlearn/tsetlin` | TMU | Tsetlin machine. Interpretable propositional logic classifier. | 26 |
 | `@wlearn/mitra` | Mitra Tab2D | Pretrained ONNX tabular models. Zero-shot and fine-tuned inference via ONNX Runtime. | 26 |
 
+### Native implementations
+
+Built from scratch (not WASM ports of existing libraries):
+
+| Package | Backend | What it does | Tests |
+|---------|---------|--------------|-------|
+| `@wlearn/rf` | C11 | Random forest, ExtraTrees, linear leaves, Hellinger/entropy criteria, pruning, OOB weighting. | 151 |
+| `@wlearn/nn` | polygrad (C11) | Neural tabular models: MLP, TabM (BatchEnsemble), NAM (Neural Additive Models). | 117 |
+
 ## API overview
 
 Every model package exports a model class that implements the same contract.
@@ -133,7 +142,7 @@ const bytes = model.save()  // Uint8Array
 const restored = await LinearModel.load(bytes)
 
 // Or use the universal loader (auto-dispatches by typeId)
-import { load } from '@wlearn/core'
+const { load } = require('@wlearn/core')
 const restored = await load(bytes)  // works for any registered model type
 ```
 
@@ -144,8 +153,8 @@ The universal `load()` reads the bundle header, finds the registered loader for 
 Compose multiple steps into a single estimator. Steps are `[name, estimator]` tuples.
 
 ```js
-import { Pipeline, load } from '@wlearn/core'
-import { LinearModel } from '@wlearn/liblinear'
+const { Pipeline, load } = require('@wlearn/core')
+const { LinearModel } = require('@wlearn/liblinear')
 
 const model = await LinearModel.create({ task: 'classification' })
 const pipe = new Pipeline([['clf', model]])
@@ -188,7 +197,7 @@ Models allocate memory on the WebAssembly linear heap. The JS garbage collector 
 Linear classifiers and regressors. Best for high-dimensional or sparse data where a linear decision boundary suffices.
 
 ```js
-import { LinearModel, Solver } from '@wlearn/liblinear'
+const { LinearModel, Solver } = require('@wlearn/liblinear')
 
 // Classification with logistic regression
 const clf = await LinearModel.create({ solver: 'L2R_LR', C: 1.0 })
@@ -217,7 +226,7 @@ clf.capabilities // { classifier: true, regressor: false, predictProba: true, ..
 Kernel SVM for nonlinear classification, regression, and novelty detection.
 
 ```js
-import { SVMModel, SVMType, Kernel } from '@wlearn/libsvm'
+const { SVMModel, SVMType, Kernel } = require('@wlearn/libsvm')
 
 // Nonlinear classification with RBF kernel
 const clf = await SVMModel.create({
@@ -277,7 +286,7 @@ clf.classes    // Int32Array of class labels
 Gradient-boosted trees for classification, regression, and ranking. Includes random forest mode.
 
 ```js
-import { XGBModel } from '@wlearn/xgboost'
+const { XGBModel } = require('@wlearn/xgboost')
 
 // Binary classification
 const clf = await XGBModel.create({
@@ -325,7 +334,7 @@ const rf = await XGBModel.create({
 Gradient-boosted trees with histogram-based learning. Fast training on large datasets.
 
 ```js
-import { LGBModel } from '@wlearn/lightgbm'
+const { LGBModel } = require('@wlearn/lightgbm')
 
 const clf = await LGBModel.create({
   objective: 'binary',
@@ -343,7 +352,7 @@ clf.predictProba(X)
 k-nearest neighbors via KD-trees. Fast exact neighbor search for classification and regression.
 
 ```js
-import { KNNModel } from '@wlearn/nanoflann'
+const { KNNModel } = require('@wlearn/nanoflann')
 
 // Classification
 const clf = await KNNModel.create({ k: 5, metric: 'l2', task: 'classification' })
@@ -369,7 +378,7 @@ const { indices, distances, k: kUsed } = clf.kneighbors(X, 3)
 Explainable boosting machines -- interpretable GAMs with per-feature shape functions.
 
 ```js
-import { EBMModel } from '@wlearn/ebm'
+const { EBMModel } = require('@wlearn/ebm')
 
 const model = await EBMModel.create({ maxRounds: 500, seed: 42 })
 model.fit(X, y)
@@ -389,7 +398,7 @@ const shape = model.getShapeFunction(0) // { x, y } for plotting
 Factorization machines for sparse/CTR data. LR, FM, and FFM with CSR sparse input support.
 
 ```js
-import { XLearnFMClassifier, XLearnFFMClassifier } from '@wlearn/xlearn'
+const { XLearnFMClassifier, XLearnFFMClassifier } = require('@wlearn/xlearn')
 
 // FM classifier
 const fm = await XLearnFMClassifier.create({ epoch: 10, k: 4 })
@@ -414,7 +423,7 @@ Six classes: `XLearnLRClassifier`, `XLearnLRRegressor`, `XLearnFMClassifier`, `X
 Bayesian additive regression trees (BART). Uncertainty-aware ensemble of shallow trees.
 
 ```js
-import { BARTModel } from '@wlearn/stochtree'
+const { BARTModel } = require('@wlearn/stochtree')
 
 const model = await BARTModel.create({ numTrees: 200, numBurnin: 100, numSamples: 50 })
 model.fit(X, y)
@@ -427,7 +436,7 @@ model.score(X, y)
 Tsetlin machine. Interpretable propositional logic classifier using automata-based learning.
 
 ```js
-import { TsetlinModel } from '@wlearn/tsetlin'
+const { TsetlinModel } = require('@wlearn/tsetlin')
 
 const model = await TsetlinModel.create({ numClauses: 100, T: 10, s: 3.0 })
 model.fit(X, y)
@@ -439,7 +448,7 @@ model.predict(X)
 Pretrained Mitra Tab2D models for tabular data. ONNX-based inference via ONNX Runtime.
 
 ```js
-import { MitraClassifier, MitraRegressor } from '@wlearn/mitra'
+const { MitraClassifier, MitraRegressor } = require('@wlearn/mitra')
 
 // Classification
 const clf = await MitraClassifier.create({ nFeatures: 10 })
@@ -454,12 +463,53 @@ const rPreds = await reg.predict(Xtest)
 
 Requires `onnxruntime-node` (Node.js) or `onnxruntime-web` (browser) as peer dependency. ONNX model files must be downloaded separately (see package README).
 
+### @wlearn/nn
+
+Neural tabular models powered by [polygrad](https://github.com/polygrad/polygrad) (C11 tensor framework). Three architectures: MLP, TabM (BatchEnsemble), and NAM (Neural Additive Models).
+
+```js
+const { MLPClassifier, TabMClassifier, NAMClassifier } = require('@wlearn/nn')
+
+// MLP -- standard multilayer perceptron
+const mlp = await MLPClassifier.create({
+  hidden_sizes: [64, 32], activation: 'relu', epochs: 100, lr: 0.01,
+  optimizer: 'adam', batch_size: 32, seed: 42
+})
+mlp.fit(X, y)
+mlp.predict(X)
+mlp.score(X, y)
+
+// TabM -- BatchEnsemble MLP (SOTA on tabular benchmarks)
+const tabm = await TabMClassifier.create({
+  hidden_sizes: [64, 32], n_ensemble: 32, activation: 'relu',
+  epochs: 100, lr: 0.01, optimizer: 'adam', seed: 42
+})
+tabm.fit(X, y)
+tabm.predict(X)
+
+// NAM -- Neural Additive Model (interpretable)
+const nam = await NAMClassifier.create({
+  hidden_sizes: [64, 64], activation: 'exu', epochs: 200, lr: 0.001,
+  optimizer: 'adam', seed: 42
+})
+nam.fit(X, y)
+nam.predict(X)
+```
+
+**MLP** is a standard feedforward network. Supports mini-batch training, early stopping, and multiple activations (relu, gelu, silu).
+
+**TabM** (Gorishniy et al., 2024) adds per-layer BatchEnsemble adapters to an MLP. Each ensemble member i applies rank-1 perturbations: `l_i(x) = s_i * (W @ (r_i * x)) + b_i`. Predictions are averaged over k members. Best average rank across 46 tabular datasets, beating XGBoost and CatBoost.
+
+**NAM** (Agarwal et al., 2021) is a neural additive model: `g(E[y]) = beta + f1(x1) + ... + fK(xK)`. Each f_k is a small MLP on a single feature. Interpretable per-feature shape functions. Supports ExU activation (Exponential Unit) for sharp function learning.
+
+All three support classification and regression, save/load via WLRN bundles, and share the same Estimator API.
+
 ### @wlearn/ensemble
 
 Ensemble methods that combine multiple models for better predictions.
 
 ```js
-import { StackingEnsemble, VotingEnsemble, BaggedEstimator } from '@wlearn/ensemble'
+const { StackingEnsemble, VotingEnsemble, BaggedEstimator } = require('@wlearn/ensemble')
 ```
 
 `StackingEnsemble` trains base models with out-of-fold predictions and feeds them to a meta-learner. `VotingEnsemble` averages predictions (soft vote) or takes majority class (hard vote). `BaggedEstimator` trains multiple copies of a single model on bootstrap samples.
@@ -469,9 +519,9 @@ import { StackingEnsemble, VotingEnsemble, BaggedEstimator } from '@wlearn/ensem
 Automated model selection: searches hyperparameter spaces across multiple model families, selects the best via cross-validation, and optionally builds an ensemble.
 
 ```js
-import { autoFit } from '@wlearn/automl'
-import { LinearModel } from '@wlearn/liblinear'
-import { XGBModel } from '@wlearn/xgboost'
+const { autoFit } = require('@wlearn/automl')
+const { LinearModel } = require('@wlearn/liblinear')
+const { XGBModel } = require('@wlearn/xgboost')
 
 const models = [
   ['linear', LinearModel, { task: 'classification' }],
@@ -511,7 +561,7 @@ model.score(X, y)
 bundle = model.save()
 ```
 
-Python wrappers exist for: xgboost, liblinear, libsvm, nanoflann, lightgbm, ebm, stochtree, tsetlin. Each wraps the native upstream package for training and provides pure-Python inference for bundle loading.
+Python wrappers exist for: xgboost, liblinear, libsvm, nanoflann, lightgbm, ebm, stochtree, tsetlin, nn. Classical ML wrappers use native upstream packages. Neural models (nn) use polygrad via ctypes.
 
 ```
 pip install wlearn               # bundle/registry/pipeline only
@@ -554,7 +604,7 @@ wlearn uses a compact binary format (WLRN v1) for model persistence. Every bundl
 The `typeId` field (e.g., `wlearn.liblinear.classifier@1`, `wlearn.xgboost.regressor@1`) tells the loader registry which deserializer to use. This makes bundles portable across languages and runtimes.
 
 ```js
-import { encodeBundle, decodeBundle } from '@wlearn/core'
+const { encodeBundle, decodeBundle } = require('@wlearn/core')
 
 // Encode a bundle
 const artifacts = [{ id: 'model', mediaType: 'application/octet-stream', data: modelBytes }]
@@ -605,6 +655,7 @@ npm install @wlearn/stochtree    # BART
 npm install @wlearn/tsetlin      # Tsetlin machine
 npm install @wlearn/mitra onnxruntime-node   # pretrained tabular models (ONNX, Node.js)
 npm install @wlearn/mitra onnxruntime-web    # pretrained tabular models (ONNX, browser)
+npm install @wlearn/nn            # neural tabular models (MLP, TabM, NAM)
 npm install @wlearn/ensemble     # stacking, voting, bagging
 npm install @wlearn/automl       # automated model selection (needs model packages)
 npm install @wlearn/core         # just the core (bundle format, registry, pipeline)
@@ -624,14 +675,10 @@ Or install packages individually:
 npm install @wlearn/core @wlearn/automl @wlearn/ensemble @wlearn/liblinear @wlearn/libsvm @wlearn/xgboost @wlearn/lightgbm @wlearn/nanoflann @wlearn/ebm @wlearn/xlearn @wlearn/stochtree @wlearn/tsetlin @wlearn/mitra onnxruntime-node
 ```
 
-All packages are ESM-only (`"type": "module"`). They work in Node.js 18+ and modern browsers.
+All packages are CommonJS (`"type": "commonjs"`). They work in Node.js 18+ and modern browsers.
 
 ```js
-// CommonJS: use dynamic import inside an async function
-async function main() {
-  const { LinearModel } = await import('@wlearn/liblinear')
-}
-main()
+const { LinearModel } = require('@wlearn/liblinear')
 ```
 
 ## Repository structure

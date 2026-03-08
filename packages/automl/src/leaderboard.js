@@ -1,7 +1,7 @@
 /**
  * Tracks and ranks candidate evaluation results.
  */
-export class Leaderboard {
+class Leaderboard {
   #entries = []
   #nextId = 0
   #dirty = true
@@ -104,3 +104,5 @@ export class Leaderboard {
     return this.#entries.length
   }
 }
+
+module.exports = { Leaderboard }

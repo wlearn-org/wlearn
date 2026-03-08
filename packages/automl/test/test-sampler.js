@@ -1,7 +1,7 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
-import { sampleParam, sampleConfig, randomConfigs, gridConfigs } from '../src/sampler.js'
-import { makeLCG } from '@wlearn/core'
+const { describe, it } = require('node:test')
+const assert = require('node:assert/strict')
+const { sampleParam, sampleConfig, randomConfigs, gridConfigs } = require('../src/sampler.js')
+const { makeLCG } = require('@wlearn/core')
 
 describe('sampleParam', () => {
   it('categorical returns value from list', () => {

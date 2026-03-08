@@ -15,9 +15,9 @@ npm install @wlearn/ensemble
 Combine multiple models by averaging predictions (soft) or majority vote (hard).
 
 ```js
-import { VotingEnsemble } from '@wlearn/ensemble'
-import { LinearModel } from '@wlearn/liblinear'
-import { XGBModel } from '@wlearn/xgboost'
+const { VotingEnsemble } = require('@wlearn/ensemble')
+const { LinearModel } = require('@wlearn/liblinear')
+const { XGBModel } = require('@wlearn/xgboost')
 
 const ens = await VotingEnsemble.create({
   estimators: [
@@ -40,9 +40,9 @@ ens.dispose()
 Train base models, collect out-of-fold predictions, then train a meta-learner on those predictions.
 
 ```js
-import { StackingEnsemble } from '@wlearn/ensemble'
-import { LinearModel } from '@wlearn/liblinear'
-import { XGBModel } from '@wlearn/xgboost'
+const { StackingEnsemble } = require('@wlearn/ensemble')
+const { LinearModel } = require('@wlearn/liblinear')
+const { XGBModel } = require('@wlearn/xgboost')
 
 const stack = await StackingEnsemble.create({
   estimators: [
@@ -65,8 +65,8 @@ stack.dispose()
 Bootstrap aggregating: train multiple copies of the same model on bootstrap samples.
 
 ```js
-import { BaggedEstimator } from '@wlearn/ensemble'
-import { LinearModel } from '@wlearn/liblinear'
+const { BaggedEstimator } = require('@wlearn/ensemble')
+const { LinearModel } = require('@wlearn/liblinear')
 
 const bag = await BaggedEstimator.create({
   estimator: ['linear', LinearModel, { task: 'classification' }],

@@ -1,10 +1,10 @@
-import { normalizeX, normalizeY, ValidationError, Preprocessor } from '@wlearn/core'
-import { getOofPredictions, caruanaSelect, VotingEnsemble, StackingEnsemble } from '@wlearn/ensemble'
-import { RandomSearch } from './search.js'
-import { SuccessiveHalvingSearch } from './halving.js'
-import { PortfolioSearch } from './portfolio.js'
-import { ProgressiveSearch } from './progressive.js'
-import { detectTask } from './common.js'
+const { normalizeX, normalizeY, ValidationError, Preprocessor } = require('@wlearn/core')
+const { getOofPredictions, caruanaSelect, VotingEnsemble, StackingEnsemble } = require('@wlearn/ensemble')
+const { RandomSearch } = require('./search.js')
+const { SuccessiveHalvingSearch } = require('./halving.js')
+const { PortfolioSearch } = require('./portfolio.js')
+const { ProgressiveSearch } = require('./progressive.js')
+const { detectTask } = require('./common.js')
 
 /**
  * Compute pairwise disagreement rate between two prediction vectors.
@@ -89,7 +89,7 @@ function _normalizeSpecs(models) {
  * @param {object} opts
  * @returns {Promise<{ model: object, leaderboard: object[], bestParams: object, bestModelName: string, bestScore: number }>}
  */
-export async function autoFit(models, X, y, opts = {}) {
+async function autoFit(models, X, y, opts = {}) {
   const {
     ensemble = true,
     ensembleSize = 20,
@@ -258,4 +258,6 @@ export async function autoFit(models, X, y, opts = {}) {
     bestScore: bestResult.meanScore,
   }
 }
+
+module.exports = { autoFit }
 

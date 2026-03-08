@@ -1,11 +1,11 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
-import {
+const { describe, it } = require('node:test')
+const assert = require('node:assert/strict')
+const {
   accuracy, r2Score, meanSquaredError, meanAbsoluteError,
   confusionMatrix, precisionScore, recallScore, f1Score,
   logLoss, rocAuc
-} from '../src/metrics.js'
-import { ValidationError } from '../src/errors.js'
+} = require('../src/metrics.js')
+const { ValidationError } = require('../src/errors.js')
 
 function approx(actual, expected, tol = 1e-9) {
   assert(Math.abs(actual - expected) < tol,

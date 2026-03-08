@@ -1,15 +1,15 @@
-import { stratifiedKFold, kFold, normalizeX, normalizeY,
-  ValidationError } from '@wlearn/core'
-import { Executor } from './executor.js'
-import { HalvingStrategy } from './strategy-halving.js'
-import { detectTask, scorerGreaterIsBetter } from './common.js'
+const { stratifiedKFold, kFold, normalizeX, normalizeY,
+  ValidationError } = require('@wlearn/core')
+const { Executor } = require('./executor.js')
+const { HalvingStrategy } = require('./strategy-halving.js')
+const { detectTask, scorerGreaterIsBetter } = require('./common.js')
 
 /**
  * Successive halving search: multi-round elimination tournament.
  * Evaluates many candidates on small subsamples, progressively
  * eliminates the worst and increases resource allocation.
  */
-export class SuccessiveHalvingSearch {
+class SuccessiveHalvingSearch {
   #models
   #opts
   #leaderboard = null
@@ -93,3 +93,5 @@ export class SuccessiveHalvingSearch {
   get bestResult() { return this.#bestResult }
   get rounds() { return this.#rounds }
 }
+
+module.exports = { SuccessiveHalvingSearch }

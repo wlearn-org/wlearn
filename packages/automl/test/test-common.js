@@ -1,9 +1,9 @@
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
-import {
+const { describe, it } = require('node:test')
+const assert = require('node:assert/strict')
+const {
   detectTask, makeCandidateId, seedFor, partialShuffle,
   scorerGreaterIsBetter
-} from '../src/common.js'
+} = require('../src/common.js')
 
 describe('detectTask', () => {
   it('classifies Int32Array as classification', () => {
