@@ -26,6 +26,17 @@
   "publishConfig": {
     "access": "public"
   },
+  "keywords": [
+    "wlearn",
+    "machine-learning",
+    "types",
+    "typescript"
+  ],
   "author": "Anton Zemlyansky",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wlearn-org/wlearn.git",
+    "directory": "packages/types"
+  },
   "license": "Apache-2.0"
 }

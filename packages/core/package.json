@@ -21,11 +21,23 @@
     "@wlearn/types": "0.1.0"
   },
   "scripts": {
-    "test": "node --test 'test/*.js'"
+    "test": "node --test test/*.js"
   },
   "publishConfig": {
     "access": "public"
   },
+  "keywords": [
+    "wlearn",
+    "machine-learning",
+    "bundle",
+    "pipeline",
+    "registry"
+  ],
   "author": "Anton Zemlyansky",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wlearn-org/wlearn.git",
+    "directory": "packages/core"
+  },
   "license": "Apache-2.0"
 }

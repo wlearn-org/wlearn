@@ -1,0 +1,14 @@
+AGENTS.md
+CLAUDE.md
+PLAN.md
+.claude/
+test/
+.git/
+node_modules/
+.gitignore
+.gitmodules
+.npmignore
+package-lock.json
+*.log
+.DS_Store
+coverage/

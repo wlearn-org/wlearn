@@ -1,7 +1,25 @@
 {
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "test": "npm test --workspaces"
+  },
+  "dependencies": {
+    "@wlearn/cluster": "file:../../../../../tmp/wlearn-packs/wlearn-cluster-0.1.0.tgz",
+    "@wlearn/ebm": "file:../../../../../tmp/wlearn-packs/wlearn-ebm-0.1.0.tgz",
+    "@wlearn/gam": "file:../../../../../tmp/wlearn-packs/wlearn-gam-0.1.0.tgz",
+    "@wlearn/liblinear": "file:../../../../../tmp/wlearn-packs/wlearn-liblinear-0.1.0.tgz",
+    "@wlearn/libsvm": "file:../../../../../tmp/wlearn-packs/wlearn-libsvm-0.1.0.tgz",
+    "@wlearn/lightgbm": "file:../../../../../tmp/wlearn-packs/wlearn-lightgbm-0.1.0.tgz",
+    "@wlearn/mitra": "file:../../../../../tmp/wlearn-packs/wlearn-mitra-0.1.0.tgz",
+    "@wlearn/nanoflann": "file:../../../../../tmp/wlearn-packs/wlearn-nanoflann-0.1.0.tgz",
+    "@wlearn/nn": "file:../../../../../tmp/wlearn-packs/wlearn-nn-0.1.0.tgz",
+    "@wlearn/rf": "file:../../../../../tmp/wlearn-packs/wlearn-rf-0.1.0.tgz",
+    "@wlearn/stochtree": "file:../../../../../tmp/wlearn-packs/wlearn-stochtree-0.1.0.tgz",
+    "@wlearn/tsetlin": "file:../../../../../tmp/wlearn-packs/wlearn-tsetlin-0.1.0.tgz",
+    "@wlearn/xgboost": "file:../../../../../tmp/wlearn-packs/wlearn-xgboost-0.1.1.tgz",
+    "@wlearn/xlearn": "file:../../../../../tmp/wlearn-packs/wlearn-xlearn-0.1.0.tgz"
   }
 }

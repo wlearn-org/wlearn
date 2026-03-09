@@ -27,6 +27,18 @@
   "publishConfig": {
     "access": "public"
   },
+  "keywords": [
+    "wlearn",
+    "ensemble",
+    "machine-learning",
+    "stacking",
+    "voting"
+  ],
   "author": "Anton Zemlyansky",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wlearn-org/wlearn.git",
+    "directory": "packages/ensemble"
+  },
   "license": "Apache-2.0"
 }

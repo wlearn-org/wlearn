@@ -28,6 +28,17 @@
   "publishConfig": {
     "access": "public"
   },
+  "keywords": [
+    "wlearn",
+    "automl",
+    "machine-learning",
+    "hyperparameter-optimization"
+  ],
   "author": "Anton Zemlyansky",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wlearn-org/wlearn.git",
+    "directory": "packages/automl"
+  },
   "license": "Apache-2.0"
 }
