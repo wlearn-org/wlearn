@@ -35,12 +35,14 @@ Models:
 | `EBMModel` | `@wlearn/ebm` |
 | `TsetlinModel` | `@wlearn/tsetlin` |
 | `BARTModel` | `@wlearn/stochtree` |
-| `XLearnFMClassifier`, `XLearnFMRegressor`, `XLearnFFMClassifier`, `XLearnFFMRegressor`, `XLearnLRClassifier`, `XLearnLRRegressor` | `@wlearn/xlearn` |
-| `MLPClassifier`, `MLPRegressor`, `TabMClassifier`, `TabMRegressor`, `NAMClassifier`, `NAMRegressor` | `@wlearn/nn` |
+| `XLearnLR`, `XLearnFM`, `XLearnFFM` | `@wlearn/xlearn` |
+| `MLPModel`, `TabMModel`, `NAMModel` | `@wlearn/nn` |
 | `RFModel`, `loadRF` | `@wlearn/rf` |
 | `GAMModel`, `loadGAM` | `@wlearn/gam` |
 | `ClusterModel`, `silhouette`, `calinskiHarabasz`, `daviesBouldin`, `adjustedRand`, `loadCluster` | `@wlearn/cluster` |
-| `MitraClassifier`, `MitraRegressor`, `registerMitraLoaders` | `@wlearn/mitra` (optional) |
+| `MitraModel`, `registerMitraLoaders` | `@wlearn/mitra` (optional) |
+
+All model classes above are unified wrappers built with `createModelClass`. They accept an optional `task` parameter (`'classification'` or `'regression'`) and auto-detect the task from labels if omitted. Split classes (`XLearnFMClassifier`, `MLPClassifier`, etc.) are also re-exported for backward compatibility.
 
 AutoML and ensemble:
 

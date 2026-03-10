@@ -100,6 +100,37 @@ r2Score(yTrue, yPred)                         // number
 - `crossValScore(ModelClass, X, y, opts?)` -- evaluate with CV
 - `getScorer(name)` -- get scoring function by name (`'accuracy'`, `'r2'`, `'neg_mse'`)
 
+### createModelClass
+
+Factory for building unified model classes from separate classifier/regressor implementations. Handles automatic task detection, async WASM pre-loading, and lifecycle management.
+
+```js
+const { createModelClass } = require('@wlearn/core')
+
+// Task-agnostic model (same class handles both tasks)
+const XGBModel = createModelClass(XGBModelImpl, XGBModelImpl, {
+  name: 'XGBModel',
+  load: loadXGB   // async WASM loader, called in create()
+})
+
+// Split model (separate classifier/regressor classes)
+const MLPModel = createModelClass(MLPClassifier, MLPRegressor, {
+  name: 'MLPModel'
+})
+```
+
+The returned class supports:
+
+- `Model.create(params)` -- async factory. Pass `task: 'classification'` or `task: 'regression'` to select explicitly, or omit to auto-detect from `y` at `fit()` time.
+- `model.fit(X, y)` -- trains the model. Auto-detects task from labels if not set.
+- `model.predict(X)`, `model.predictProba(X)`, `model.score(X, y)` -- proxied to inner model.
+- `model.save()` / `Model.load(bytes)` -- serialize/deserialize.
+- `model.dispose()` -- free resources.
+- `model.task` -- the detected or specified task.
+- Extra methods and getters from the inner classes are discovered and proxied automatically.
+
+Auto-detection rules: if `y` is `Int32Array`, task is classification. Otherwise, if any value is non-integer, task is regression. If all values are integers and there are 20 or fewer unique values, task is classification; otherwise regression.
+
 ### Errors
 
 `WlearnError`, `BundleError`, `RegistryError`, `ValidationError`, `NotFittedError`, `DisposedError`
