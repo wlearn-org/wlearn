@@ -12,6 +12,7 @@
   },
   "files": [
     "src/",
+    "dist/",
     "LICENSE",
     "README.md",
     "CHANGELOG.md"
@@ -23,7 +24,8 @@
     "@wlearn/types": "0.1.0"
   },
   "scripts": {
-    "test": "node --test test/*.js"
+    "test": "node --test test/*.js",
+    "build:browser": "bash scripts/build-browser.sh"
   },
   "publishConfig": {
     "access": "public"
@@ -40,5 +42,9 @@
     "url": "https://github.com/wlearn-org/wlearn.git",
     "directory": "packages/automl"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "esbuild": "^0.27.3",
+    "playwright": "^1.58.2"
+  }
 }
