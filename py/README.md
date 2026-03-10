@@ -2,7 +2,7 @@
 
 Portable ML computation primitives for Python. Train models with native backends, save to cross-language `.wlrn` bundles, load bundles produced by JS `@wlearn/*` packages.
 
-Part of the [wlearn](https://github.com/wlearn-org/wlearn) project.
+Part of [wlearn](https://wlearn.org) ([GitHub](https://github.com/wlearn-org), [all packages](https://github.com/wlearn-org/wlearn#repository-structure)).
 
 ## Install
 

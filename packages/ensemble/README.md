@@ -2,7 +2,7 @@
 
 Ensemble methods for wlearn: voting, stacking, bagging, and Caruana greedy selection.
 
-Part of the [wlearn](https://github.com/wlearn-org/wlearn) project.
+Part of [wlearn](https://wlearn.org) ([GitHub](https://github.com/wlearn-org), [all packages](https://github.com/wlearn-org/wlearn#repository-structure)).
 
 ## Install
 

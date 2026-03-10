@@ -683,21 +683,27 @@ const { LinearModel } = require('@wlearn/liblinear')
 
 ## Repository structure
 
-```
-wlearn-org/wlearn             core monorepo (@wlearn/types, @wlearn/core, Python wlearn)
-wlearn-org/liblinear-wasm     @wlearn/liblinear
-wlearn-org/libsvm-wasm        @wlearn/libsvm
-wlearn-org/xgboost-wasm       @wlearn/xgboost
-wlearn-org/lightgbm-wasm      @wlearn/lightgbm
-wlearn-org/nanoflann-wasm     @wlearn/nanoflann
-wlearn-org/ebm-wasm           @wlearn/ebm
-wlearn-org/xlearn-wasm        @wlearn/xlearn
-wlearn-org/stochtree-wasm     @wlearn/stochtree
-wlearn-org/tsetlin-wasm       @wlearn/tsetlin
-wlearn-org/mitra-onnx         @wlearn/mitra
-```
+| Repo | Package | Description |
+|------|---------|-------------|
+| [wlearn](https://github.com/wlearn-org/wlearn) | `@wlearn/types`, `@wlearn/core`, `@wlearn/sdk`, `@wlearn/automl`, `@wlearn/ensemble` | Core monorepo + Python `wlearn` |
+| [liblinear-wasm](https://github.com/wlearn-org/liblinear-wasm) | `@wlearn/liblinear` | Linear SVM, logistic regression |
+| [libsvm-wasm](https://github.com/wlearn-org/libsvm-wasm) | `@wlearn/libsvm` | Kernel SVM (RBF, poly, sigmoid) |
+| [xgboost-wasm](https://github.com/wlearn-org/xgboost-wasm) | `@wlearn/xgboost` | Gradient boosting + RF mode |
+| [lightgbm-wasm](https://github.com/wlearn-org/lightgbm-wasm) | `@wlearn/lightgbm` | Histogram boosting |
+| [nanoflann-wasm](https://github.com/wlearn-org/nanoflann-wasm) | `@wlearn/nanoflann` | KNN via KD-tree |
+| [ebm-wasm](https://github.com/wlearn-org/ebm-wasm) | `@wlearn/ebm` | Explainable boosting machine |
+| [xlearn-wasm](https://github.com/wlearn-org/xlearn-wasm) | `@wlearn/xlearn` | Factorization machines (LR/FM/FFM) |
+| [stochtree-wasm](https://github.com/wlearn-org/stochtree-wasm) | `@wlearn/stochtree` | BART |
+| [tsetlin-wasm](https://github.com/wlearn-org/tsetlin-wasm) | `@wlearn/tsetlin` | Tsetlin machine |
+| [mitra-onnx](https://github.com/wlearn-org/mitra-onnx) | `@wlearn/mitra` | Pretrained ONNX tabular models |
+| [rf](https://github.com/wlearn-org/rf) | `@wlearn/rf` | Random forest, ExtraTrees (C11) |
+| [nn](https://github.com/wlearn-org/nn) | `@wlearn/nn` | MLP, TabM, NAM (polygrad) |
+| [gam](https://github.com/wlearn-org/gam) | `@wlearn/gam` | GLM/GAM/Cox (C11) |
+| [cluster](https://github.com/wlearn-org/cluster) | `@wlearn/cluster` | K-Means, DBSCAN, hierarchical (C11) |
 
-Model port repos carry WASM binaries and upstream C/C++ source as git submodules. They depend on `@wlearn/types` and `@wlearn/core` from the core repo. All Python lives in the core repo.
+Website: [wlearn.org](https://wlearn.org)
+
+WASM port repos carry upstream C/C++ source as git submodules. C11 repos (rf, gam, cluster) are written from scratch. All depend on `@wlearn/core` from the core monorepo. Python wrappers live in the core repo.
 
 ## License
 

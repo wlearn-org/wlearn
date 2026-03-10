@@ -2,7 +2,7 @@
 
 Convenience barrel that re-exports all wlearn model classes, AutoML, ensemble methods, pipeline, and core utilities in a single import.
 
-Part of the [wlearn](https://github.com/wlearn-org/wlearn) project.
+Part of [wlearn](https://wlearn.org) ([GitHub](https://github.com/wlearn-org), [all packages](https://github.com/wlearn-org/wlearn#repository-structure)).
 
 ## Install
 

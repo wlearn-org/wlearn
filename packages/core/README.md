@@ -2,7 +2,7 @@
 
 Runtime core for wlearn: matrix helpers, bundle format, model registry, pipeline, preprocessing, metrics, and cross-validation. No WASM. No heavy dependencies.
 
-Part of the [wlearn](https://github.com/wlearn-org/wlearn) project.
+Part of [wlearn](https://wlearn.org) ([GitHub](https://github.com/wlearn-org), [all packages](https://github.com/wlearn-org/wlearn#repository-structure)).
 
 ## Install
 

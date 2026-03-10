@@ -2,7 +2,7 @@
 
 Automated model selection for wlearn. Searches over model families and hyperparameters, runs cross-validation, and optionally builds a Caruana ensemble from top candidates.
 
-Part of the [wlearn](https://github.com/wlearn-org/wlearn) project.
+Part of [wlearn](https://wlearn.org) ([GitHub](https://github.com/wlearn-org), [all packages](https://github.com/wlearn-org/wlearn#repository-structure)).
 
 ## Install
 
