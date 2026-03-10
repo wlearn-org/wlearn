@@ -44,6 +44,9 @@ const { kFold, stratifiedKFold, trainTestSplit, crossValScore, getScorer } = req
 // lift (MaybePromise utilities)
 const { isPromiseLike, lift } = require('./lift.js')
 
+// model wrapper
+const { createModelClass, detectTask } = require('./model.js')
+
 module.exports = {
   // errors
   WlearnError, BundleError, RegistryError, ValidationError, NotFittedError, DisposedError,
@@ -68,5 +71,7 @@ module.exports = {
   // cross-validation
   kFold, stratifiedKFold, trainTestSplit, crossValScore, getScorer,
   // lift
-  isPromiseLike, lift
+  isPromiseLike, lift,
+  // model
+  createModelClass, detectTask
 }
