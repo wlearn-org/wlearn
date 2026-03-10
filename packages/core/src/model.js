@@ -20,7 +20,7 @@
  *   const m = await MLPModel.create({ hidden_sizes: [64], task: 'classification' })
  *   // or auto-detect:
  *   const m = await MLPModel.create({ hidden_sizes: [64] })
- *   await m.fit(X, y)  // detects from y
+ *   m.fit(X, y)  // detects from y (sync)
  */
 
 const { normalizeY } = require('./matrix.js')
@@ -52,6 +52,7 @@ function _get(self) {
 
 function _ensureInner(self, name) {
   const s = _get(self)
+  if (s.disposed) throw new Error(`${name} has been disposed.`)
   if (!s.inner) throw new Error(`${name}: not fitted`)
   return s.inner
 }
@@ -63,10 +64,13 @@ function _ensureInner(self, name) {
  * @param {Function} RegressorCls - class with static create(params)
  * @param {object} [opts]
  * @param {string} [opts.name] - class name for errors
+ * @param {Function} [opts.load] - async WASM loader (called in create() to pre-load)
  * @returns {Function} unified model class
  */
 function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
   const modelName = opts.name || 'Model'
+  const loadFn = opts.load || null
+  const sameClass = ClassifierCls === RegressorCls
 
   class UnifiedModel {
     constructor(task, params) {
@@ -74,6 +78,7 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
         inner: null,
         task: task,
         params: params,
+        disposed: false,
       })
     }
 
@@ -82,13 +87,19 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
       const task = p.task || null
       delete p.task
 
-      const m = new UnifiedModel(task, p)
+      // Pre-load WASM so fit() can create inner synchronously
+      if (loadFn) await loadFn()
 
-      // If task is known, create inner immediately
+      const m = new UnifiedModel(task, p)
+      const s = _get(m)
+
       if (task) {
+        // Task known: create the right inner class
         const cls = task === 'classification' ? ClassifierCls : RegressorCls
-        const s = _get(m)
         s.inner = await cls.create({ ...p, task })
+      } else if (sameClass) {
+        // Task-agnostic model: create inner, let it manage task via its own params
+        s.inner = await ClassifierCls.create(p)
       }
 
       return m
@@ -101,19 +112,26 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
         const m = new UnifiedModel('classification', {})
         const s = _get(m)
         s.inner = inner
-        if (typeof inner.getParams === 'function') s.params = inner.getParams()
+        if (typeof inner.getParams === 'function') {
+          s.params = inner.getParams()
+          // Detect task from loaded model params (needed for task-agnostic models)
+          if (s.params.task) s.task = s.params.task
+        }
         return m
       } catch (_) {
         const inner = await RegressorCls.load(bytes)
         const m = new UnifiedModel('regression', {})
         const s = _get(m)
         s.inner = inner
-        if (typeof inner.getParams === 'function') s.params = inner.getParams()
+        if (typeof inner.getParams === 'function') {
+          s.params = inner.getParams()
+          if (s.params.task) s.task = s.params.task
+        }
         return m
       }
     }
 
-    async fit(X, y, opts) {
+    fit(X, y, fitOpts) {
       const s = _get(this)
 
       // Auto-detect task if not set
@@ -121,30 +139,30 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
         s.task = detectTask(y)
       }
 
-      // Create inner if not yet created
+      // Create inner if not yet created (sync -- WASM pre-loaded in create())
       if (!s.inner) {
         const cls = s.task === 'classification' ? ClassifierCls : RegressorCls
-        s.inner = await cls.create({ ...s.params, task: s.task })
+        s.inner = new cls({ ...s.params, task: s.task })
       }
 
-      s.inner.fit(X, y, opts)
+      s.inner.fit(X, y, fitOpts)
       return this
     }
 
-    predict(X, opts) {
-      return _ensureInner(this, modelName).predict(X, opts)
+    predict(X, predOpts) {
+      return _ensureInner(this, modelName).predict(X, predOpts)
     }
 
-    predictProba(X, opts) {
+    predictProba(X, predOpts) {
       const inner = _ensureInner(this, modelName)
       if (typeof inner.predictProba !== 'function') {
         throw new Error(`${modelName}: predictProba not available`)
       }
-      return inner.predictProba(X, opts)
+      return inner.predictProba(X, predOpts)
     }
 
-    score(X, y, opts) {
-      return _ensureInner(this, modelName).score(X, y, opts)
+    score(X, y, scoreOpts) {
+      return _ensureInner(this, modelName).score(X, y, scoreOpts)
     }
 
     save() {
@@ -157,6 +175,7 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
         s.inner.dispose()
       }
       s.inner = null
+      s.disposed = true
     }
 
     getParams() {
