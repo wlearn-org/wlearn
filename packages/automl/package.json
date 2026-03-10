@@ -14,6 +14,7 @@
     "src/",
     "dist/",
     "LICENSE",
+    "NOTICE",
     "README.md",
     "CHANGELOG.md"
   ],
@@ -25,7 +26,8 @@
   },
   "scripts": {
     "test": "node --test test/*.js",
-    "build:browser": "bash scripts/build-browser.sh"
+    "build:browser": "bash scripts/build-browser.sh",
+    "prepack": "node scripts/prepack.js"
   },
   "publishConfig": {
     "access": "public"

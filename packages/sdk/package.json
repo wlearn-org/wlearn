@@ -13,6 +13,7 @@
   "files": [
     "index.js",
     "LICENSE",
+    "NOTICE",
     "README.md",
     "CHANGELOG.md"
   ],
@@ -39,7 +40,9 @@
     "@wlearn/mitra": "0.1.0"
   },
   "peerDependenciesMeta": {
-    "@wlearn/mitra": { "optional": true }
+    "@wlearn/mitra": {
+      "optional": true
+    }
   },
   "scripts": {
     "test": "node --test test/*.js"
