@@ -25,11 +25,13 @@ const { EBMModel } = require('@wlearn/ebm')
 const { TsetlinModel } = require('@wlearn/tsetlin')
 const { BARTModel } = require('@wlearn/stochtree')
 const {
+  XLearnLR, XLearnFM, XLearnFFM,
   XLearnFMClassifier, XLearnFMRegressor,
   XLearnFFMClassifier, XLearnFFMRegressor,
   XLearnLRClassifier, XLearnLRRegressor
 } = require('@wlearn/xlearn')
 const {
+  MLPModel, TabMModel, NAMModel,
   MLPClassifier, MLPRegressor,
   TabMClassifier, TabMRegressor,
   NAMClassifier, NAMRegressor
@@ -42,9 +44,10 @@ const {
 } = require('@wlearn/cluster')
 
 // Mitra requires onnxruntime peer dep -- optional
-let MitraClassifier, MitraRegressor, registerMitraLoaders
+let MitraModel, MitraClassifier, MitraRegressor, registerMitraLoaders
 try {
   const mitra = require('@wlearn/mitra')
+  MitraModel = mitra.MitraModel
   MitraClassifier = mitra.MitraClassifier
   MitraRegressor = mitra.MitraRegressor
   registerMitraLoaders = mitra.registerLoaders
@@ -66,10 +69,12 @@ module.exports = {
   // Models
   LinearModel, SVMModel, XGBModel, LGBModel, KNNModel, EBMModel,
   TsetlinModel, BARTModel,
+  XLearnLR, XLearnFM, XLearnFFM,
   XLearnFMClassifier, XLearnFMRegressor,
   XLearnFFMClassifier, XLearnFFMRegressor,
   XLearnLRClassifier, XLearnLRRegressor,
   // NN (polygrad)
+  MLPModel, TabMModel, NAMModel,
   MLPClassifier, MLPRegressor,
   TabMClassifier, TabMRegressor,
   NAMClassifier, NAMRegressor,
@@ -81,5 +86,5 @@ module.exports = {
   ClusterModel, silhouette, calinskiHarabasz,
   daviesBouldin, adjustedRand, loadCluster,
   // Mitra (optional)
-  MitraClassifier, MitraRegressor, registerMitraLoaders,
+  MitraModel, MitraClassifier, MitraRegressor, registerMitraLoaders,
 }
