@@ -109,8 +109,10 @@ const PORTFOLIO = {
         minSamplesSplit: 5, minSamplesLeaf: 2 },
       { nEstimators: 200, maxDepth: 15, maxFeatures: 'sqrt', criterion: 'entropy',
         extraTrees: 1, minSamplesSplit: 2 },
-      { nEstimators: 100, maxDepth: 10, maxFeatures: 'sqrt', criterion: 'gini',
-        leafModel: 1, minSamplesLeaf: 5 },
+      { nEstimators: 200, maxDepth: 12, maxFeatures: 'sqrt', criterion: 'hellinger',
+        minSamplesSplit: 2, minSamplesLeaf: 1 },
+      { nEstimators: 150, maxDepth: 10, maxFeatures: 'sqrt', criterion: 'gini',
+        heterogeneous: 1, oobWeighting: 1, minSamplesLeaf: 2 },
     ],
     mlp: [
       { hidden_sizes: [64], activation: 'relu', lr: 0.01, epochs: 50,
@@ -252,6 +254,8 @@ const PORTFOLIO = {
         extraTrees: 1, minSamplesSplit: 2 },
       { nEstimators: 100, maxDepth: 10, maxFeatures: 'sqrt', criterion: 'mse',
         leafModel: 1, minSamplesLeaf: 5 },
+      { nEstimators: 150, maxDepth: 10, maxFeatures: 'sqrt', criterion: 'mse',
+        heterogeneous: 1, oobWeighting: 1, minSamplesLeaf: 2 },
     ],
     mlp: [
       { hidden_sizes: [64], activation: 'relu', lr: 0.01, epochs: 50,
