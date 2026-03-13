@@ -1,0 +1,8 @@
+#!/bin/bash
+# Pre-commit hook: run workspace tests
+set -e
+
+echo "Running pre-commit: workspace tests..."
+npm test --workspaces --if-present 2>&1
+
+echo "Pre-commit checks passed."
