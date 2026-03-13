@@ -174,6 +174,32 @@ PORTFOLIO = {
             {'algo': 'linear', 'epoch': 10, 'lr': 0.1,
              'opt': 'ftrl', 'alpha': 0.01, 'beta': 1.0},
         ],
+        'rf': [
+            # 1. Default Gini
+            {'n_estimators': 100, 'max_depth': 10, 'max_features': 'sqrt',
+             'criterion': 'gini', 'min_samples_split': 2, 'min_samples_leaf': 1},
+            # 2. Deep unlimited
+            {'n_estimators': 300, 'max_depth': 0, 'max_features': 'log2',
+             'criterion': 'gini', 'min_samples_split': 5, 'min_samples_leaf': 2},
+            # 3. ExtraTrees + entropy
+            {'n_estimators': 200, 'max_depth': 15, 'max_features': 'sqrt',
+             'criterion': 'entropy', 'extra_trees': 1, 'min_samples_split': 2},
+            # 4. Hellinger (imbalance-robust)
+            {'n_estimators': 200, 'max_depth': 12, 'max_features': 'sqrt',
+             'criterion': 'hellinger', 'min_samples_split': 2, 'min_samples_leaf': 1},
+            # 5. Heterogeneous + OOB weighting
+            {'n_estimators': 150, 'max_depth': 10, 'max_features': 'sqrt',
+             'criterion': 'gini', 'heterogeneous': 1, 'oob_weighting': 1,
+             'min_samples_leaf': 2},
+            # 6. Histogram binning (fast)
+            {'n_estimators': 200, 'max_depth': 10, 'max_features': 'sqrt',
+             'criterion': 'gini', 'histogram_binning': 1,
+             'min_samples_split': 2, 'min_samples_leaf': 1},
+            # 7. JARF rotation
+            {'n_estimators': 150, 'max_depth': 12, 'max_features': 'sqrt',
+             'criterion': 'gini', 'jarf': 1,
+             'min_samples_split': 2, 'min_samples_leaf': 1},
+        ],
     },
     'regression': {
         'xgb': [
@@ -328,13 +354,39 @@ PORTFOLIO = {
             {'algo': 'linear', 'epoch': 10, 'lr': 0.1,
              'opt': 'ftrl', 'alpha': 0.01, 'beta': 1.0},
         ],
+        'rf': [
+            # 1. Default MSE
+            {'n_estimators': 100, 'max_depth': 10, 'max_features': 'sqrt',
+             'criterion': 'mse', 'min_samples_split': 2, 'min_samples_leaf': 1},
+            # 2. Deep unlimited
+            {'n_estimators': 300, 'max_depth': 0, 'max_features': 'log2',
+             'criterion': 'mse', 'min_samples_split': 5, 'min_samples_leaf': 2},
+            # 3. ExtraTrees + MAE
+            {'n_estimators': 200, 'max_depth': 15, 'max_features': 'sqrt',
+             'criterion': 'mae', 'extra_trees': 1, 'min_samples_split': 2},
+            # 4. Linear leaves (shallow)
+            {'n_estimators': 100, 'max_depth': 10, 'max_features': 'sqrt',
+             'criterion': 'mse', 'leaf_model': 1, 'min_samples_leaf': 5},
+            # 5. Heterogeneous + OOB weighting
+            {'n_estimators': 150, 'max_depth': 10, 'max_features': 'sqrt',
+             'criterion': 'mse', 'heterogeneous': 1, 'oob_weighting': 1,
+             'min_samples_leaf': 2},
+            # 6. Histogram binning (fast)
+            {'n_estimators': 200, 'max_depth': 10, 'max_features': 'sqrt',
+             'criterion': 'mse', 'histogram_binning': 1,
+             'min_samples_split': 2, 'min_samples_leaf': 1},
+            # 7. JARF rotation
+            {'n_estimators': 150, 'max_depth': 12, 'max_features': 'sqrt',
+             'criterion': 'mse', 'jarf': 1,
+             'min_samples_split': 2, 'min_samples_leaf': 1},
+        ],
     },
 }
 
 # Expected config counts per model family
 _EXPECTED_COUNTS = {
     'xgb': 10, 'lgb': 6, 'ebm': 4, 'linear': 4, 'svm': 4, 'knn': 3,
-    'tsetlin': 3, 'stochtree': 3, 'xlearn': 4,
+    'tsetlin': 3, 'stochtree': 3, 'xlearn': 4, 'rf': 7,
 }
 
 

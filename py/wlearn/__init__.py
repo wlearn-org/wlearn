@@ -15,3 +15,4 @@ from . import automl
 from . import ensemble
 from . import stochtree
 from . import xlearn
+from . import rf

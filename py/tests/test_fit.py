@@ -353,3 +353,156 @@ class TestLightGBM:
         model.dispose()
         with pytest.raises(DisposedError):
             model.predict(X)
+
+
+# ===========================================================================
+# RF (C11 core via ctypes)
+# ===========================================================================
+
+rf_available = True
+try:
+    from wlearn.rf import RFClassifier, RFRegressor
+except RuntimeError:
+    rf_available = False
+
+
+@pytest.mark.skipif(not rf_available, reason='librf not found (set RF_LIB_PATH)')
+class TestRF:
+    def test_classification(self):
+        from wlearn.rf import RFClassifier
+        X, y = make_binary_data()
+        model = RFClassifier.create({'n_estimators': 50, 'seed': 42})
+        model.fit(X, y)
+        assert model.is_fitted
+        accuracy = model.score(X, y)
+        assert accuracy > 0.8
+        model.dispose()
+
+    def test_regression(self):
+        from wlearn.rf import RFRegressor
+        X, y = make_regression_data()
+        model = RFRegressor.create({'n_estimators': 50, 'seed': 42})
+        model.fit(X, y)
+        r2 = model.score(X, y)
+        assert r2 > 0.7
+        model.dispose()
+
+    def test_multiclass(self):
+        from wlearn.rf import RFClassifier
+        X, y = make_multiclass_data()
+        model = RFClassifier.create({'n_estimators': 50, 'seed': 42})
+        model.fit(X, y)
+        preds = model.predict(X)
+        assert len(preds) == len(y)
+        model.dispose()
+
+    def test_predict_proba(self):
+        from wlearn.rf import RFClassifier
+        X, y = make_binary_data()
+        model = RFClassifier.create({'n_estimators': 50, 'seed': 42})
+        model.fit(X, y)
+        proba = model.predict_proba(X)
+        assert proba.shape == (len(X), 2)
+        assert np.allclose(proba.sum(axis=1), 1.0, atol=1e-6)
+        assert np.all(proba >= 0)
+        model.dispose()
+
+    def test_histogram_binning(self):
+        from wlearn.rf import RFClassifier
+        X, y = make_binary_data(n=200)
+        model = RFClassifier.create({
+            'n_estimators': 50, 'histogram_binning': 1, 'seed': 42})
+        model.fit(X, y)
+        accuracy = model.score(X, y)
+        assert accuracy > 0.8
+        model.dispose()
+
+    def test_jarf(self):
+        from wlearn.rf import RFClassifier
+        X, y = make_binary_data(n=200)
+        model = RFClassifier.create({
+            'n_estimators': 50, 'jarf': 1, 'seed': 42})
+        model.fit(X, y)
+        accuracy = model.score(X, y)
+        assert accuracy > 0.8
+        model.dispose()
+
+    def test_sample_weight(self):
+        from wlearn.rf import RFClassifier
+        X, y = make_binary_data()
+        sw = np.ones(len(y))
+        model = RFClassifier.create({
+            'n_estimators': 50, 'sample_weight': sw, 'seed': 42})
+        model.fit(X, y)
+        assert model.is_fitted
+        model.dispose()
+
+    def test_class_weight_balanced(self):
+        from wlearn.rf import RFClassifier
+        X, y = make_binary_data()
+        model = RFClassifier.create({
+            'n_estimators': 50, 'class_weight': 'balanced', 'seed': 42})
+        model.fit(X, y)
+        assert model.is_fitted
+        model.dispose()
+
+    def test_permutation_importance(self):
+        from wlearn.rf import RFClassifier
+        X, y = make_binary_data()
+        model = RFClassifier.create({'n_estimators': 50, 'seed': 42})
+        model.fit(X, y)
+        imp = model.permutation_importance(X, y, n_repeats=3, seed=42)
+        assert imp.shape == (X.shape[1],)
+        model.dispose()
+
+    def test_proximity(self):
+        from wlearn.rf import RFClassifier
+        X, y = make_binary_data(n=30)
+        model = RFClassifier.create({'n_estimators': 50, 'seed': 42})
+        model.fit(X, y)
+        prox = model.proximity(X)
+        assert prox.shape == (30, 30)
+        assert np.allclose(np.diag(prox), 1.0)
+        assert np.allclose(prox, prox.T)
+        model.dispose()
+
+    def test_feature_importances(self):
+        from wlearn.rf import RFClassifier
+        X, y = make_binary_data()
+        model = RFClassifier.create({'n_estimators': 50, 'seed': 42})
+        model.fit(X, y)
+        imp = model.feature_importances()
+        assert imp.shape == (X.shape[1],)
+        assert np.all(imp >= 0)
+        model.dispose()
+
+    def test_save_load_roundtrip(self):
+        from wlearn.rf import RFClassifier
+        X, y = make_binary_data()
+        model = RFClassifier.create({'n_estimators': 50, 'seed': 42})
+        model.fit(X, y)
+        preds_orig = model.predict(X)
+
+        bundle = model.save()
+        manifest, toc, blobs = decode_bundle(bundle)
+        loaded = RFClassifier._from_bundle(manifest, toc, blobs)
+        preds_loaded = loaded.predict(X)
+        assert np.array_equal(preds_orig, preds_loaded)
+        model.dispose()
+        loaded.dispose()
+
+    def test_create_unfitted(self):
+        from wlearn.rf import RFClassifier
+        model = RFClassifier.create()
+        assert not model.is_fitted
+        with pytest.raises(NotFittedError):
+            model.predict(np.zeros((1, 2)))
+
+    def test_dispose(self):
+        from wlearn.rf import RFClassifier
+        X, y = make_binary_data()
+        model = RFClassifier.create({'n_estimators': 20, 'seed': 42})
+        model.fit(X, y)
+        model.dispose()
+        with pytest.raises(DisposedError):
+            model.predict(X)
