@@ -39,5 +39,9 @@
     "url": "https://github.com/wlearn-org/wlearn.git",
     "directory": "packages/types"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "homepage": "https://wlearn.org",
+  "bugs": {
+    "url": "https://github.com/wlearn-org/wlearn/issues"
+  }
 }
