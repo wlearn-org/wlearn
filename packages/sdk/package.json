@@ -1,6 +1,6 @@
 {
   "name": "@wlearn/sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Convenience barrel: re-exports all wlearn model classes, automl, ensemble, pipeline, and core utilities",
   "type": "commonjs",
   "main": "index.js",
@@ -19,25 +19,25 @@
   ],
   "sideEffects": false,
   "dependencies": {
-    "@wlearn/core": "0.1.0",
-    "@wlearn/automl": "0.1.0",
-    "@wlearn/ensemble": "0.1.0",
-    "@wlearn/liblinear": "0.1.0",
-    "@wlearn/libsvm": "0.1.0",
-    "@wlearn/xgboost": "0.1.1",
-    "@wlearn/lightgbm": "0.1.0",
-    "@wlearn/nanoflann": "0.1.0",
-    "@wlearn/ebm": "0.1.0",
-    "@wlearn/xlearn": "0.1.0",
-    "@wlearn/stochtree": "0.1.0",
-    "@wlearn/tsetlin": "0.1.0",
-    "@wlearn/nn": "0.1.0",
-    "@wlearn/rf": "0.1.0",
-    "@wlearn/gam": "0.1.0",
+    "@wlearn/core": "0.2.0",
+    "@wlearn/automl": "0.2.0",
+    "@wlearn/ensemble": "0.2.0",
+    "@wlearn/liblinear": "0.2.0",
+    "@wlearn/libsvm": "0.2.0",
+    "@wlearn/xgboost": "0.2.0",
+    "@wlearn/lightgbm": "0.2.0",
+    "@wlearn/nanoflann": "0.2.0",
+    "@wlearn/ebm": "0.2.0",
+    "@wlearn/xlearn": "0.2.0",
+    "@wlearn/stochtree": "0.2.0",
+    "@wlearn/tsetlin": "0.2.0",
+    "@wlearn/nn": "0.2.0",
+    "@wlearn/rf": "0.4.1",
+    "@wlearn/gam": "0.2.0",
     "@wlearn/cluster": "0.1.0"
   },
   "peerDependencies": {
-    "@wlearn/mitra": "0.1.0"
+    "@wlearn/mitra": "0.2.0"
   },
   "peerDependenciesMeta": {
     "@wlearn/mitra": {
@@ -61,5 +61,9 @@
     "url": "https://github.com/wlearn-org/wlearn.git",
     "directory": "packages/sdk"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/wlearn-org/wlearn/issues"
+  },
+  "homepage": "https://wlearn.org"
 }

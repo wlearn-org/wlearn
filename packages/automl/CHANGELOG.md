@@ -2,6 +2,10 @@
 
 ## 0.2.0
 
+- Add optional Bayesian search strategy through `@wlearn/bo`
+- Depend on the CommonJS `@wlearn/core` and `@wlearn/ensemble` releases
+- Add package homepage and GitHub issue metadata
+
 - Add portfolio configs for 8 new model families: rf, mlp, tabm, nam, gam, bart, fm, xlr
 - Portfolio now covers 15 model families (up from 7) for both classification and regression
 

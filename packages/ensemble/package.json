@@ -1,6 +1,6 @@
 {
   "name": "@wlearn/ensemble",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Ensemble methods for wlearn: voting, stacking, Caruana selection",
   "type": "commonjs",
   "main": "src/index.js",
@@ -20,8 +20,7 @@
   ],
   "sideEffects": false,
   "dependencies": {
-    "@wlearn/core": "0.1.0",
-    "@wlearn/types": "0.1.0"
+    "@wlearn/core": "0.2.0"
   },
   "scripts": {
     "test": "node --test test/*.js",
@@ -48,5 +47,9 @@
   "devDependencies": {
     "esbuild": "^0.27.3",
     "playwright": "^1.58.2"
-  }
+  },
+  "bugs": {
+    "url": "https://github.com/wlearn-org/wlearn/issues"
+  },
+  "homepage": "https://wlearn.org"
 }

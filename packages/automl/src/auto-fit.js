@@ -128,6 +128,16 @@ async function autoFit(models, X, y, opts = {}) {
     search = new SuccessiveHalvingSearch(specs, searchOptsWithProgress)
   } else if (strategy === 'progressive') {
     search = new ProgressiveSearch(specs, searchOptsWithProgress)
+  } else if (strategy === 'bayesian') {
+    let BayesianSearch
+    try {
+      BayesianSearch = require('@wlearn/bo').BayesianSearch
+    } catch (e) {
+      throw new ValidationError(
+        'autoFit: strategy "bayesian" requires @wlearn/bo. Install: npm i @wlearn/bo'
+      )
+    }
+    search = new BayesianSearch(specs, searchOptsWithProgress)
   } else {
     search = new RandomSearch(specs, searchOptsWithProgress)
   }

@@ -1,6 +1,6 @@
 {
   "name": "@wlearn/automl",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AutoML engine for wlearn: search space sampling, random search, successive halving, ensemble construction",
   "type": "commonjs",
   "main": "src/index.js",
@@ -20,9 +20,8 @@
   ],
   "sideEffects": false,
   "dependencies": {
-    "@wlearn/core": "0.1.0",
-    "@wlearn/ensemble": "0.1.0",
-    "@wlearn/types": "0.1.0"
+    "@wlearn/core": "0.2.0",
+    "@wlearn/ensemble": "0.2.0"
   },
   "scripts": {
     "test": "node --test test/*.js",
@@ -48,5 +47,17 @@
   "devDependencies": {
     "esbuild": "^0.27.3",
     "playwright": "^1.58.2"
-  }
+  },
+  "peerDependencies": {
+    "@wlearn/bo": "0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@wlearn/bo": {
+      "optional": true
+    }
+  },
+  "bugs": {
+    "url": "https://github.com/wlearn-org/wlearn/issues"
+  },
+  "homepage": "https://wlearn.org"
 }

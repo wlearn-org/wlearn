@@ -2,6 +2,9 @@
 
 ## 0.2.0
 
+- Update package dependency versions for the current wlearn package set
+- Add package homepage and GitHub issue metadata
+
 - Add `@wlearn/nn` exports: MLPClassifier, MLPRegressor, TabMClassifier, TabMRegressor, NAMClassifier, NAMRegressor
 - Add `@wlearn/rf` exports: RFModel, loadRF
 - Add `@wlearn/gam` exports: GAMModel, loadGAM
