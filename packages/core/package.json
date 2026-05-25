@@ -1,6 +1,6 @@
 {
   "name": "@wlearn/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Runtime core for wlearn: matrix helpers, bundle format, registry, pipeline",
   "type": "commonjs",
   "main": "src/index.js",
@@ -19,7 +19,7 @@
   ],
   "sideEffects": false,
   "dependencies": {
-    "@wlearn/types": "0.1.0"
+    "@wlearn/types": "0.1.1"
   },
   "scripts": {
     "test": "node --test test/*.js"

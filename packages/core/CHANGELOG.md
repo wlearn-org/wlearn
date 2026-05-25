@@ -2,6 +2,8 @@
 
 ## 0.2.0
 
+- Publish CommonJS package metadata with `require` export support
+- Standardize package metadata and license files for npm publishing
 - Add `createModelClass(ClassifierCls, RegressorCls, opts)` factory for unified model wrappers
 - Automatic task detection from labels (classification vs regression)
 - `sameClass` optimization: when both classes are identical, inner model is created in `create()` without requiring `task`
