@@ -3,8 +3,11 @@
 import numpy as np
 
 from ..errors import ValidationError, NotFittedError, DisposedError
-from ..bundle import encode_bundle, decode_bundle
-from ..registry import register, load as registry_load
+from ..bundle import encode_bundle, validate_bundle, write_bundle_output
+from ..registry import (
+    register, load as registry_load, _load_with_context,
+    assert_required_loaders,
+)
 from ..automl._cv import accuracy, r2_score
 
 TYPE_ID_CLS = 'wlearn.ensemble.voting.classifier@1'
@@ -115,7 +118,7 @@ class VotingEnsemble:
             return accuracy(y, preds)
         return r2_score(y, preds)
 
-    def save(self):
+    def save(self, path=None):
         self._ensure_fitted()
         type_id = TYPE_ID_CLS if self._task == 'classification' else TYPE_ID_REG
         manifest = {
@@ -136,29 +139,18 @@ class VotingEnsemble:
             }
             for i in range(len(self._models))
         ]
-        return encode_bundle(manifest, artifacts)
+        return write_bundle_output(encode_bundle(manifest, artifacts), path)
 
     @classmethod
-    def load(cls, data):
-        manifest, toc, blobs = decode_bundle(data)
-        p = manifest['params']
-        ens = cls(
-            task=p['task'],
-            voting=p['voting'],
-            weights=p['weights'],
-        )
-        ens._classes = np.array(p['classes'], dtype=np.int32) if p.get('classes') else None
-        ens._specs = [(name, None, None) for name in p['estimatorNames']]
-        ens._models = []
-        for name in p['estimatorNames']:
-            entry = next((t for t in toc if t['id'] == name), None)
-            if entry is None:
-                raise ValidationError(f'No artifact for estimator "{name}"')
-            blob = bytes(blobs[entry['offset']:entry['offset'] + entry['length']])
-            model = registry_load(blob)
-            ens._models.append(model)
-        ens._fitted = True
-        return ens
+    def load(cls, data, *, loader_options=None):
+        manifest, _, _ = validate_bundle(data)
+        if manifest.get('typeId') not in (TYPE_ID_CLS, TYPE_ID_REG):
+            raise ValidationError(
+                f'VotingEnsemble.load expected typeId "{TYPE_ID_CLS}" or '
+                f'"{TYPE_ID_REG}", '
+                f'got "{manifest.get("typeId")}"')
+        cls._register()
+        return registry_load(data, loader_options=loader_options)
 
     def dispose(self):
         if self._disposed:
@@ -235,15 +227,26 @@ class VotingEnsemble:
             return
         _registered = True
 
-        def loader(manifest, toc, blobs):
-            return VotingEnsemble._load_from_parts(manifest, toc, blobs)
+        def loader(manifest, toc, blobs, context):
+            return VotingEnsemble._load_from_parts(
+                manifest, toc, blobs, context)
 
-        register(TYPE_ID_CLS, loader)
-        register(TYPE_ID_REG, loader)
+        register(TYPE_ID_CLS, loader, accepts_context=True)
+        register(TYPE_ID_REG, loader, accepts_context=True)
 
     @staticmethod
-    def _load_from_parts(manifest, toc, blobs):
+    def _load_from_parts(manifest, toc, blobs, context):
         p = manifest['params']
+        expected_type_id = TYPE_ID_REG if p.get('task') == 'regression' \
+            else TYPE_ID_CLS
+        if manifest.get('typeId') != expected_type_id:
+            raise ValidationError(
+                f'VotingEnsemble.load expected typeId "{expected_type_id}", '
+                f'got "{manifest.get("typeId")}"')
+        if not isinstance(p.get('estimatorNames'), list):
+            raise ValidationError(
+                'VotingEnsemble manifest must declare estimatorNames')
+        assert_required_loaders(manifest)
         ens = VotingEnsemble(
             task=p['task'],
             voting=p['voting'],
@@ -252,12 +255,28 @@ class VotingEnsemble:
         ens._classes = np.array(p['classes'], dtype=np.int32) if p.get('classes') else None
         ens._specs = [(name, None, None) for name in p['estimatorNames']]
         ens._models = []
-        for name in p['estimatorNames']:
-            entry = next((t for t in toc if t['id'] == name), None)
-            if entry is None:
-                raise ValidationError(f'No artifact for estimator "{name}"')
-            blob = bytes(blobs[entry['offset']:entry['offset'] + entry['length']])
-            model = registry_load(blob)
-            ens._models.append(model)
-        ens._fitted = True
-        return ens
+        try:
+            for name in p['estimatorNames']:
+                entry = next((t for t in toc if t['id'] == name), None)
+                if entry is None:
+                    raise ValidationError(
+                        f'No artifact for estimator "{name}"')
+                blob = bytes(
+                    blobs[entry['offset']:entry['offset'] + entry['length']])
+                model = _load_with_context(blob, context)
+                ens._models.append(model)
+            ens._fitted = True
+            return ens
+        except Exception:
+            _dispose_loaded(ens._models)
+            raise
+
+
+def _dispose_loaded(models):
+    for model in reversed(models):
+        try:
+            if hasattr(model, 'dispose'):
+                model.dispose()
+        except Exception:
+            # Preserve the load error; cleanup is best effort for partial state.
+            pass

@@ -11,7 +11,7 @@ import numpy as np
 from liblinear.liblinearutil import load_model, save_model, predict as ll_predict
 
 from .errors import NotFittedError, DisposedError
-from .bundle import encode_bundle
+from .bundle import encode_bundle, write_bundle_output
 from .registry import register
 
 SVR_SOLVERS = frozenset([11, 12, 13])
@@ -130,27 +130,29 @@ class LinearModel:
 
         return float(np.mean(preds == y))
 
-    def save(self):
+    def save(self, path=None):
         self._ensure_fitted()
 
-        fd, path = tempfile.mkstemp(suffix='.model')
+        output_path = path
+        fd, tmp_path = tempfile.mkstemp(suffix='.model')
         try:
             os.close(fd)
-            save_model(path, self._model)
-            with open(path, 'rb') as f:
+            save_model(tmp_path, self._model)
+            with open(tmp_path, 'rb') as f:
                 model_bytes = f.read()
         finally:
-            os.unlink(path)
+            os.unlink(tmp_path)
 
         solver = self._params.get('solver', 0)
         type_id = ('wlearn.liblinear.regressor@1'
                    if solver in SVR_SOLVERS
                    else 'wlearn.liblinear.classifier@1')
 
-        return encode_bundle(
+        bundle = encode_bundle(
             {'typeId': type_id, 'params': self.get_params()},
             [{'id': 'model', 'data': model_bytes}],
         )
+        return write_bundle_output(bundle, output_path)
 
     def dispose(self):
         if self._disposed:

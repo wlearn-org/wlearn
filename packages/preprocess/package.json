@@ -1,0 +1,72 @@
+{
+  "name": "@wlearn/preprocess",
+  "version": "0.1.0",
+  "description": "Portable fitted tabular preprocessing for wlearn over Tranfi",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "browser": "./src/wasm.js",
+      "require": "./src/index.js",
+      "default": "./src/index.js"
+    },
+    "./wasm": {
+      "types": "./index.d.ts",
+      "require": "./src/wasm.js",
+      "default": "./src/wasm.js"
+    }
+  },
+  "browser": {
+    "./src/index.js": "./src/wasm.js"
+  },
+  "files": [
+    "src/",
+    "dist/",
+    "index.d.ts",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "dependencies": {
+    "@wlearn/core": "^0.3.0",
+    "@wlearn/types": "^0.2.0",
+    "tranfi": "^0.2.0"
+  },
+  "scripts": {
+    "pretest": "npm run build:browser",
+    "test": "node --test test/*.js",
+    "test:types": "tsc --project test/tsconfig.json",
+    "build:browser": "bash scripts/build-browser.sh",
+    "test:browser": "npm run build:browser && node test/test-browser.js",
+    "prepack": "npm run build:browser"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "wlearn",
+    "machine-learning",
+    "preprocessing",
+    "wasm",
+    "tranfi"
+  ],
+  "author": "Anton Zemlyansky",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wlearn-org/wlearn.git",
+    "directory": "packages/preprocess"
+  },
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "esbuild": "^0.27.3",
+    "playwright": "1.58.2",
+    "typescript": "^5.9.3"
+  },
+  "homepage": "https://wlearn.org",
+  "bugs": {
+    "url": "https://github.com/wlearn-org/wlearn/issues"
+  }
+}

@@ -10,7 +10,7 @@ import os
 import numpy as np
 
 from .errors import NotFittedError, DisposedError
-from .bundle import encode_bundle
+from .bundle import encode_bundle, write_bundle_output
 from .registry import register
 
 try:
@@ -36,7 +36,8 @@ def _check_lightgbm():
 
 
 class LGBModel:
-    def __init__(self, booster, params, nr_class=0, classes=None):
+    def __init__(self, booster, params, nr_class=0, classes=None,
+                 model_bytes=None):
         _check_lightgbm()
         self._booster = booster
         self._params = dict(params)
@@ -44,6 +45,7 @@ class LGBModel:
         self._classes = (np.array(classes, dtype=np.int32)
                          if classes is not None and len(classes) > 0
                          else np.array([], dtype=np.int32))
+        self._model_bytes = model_bytes
         self._fitted = True
         self._disposed = False
 
@@ -56,6 +58,7 @@ class LGBModel:
         obj._params = dict(params) if params else {}
         obj._nr_class = 0
         obj._classes = np.array([], dtype=np.int32)
+        obj._model_bytes = None
         obj._fitted = False
         obj._disposed = False
         return obj
@@ -102,6 +105,7 @@ class LGBModel:
         dtrain = lgb.Dataset(X, label=y_train, free_raw_data=False)
         self._booster = lgb.train(lgb_params, dtrain,
                                   num_boost_round=num_round)
+        self._model_bytes = None
         self._fitted = True
         return self
 
@@ -129,6 +133,7 @@ class LGBModel:
             booster, params,
             nr_class=meta.get('nrClass', 0),
             classes=meta.get('classes'),
+            model_bytes=model_bytes,
         )
 
     def predict(self, X):
@@ -203,23 +208,25 @@ class LGBModel:
         ss_tot = np.sum((y - y_mean) ** 2)
         return 0.0 if ss_tot == 0 else float(1 - ss_res / ss_tot)
 
-    def save(self):
+    def save(self, path=None):
         self._ensure_fitted()
-        fd, path = tempfile.mkstemp(suffix='.lgb')
-        try:
-            os.close(fd)
-            self._booster.save_model(path)
-            with open(path, 'rb') as f:
-                model_bytes = f.read()
-        finally:
-            os.unlink(path)
+        model_bytes = self._model_bytes
+        if model_bytes is None:
+            fd, tmp_path = tempfile.mkstemp(suffix='.lgb')
+            try:
+                os.close(fd)
+                self._booster.save_model(tmp_path)
+                with open(tmp_path, 'rb') as f:
+                    model_bytes = f.read()
+            finally:
+                os.unlink(tmp_path)
 
         obj = self._params.get('objective', 'regression')
         type_id = ('wlearn.lightgbm.classifier@1'
                    if obj in CLASSIFIER_OBJECTIVES
                    else 'wlearn.lightgbm.regressor@1')
 
-        return encode_bundle(
+        bundle = encode_bundle(
             {
                 'typeId': type_id,
                 'params': self.get_params(),
@@ -231,12 +238,14 @@ class LGBModel:
             },
             [{'id': 'model', 'data': model_bytes}],
         )
+        return write_bundle_output(bundle, path)
 
     def dispose(self):
         if self._disposed:
             return
         self._disposed = True
         self._booster = None
+        self._model_bytes = None
         self._fitted = False
 
     def get_params(self):

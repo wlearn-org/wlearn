@@ -1,5 +1,6 @@
 const {
-  encodeBundle, decodeBundle, register, load: registryLoad,
+  encodeBundle, validateBundle, register, load: registryLoad,
+  assertRequiredLoaders,
   normalizeX, normalizeY, accuracy, r2Score,
   stratifiedKFold, kFold,
   ValidationError, NotFittedError, DisposedError,
@@ -281,9 +282,15 @@ class BaggedEstimator {
     return encodeBundle(manifest, artifacts)
   }
 
-  static async load(bytes) {
-    const { manifest, toc, blobs } = decodeBundle(bytes)
-    return BaggedEstimator._loadFromParts(manifest, toc, blobs)
+  static async load(bytes, options = {}) {
+    const { manifest } = validateBundle(bytes)
+    if (manifest.typeId !== TYPE_ID_CLS && manifest.typeId !== TYPE_ID_REG) {
+      throw new ValidationError(
+        `BaggedEstimator.load expected typeId "${TYPE_ID_CLS}" or "${TYPE_ID_REG}", got "${manifest.typeId}"`
+      )
+    }
+    BaggedEstimator._register()
+    return registryLoad(bytes, options)
   }
 
   dispose() {
@@ -335,14 +342,21 @@ class BaggedEstimator {
   static _register() {
     if (_registered) return
     _registered = true
-    const loader = (manifest, toc, blobs) =>
-      BaggedEstimator._loadFromParts(manifest, toc, blobs)
-    register(TYPE_ID_CLS, loader)
-    register(TYPE_ID_REG, loader)
+    const loader = (manifest, toc, blobs, context) =>
+      BaggedEstimator._loadFromParts(manifest, toc, blobs, context)
+    register(TYPE_ID_CLS, loader, { acceptsContext: true, sync: false })
+    register(TYPE_ID_REG, loader, { acceptsContext: true, sync: false })
   }
 
-  static async _loadFromParts(manifest, toc, blobs) {
+  static async _loadFromParts(manifest, toc, blobs, context) {
     const p = manifest.params
+    const expectedTypeId = p?.task === 'regression' ? TYPE_ID_REG : TYPE_ID_CLS
+    if (manifest.typeId !== expectedTypeId) {
+      throw new ValidationError(
+        `BaggedEstimator.load expected typeId "${expectedTypeId}", got "${manifest.typeId}"`
+      )
+    }
+    assertRequiredLoaders(manifest)
     const bag = new BaggedEstimator({
       task: p.task,
       kFold: p.kFold || 5,
@@ -357,34 +371,49 @@ class BaggedEstimator {
     // Load fold models
     const nFoldModels = bag.#kFold * bag.#nRepeats
     bag.#foldModels = []
-    for (let i = 0; i < nFoldModels; i++) {
-      const foldId = `fold_${i}`
-      const entry = toc.find(t => t.id === foldId)
-      if (!entry) throw new ValidationError(`No artifact for "${foldId}"`)
-      const blob = blobs.subarray(entry.offset, entry.offset + entry.length)
-      bag.#foldModels.push(await registryLoad(blob))
-    }
-
-    // Load OOF data
-    const oofEntry = toc.find(t => t.id === 'oof')
-    if (oofEntry) {
-      const oofBlob = blobs.subarray(oofEntry.offset, oofEntry.offset + oofEntry.length)
-      const oof = new Float64Array(
-        oofBlob.buffer.slice(oofBlob.byteOffset, oofBlob.byteOffset + oofBlob.byteLength)
-      )
-      bag.#oofAccum = oof
-      bag.#oofCounts = new Uint8Array(bag.#nSamples).fill(1)
-    } else {
-      if (bag.#task === 'classification') {
-        bag.#oofAccum = new Float64Array(bag.#nSamples * bag.#nClasses)
-      } else {
-        bag.#oofAccum = new Float64Array(bag.#nSamples)
+    try {
+      for (let i = 0; i < nFoldModels; i++) {
+        const foldId = `fold_${i}`
+        const entry = toc.find(t => t.id === foldId)
+        if (!entry) throw new ValidationError(`No artifact for "${foldId}"`)
+        const blob = blobs.subarray(entry.offset, entry.offset + entry.length)
+        bag.#foldModels.push(await registryLoad(blob, context))
       }
-      bag.#oofCounts = new Uint8Array(bag.#nSamples)
-    }
 
-    bag.#fitted = true
-    return bag
+      // Load OOF data
+      const oofEntry = toc.find(t => t.id === 'oof')
+      if (oofEntry) {
+        const oofBlob = blobs.subarray(oofEntry.offset, oofEntry.offset + oofEntry.length)
+        const oof = new Float64Array(
+          oofBlob.buffer.slice(oofBlob.byteOffset, oofBlob.byteOffset + oofBlob.byteLength)
+        )
+        bag.#oofAccum = oof
+        bag.#oofCounts = new Uint8Array(bag.#nSamples).fill(1)
+      } else {
+        if (bag.#task === 'classification') {
+          bag.#oofAccum = new Float64Array(bag.#nSamples * bag.#nClasses)
+        } else {
+          bag.#oofAccum = new Float64Array(bag.#nSamples)
+        }
+        bag.#oofCounts = new Uint8Array(bag.#nSamples)
+      }
+
+      bag.#fitted = true
+      return bag
+    } catch (error) {
+      _disposeLoaded(bag.#foldModels)
+      throw error
+    }
+  }
+}
+
+function _disposeLoaded(models) {
+  for (let i = models.length - 1; i >= 0; i--) {
+    try {
+      if (typeof models[i]?.dispose === 'function') models[i].dispose()
+    } catch {
+      // Preserve the load error; cleanup is best effort for partial state.
+    }
   }
 }
 

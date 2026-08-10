@@ -1,5 +1,6 @@
 const {
-  encodeBundle, decodeBundle, register, load: registryLoad,
+  encodeBundle, validateBundle, register, load: registryLoad,
+  assertRequiredLoaders,
   normalizeX, normalizeY, accuracy, r2Score,
   stratifiedKFold, kFold,
   ValidationError, NotFittedError, DisposedError,
@@ -207,9 +208,15 @@ class StackingEnsemble {
     return encodeBundle(manifest, artifacts)
   }
 
-  static async load(bytes) {
-    const { manifest, toc, blobs } = decodeBundle(bytes)
-    return StackingEnsemble._loadFromParts(manifest, toc, blobs)
+  static async load(bytes, options = {}) {
+    const { manifest } = validateBundle(bytes)
+    if (manifest.typeId !== TYPE_ID_CLS && manifest.typeId !== TYPE_ID_REG) {
+      throw new ValidationError(
+        `StackingEnsemble.load expected typeId "${TYPE_ID_CLS}" or "${TYPE_ID_REG}", got "${manifest.typeId}"`
+      )
+    }
+    StackingEnsemble._register()
+    return registryLoad(bytes, options)
   }
 
   dispose() {
@@ -309,15 +316,25 @@ class StackingEnsemble {
   static _register() {
     if (_registered) return
     _registered = true
-    const loader = (manifest, toc, blobs) => {
-      return StackingEnsemble._loadFromParts(manifest, toc, blobs)
+    const loader = (manifest, toc, blobs, context) => {
+      return StackingEnsemble._loadFromParts(manifest, toc, blobs, context)
     }
-    register(TYPE_ID_CLS, loader)
-    register(TYPE_ID_REG, loader)
+    register(TYPE_ID_CLS, loader, { acceptsContext: true, sync: false })
+    register(TYPE_ID_REG, loader, { acceptsContext: true, sync: false })
   }
 
-  static async _loadFromParts(manifest, toc, blobs) {
+  static async _loadFromParts(manifest, toc, blobs, context) {
     const p = manifest.params
+    const expectedTypeId = p?.task === 'regression' ? TYPE_ID_REG : TYPE_ID_CLS
+    if (manifest.typeId !== expectedTypeId) {
+      throw new ValidationError(
+        `StackingEnsemble.load expected typeId "${expectedTypeId}", got "${manifest.typeId}"`
+      )
+    }
+    if (!Array.isArray(p.estimatorNames) || typeof p.metaName !== 'string') {
+      throw new ValidationError('StackingEnsemble manifest must declare base and meta estimators')
+    }
+    assertRequiredLoaders(manifest)
     const ens = new StackingEnsemble({
       task: p.task,
       cv: p.cv,
@@ -332,21 +349,36 @@ class StackingEnsemble {
 
     // Load base models
     ens.#baseModels = []
-    for (const name of p.estimatorNames) {
-      const entry = toc.find(t => t.id === name)
-      if (!entry) throw new ValidationError(`No artifact for base estimator "${name}"`)
-      const blob = blobs.subarray(entry.offset, entry.offset + entry.length)
-      ens.#baseModels.push(await registryLoad(blob))
+    try {
+      for (const name of p.estimatorNames) {
+        const entry = toc.find(t => t.id === name)
+        if (!entry) throw new ValidationError(`No artifact for base estimator "${name}"`)
+        const blob = blobs.subarray(entry.offset, entry.offset + entry.length)
+        ens.#baseModels.push(await registryLoad(blob, context))
+      }
+
+      // Load meta-model
+      const metaEntry = toc.find(t => t.id === p.metaName)
+      if (!metaEntry) throw new ValidationError(`No artifact for meta estimator "${p.metaName}"`)
+      const metaBlob = blobs.subarray(metaEntry.offset, metaEntry.offset + metaEntry.length)
+      ens.#metaModel = await registryLoad(metaBlob, context)
+
+      ens.#fitted = true
+      return ens
+    } catch (error) {
+      _disposeLoaded([...ens.#baseModels, ens.#metaModel])
+      throw error
     }
+  }
+}
 
-    // Load meta-model
-    const metaEntry = toc.find(t => t.id === p.metaName)
-    if (!metaEntry) throw new ValidationError(`No artifact for meta estimator "${p.metaName}"`)
-    const metaBlob = blobs.subarray(metaEntry.offset, metaEntry.offset + metaEntry.length)
-    ens.#metaModel = await registryLoad(metaBlob)
-
-    ens.#fitted = true
-    return ens
+function _disposeLoaded(models) {
+  for (let i = models.length - 1; i >= 0; i--) {
+    try {
+      if (typeof models[i]?.dispose === 'function') models[i].dispose()
+    } catch {
+      // Preserve the load error; cleanup is best effort for partial state.
+    }
   }
 }
 

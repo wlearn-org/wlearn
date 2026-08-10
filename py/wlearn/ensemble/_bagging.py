@@ -14,8 +14,11 @@ import struct
 import numpy as np
 
 from ..errors import ValidationError, NotFittedError, DisposedError
-from ..bundle import encode_bundle, decode_bundle
-from ..registry import register, load as registry_load
+from ..bundle import encode_bundle, validate_bundle, write_bundle_output
+from ..registry import (
+    register, load as registry_load, _load_with_context,
+    assert_required_loaders,
+)
 from ..automl._cv import accuracy, r2_score, stratified_k_fold, k_fold
 
 TYPE_ID_CLS = 'wlearn.ensemble.bagged.classifier@1'
@@ -207,7 +210,7 @@ class BaggedEstimator:
 
         return self._oof_accum / counts
 
-    def save(self):
+    def save(self, path=None):
         self._ensure_fitted()
         type_id = TYPE_ID_CLS if self._task == 'classification' else TYPE_ID_REG
 
@@ -242,12 +245,18 @@ class BaggedEstimator:
             'mediaType': 'application/octet-stream',
         })
 
-        return encode_bundle(manifest, artifacts)
+        return write_bundle_output(encode_bundle(manifest, artifacts), path)
 
     @classmethod
-    def load(cls, data):
-        manifest, toc, blobs = decode_bundle(data)
-        return cls._load_from_parts(manifest, toc, blobs)
+    def load(cls, data, *, loader_options=None):
+        manifest, _, _ = validate_bundle(data)
+        if manifest.get('typeId') not in (TYPE_ID_CLS, TYPE_ID_REG):
+            raise ValidationError(
+                f'BaggedEstimator.load expected typeId "{TYPE_ID_CLS}" or '
+                f'"{TYPE_ID_REG}", '
+                f'got "{manifest.get("typeId")}"')
+        cls._register()
+        return registry_load(data, loader_options=loader_options)
 
     def dispose(self):
         if self._disposed:
@@ -306,15 +315,23 @@ class BaggedEstimator:
             return
         _registered = True
 
-        def loader(manifest, toc, blobs):
-            return BaggedEstimator._load_from_parts(manifest, toc, blobs)
+        def loader(manifest, toc, blobs, context):
+            return BaggedEstimator._load_from_parts(
+                manifest, toc, blobs, context)
 
-        register(TYPE_ID_CLS, loader)
-        register(TYPE_ID_REG, loader)
+        register(TYPE_ID_CLS, loader, accepts_context=True)
+        register(TYPE_ID_REG, loader, accepts_context=True)
 
     @staticmethod
-    def _load_from_parts(manifest, toc, blobs):
+    def _load_from_parts(manifest, toc, blobs, context):
         p = manifest['params']
+        expected_type_id = TYPE_ID_REG if p.get('task') == 'regression' \
+            else TYPE_ID_CLS
+        if manifest.get('typeId') != expected_type_id:
+            raise ValidationError(
+                f'BaggedEstimator.load expected typeId "{expected_type_id}", '
+                f'got "{manifest.get("typeId")}"')
+        assert_required_loaders(manifest)
         bag = BaggedEstimator(
             task=p['task'],
             k_fold=p.get('kFold', 5),
@@ -329,29 +346,50 @@ class BaggedEstimator:
         # Load fold models
         n_fold_models = bag._k_fold * bag._n_repeats
         bag._fold_models = []
-        for i in range(n_fold_models):
-            fold_id = f'fold_{i}'
-            entry = next((t for t in toc if t['id'] == fold_id), None)
-            if entry is None:
-                raise ValidationError(f'No artifact for "{fold_id}"')
-            blob = bytes(blobs[entry['offset']:entry['offset'] + entry['length']])
-            bag._fold_models.append(registry_load(blob))
+        try:
+            for i in range(n_fold_models):
+                fold_id = f'fold_{i}'
+                entry = next((t for t in toc if t['id'] == fold_id), None)
+                if entry is None:
+                    raise ValidationError(f'No artifact for "{fold_id}"')
+                blob = bytes(
+                    blobs[entry['offset']:entry['offset'] + entry['length']])
+                bag._fold_models.append(_load_with_context(blob, context))
 
-        # Load OOF data
-        oof_entry = next((t for t in toc if t['id'] == 'oof'), None)
-        if oof_entry is not None:
-            oof_blob = bytes(blobs[oof_entry['offset']:oof_entry['offset'] + oof_entry['length']])
-            oof = np.frombuffer(oof_blob, dtype='<f8').copy()
-            # Store as accum with counts=1 so oof_predictions property works
-            bag._oof_accum = oof
-            bag._oof_counts = np.ones(bag._n_samples, dtype=np.uint8)
-        else:
-            # No OOF stored (loaded from older format)
-            if bag._task == 'classification':
-                bag._oof_accum = np.zeros(bag._n_samples * bag._n_classes, dtype=np.float64)
+            # Load OOF data
+            oof_entry = next((t for t in toc if t['id'] == 'oof'), None)
+            if oof_entry is not None:
+                oof_blob = bytes(
+                    blobs[oof_entry['offset']:
+                          oof_entry['offset'] + oof_entry['length']])
+                oof = np.frombuffer(oof_blob, dtype='<f8').copy()
+                # Store as accum with counts=1 so oof_predictions works.
+                bag._oof_accum = oof
+                bag._oof_counts = np.ones(
+                    bag._n_samples, dtype=np.uint8)
             else:
-                bag._oof_accum = np.zeros(bag._n_samples, dtype=np.float64)
-            bag._oof_counts = np.zeros(bag._n_samples, dtype=np.uint8)
+                # No OOF stored (loaded from older format)
+                if bag._task == 'classification':
+                    bag._oof_accum = np.zeros(
+                        bag._n_samples * bag._n_classes, dtype=np.float64)
+                else:
+                    bag._oof_accum = np.zeros(
+                        bag._n_samples, dtype=np.float64)
+                bag._oof_counts = np.zeros(
+                    bag._n_samples, dtype=np.uint8)
 
-        bag._fitted = True
-        return bag
+            bag._fitted = True
+            return bag
+        except Exception:
+            _dispose_loaded(bag._fold_models)
+            raise
+
+
+def _dispose_loaded(models):
+    for model in reversed(models):
+        try:
+            if hasattr(model, 'dispose'):
+                model.dispose()
+        except Exception:
+            # Preserve the load error; cleanup is best effort for partial state.
+            pass

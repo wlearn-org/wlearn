@@ -229,7 +229,7 @@ class MinMaxScaler {
 }
 
 // Auto-register loaders
-register(STANDARD_SCALER_TYPE_ID, StandardScaler._fromBundle)
-register(MINMAX_SCALER_TYPE_ID, MinMaxScaler._fromBundle)
+register(STANDARD_SCALER_TYPE_ID, StandardScaler._fromBundle, { sync: true })
+register(MINMAX_SCALER_TYPE_ID, MinMaxScaler._fromBundle, { sync: true })
 
 module.exports = { StandardScaler, MinMaxScaler }

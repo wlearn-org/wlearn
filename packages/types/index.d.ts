@@ -8,6 +8,21 @@ export declare const DTYPE: {
   readonly INT32: 'int32'
 }
 
+export declare class WlearnError extends Error {
+  readonly code: string
+  readonly engine?: string
+  readonly engineCode?: number | null
+  readonly cause?: unknown
+}
+export declare class BundleError extends WlearnError {}
+export declare class RegistryError extends WlearnError {}
+export declare class ValidationError extends WlearnError {}
+export declare class NotFittedError extends WlearnError {}
+export declare class DisposedError extends WlearnError {}
+export declare class ResourceLimitError extends WlearnError {}
+export declare class CancelledError extends WlearnError {}
+export declare class BackendError extends WlearnError {}
+
 // Data types
 export type Dtype = 'float32' | 'float64' | 'int32'
 
@@ -77,6 +92,11 @@ export interface Classifier extends Estimator {
 }
 
 // Transformer contract
+export interface TransformerCapabilities {
+  readonly transformer: true
+  readonly [key: string]: boolean
+}
+
 export interface Transformer {
   fit(X: Matrix | number[][], y?: Labels | number[]): this
   transform(X: Matrix | number[][]): DenseMatrix
@@ -85,7 +105,41 @@ export interface Transformer {
   dispose(): void
   getParams(): Record<string, unknown>
   setParams(p: Record<string, unknown>): this
+  readonly capabilities: TransformerCapabilities
   readonly isFitted: boolean
+}
+
+export type PreprocessNumericImpute = false | 'mean' | 'median' | 'zero'
+export type PreprocessCategoricalImpute = false | 'mode'
+export type PreprocessEncode = false | 'onehot' | 'label'
+export type PreprocessScale = false | 'standard' | 'minmax'
+export type PreprocessUnknownCategory = null | 'error' | 'all_zero' | 'sentinel'
+export type PreprocessAllMissing = null | 'error' | 'zero'
+
+export interface PreprocessResolvedConfig {
+  impute: {
+    numeric: PreprocessNumericImpute
+    categorical: PreprocessCategoricalImpute
+  }
+  encode: PreprocessEncode
+  scale: PreprocessScale
+  maxCategories: number
+  unknownCategory: PreprocessUnknownCategory
+  allMissing: PreprocessAllMissing
+  maxOutputColumns: number
+  maxOutputElements: number
+  policyVersion: 1
+}
+
+export interface PreprocessConfig {
+  impute?: 'auto' | 'mean' | 'median' | 'zero' | false
+  encode?: 'auto' | 'onehot' | 'label' | false
+  scale?: PreprocessScale
+  maxCategories?: number
+  unknownCategory?: Exclude<PreprocessUnknownCategory, null>
+  allMissing?: Exclude<PreprocessAllMissing, null>
+  maxOutputColumns?: number
+  maxOutputElements?: number
 }
 
 // Search space IR (for AutoML)
@@ -98,12 +152,28 @@ export type SearchParam =
 
 export type SearchSpace = Record<string, SearchParam & { condition?: Record<string, unknown> }>
 
+export interface PreprocessTemplate {
+  templateId: string
+  typeId: 'wlearn.preprocess.tabular@1'
+  params?: PreprocessConfig | PreprocessResolvedConfig
+  searchSpace?: SearchSpace
+  capabilityRequirements?: Record<string, boolean>
+}
+
 // Bundle format v1
+export interface BundleArtifactDeclaration {
+  id: string
+  length: number
+  sha256: string
+  mediaType: string
+}
+
 export interface BundleManifest {
   typeId: string
   bundleVersion: number
-  requires?: string[]
-  params?: Record<string, unknown>
+  requires: string[]
+  artifacts: BundleArtifactDeclaration[]
+  params: Record<string, unknown>
   seed?: number
   metadata?: Record<string, unknown>
 }
@@ -139,7 +209,10 @@ export interface PipelineGraph {
 export type LoaderFn = (
   manifest: BundleManifest,
   toc: BundleTOCEntry[],
-  blobs: Uint8Array
+  blobs: Uint8Array,
+  context?: Readonly<{
+    loaderOptions: Readonly<Record<string, unknown>>
+  }>
 ) => Estimator | Transformer | Promise<Estimator | Transformer>
 
 // Promise-lifting utilities

@@ -1,7 +1,9 @@
 const { Step } = require('./step.js')
 const { DisposedError, NotFittedError, ValidationError } = require('./errors.js')
-const { encodeBundle, decodeBundle } = require('./bundle.js')
-const { register, load: registryLoad } = require('./registry.js')
+const { encodeBundle, validateBundle } = require('./bundle.js')
+const {
+  register, load: registryLoad, assertRequiredLoaders
+} = require('./registry.js')
 
 const PIPELINE_TYPE_ID = 'wlearn.pipeline@1'
 let registered = false
@@ -146,21 +148,14 @@ class Pipeline {
    * @param {Uint8Array} bytes - Bundle bytes produced by `pipeline.save()`.
    * @returns {Promise<Pipeline>} A fitted pipeline ready for predict/score.
    */
-  static async load(bytes) {
-    const { manifest, toc, blobs } = decodeBundle(bytes)
-    const steps = []
-    for (const stepInfo of manifest.steps) {
-      const tocEntry = toc.find(t => t.id === stepInfo.name)
-      if (!tocEntry) {
-        throw new ValidationError(`No artifact found for pipeline step "${stepInfo.name}"`)
-      }
-      const blob = blobs.subarray(tocEntry.offset, tocEntry.offset + tocEntry.length)
-      const estimator = await registryLoad(blob)
-      steps.push([stepInfo.name, estimator])
+  static async load(bytes, options = {}) {
+    const { manifest } = validateBundle(bytes)
+    if (manifest.typeId !== PIPELINE_TYPE_ID) {
+      throw new ValidationError(
+        `Pipeline.load expected typeId "${PIPELINE_TYPE_ID}", got "${manifest.typeId}"`
+      )
     }
-    const pipeline = new Pipeline(steps)
-    pipeline.#fitted = true
-    return pipeline
+    return registryLoad(bytes, options)
   }
 
   /** Dispose all step estimators and mark the pipeline as disposed. */
@@ -199,25 +194,49 @@ class Pipeline {
   static registerLoader() {
     if (registered) return
     registered = true
-    register(PIPELINE_TYPE_ID, (manifest, toc, blobs) => {
-      return Pipeline._loadFromParts(manifest, toc, blobs)
-    })
+    register(PIPELINE_TYPE_ID, (manifest, toc, blobs, context) => {
+      return Pipeline._loadFromParts(manifest, toc, blobs, context)
+    }, { acceptsContext: true, sync: false })
   }
 
-  static async _loadFromParts(manifest, toc, blobs) {
-    const steps = []
-    for (const stepInfo of manifest.steps) {
-      const tocEntry = toc.find(t => t.id === stepInfo.name)
-      if (!tocEntry) {
-        throw new ValidationError(`No artifact found for pipeline step "${stepInfo.name}"`)
-      }
-      const blob = blobs.subarray(tocEntry.offset, tocEntry.offset + tocEntry.length)
-      const estimator = await registryLoad(blob)
-      steps.push([stepInfo.name, estimator])
+  static async _loadFromParts(manifest, toc, blobs, context) {
+    if (manifest.typeId !== PIPELINE_TYPE_ID) {
+      throw new ValidationError(
+        `Pipeline.load expected typeId "${PIPELINE_TYPE_ID}", got "${manifest.typeId}"`
+      )
     }
-    const pipeline = new Pipeline(steps)
-    pipeline.#fitted = true
-    return pipeline
+    if (!Array.isArray(manifest.steps) || manifest.steps.length === 0) {
+      throw new ValidationError('Pipeline manifest must contain at least one step')
+    }
+    assertRequiredLoaders(manifest)
+    const steps = []
+    try {
+      for (const stepInfo of manifest.steps) {
+        const tocEntry = toc.find(t => t.id === stepInfo.name)
+        if (!tocEntry) {
+          throw new ValidationError(`No artifact found for pipeline step "${stepInfo.name}"`)
+        }
+        const blob = blobs.subarray(tocEntry.offset, tocEntry.offset + tocEntry.length)
+        const estimator = await registryLoad(blob, context)
+        steps.push([stepInfo.name, estimator])
+      }
+      const pipeline = new Pipeline(steps)
+      pipeline.#fitted = true
+      return pipeline
+    } catch (error) {
+      _disposeLoaded(steps.map(([, estimator]) => estimator))
+      throw error
+    }
+  }
+}
+
+function _disposeLoaded(estimators) {
+  for (let i = estimators.length - 1; i >= 0; i--) {
+    try {
+      if (typeof estimators[i]?.dispose === 'function') estimators[i].dispose()
+    } catch {
+      // Preserve the load error; cleanup is best effort for partially loaded state.
+    }
   }
 }
 

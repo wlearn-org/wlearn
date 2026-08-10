@@ -1,5 +1,6 @@
 const {
-  encodeBundle, decodeBundle, register, load: registryLoad,
+  encodeBundle, validateBundle, register, load: registryLoad,
+  assertRequiredLoaders,
   normalizeX, normalizeY, accuracy, r2Score,
   ValidationError, NotFittedError, DisposedError,
   lift
@@ -165,28 +166,15 @@ class VotingEnsemble {
     return encodeBundle(manifest, artifacts)
   }
 
-  static async load(bytes) {
-    const { manifest, toc, blobs } = decodeBundle(bytes)
-    const p = manifest.params
-    const ens = new VotingEnsemble({
-      task: p.task,
-      voting: p.voting,
-      weights: new Float64Array(p.weights),
-    })
-    ens.#classes = p.classes ? new Int32Array(p.classes) : null
-    ens.#specs = p.estimatorNames.map(name => [name, null, null])
-
-    // Load submodels via registry
-    ens.#models = []
-    for (const name of p.estimatorNames) {
-      const entry = toc.find(t => t.id === name)
-      if (!entry) throw new ValidationError(`No artifact for estimator "${name}"`)
-      const blob = blobs.subarray(entry.offset, entry.offset + entry.length)
-      const model = await registryLoad(blob)
-      ens.#models.push(model)
+  static async load(bytes, options = {}) {
+    const { manifest } = validateBundle(bytes)
+    if (manifest.typeId !== TYPE_ID_CLS && manifest.typeId !== TYPE_ID_REG) {
+      throw new ValidationError(
+        `VotingEnsemble.load expected typeId "${TYPE_ID_CLS}" or "${TYPE_ID_REG}", got "${manifest.typeId}"`
+      )
     }
-    ens.#fitted = true
-    return ens
+    VotingEnsemble._register()
+    return registryLoad(bytes, options)
   }
 
   dispose() {
@@ -281,15 +269,25 @@ class VotingEnsemble {
   static _register() {
     if (_registered) return
     _registered = true
-    const loader = (manifest, toc, blobs) => {
-      return VotingEnsemble._loadFromParts(manifest, toc, blobs)
+    const loader = (manifest, toc, blobs, context) => {
+      return VotingEnsemble._loadFromParts(manifest, toc, blobs, context)
     }
-    register(TYPE_ID_CLS, loader)
-    register(TYPE_ID_REG, loader)
+    register(TYPE_ID_CLS, loader, { acceptsContext: true, sync: false })
+    register(TYPE_ID_REG, loader, { acceptsContext: true, sync: false })
   }
 
-  static async _loadFromParts(manifest, toc, blobs) {
+  static async _loadFromParts(manifest, toc, blobs, context) {
     const p = manifest.params
+    const expectedTypeId = p?.task === 'regression' ? TYPE_ID_REG : TYPE_ID_CLS
+    if (manifest.typeId !== expectedTypeId) {
+      throw new ValidationError(
+        `VotingEnsemble.load expected typeId "${expectedTypeId}", got "${manifest.typeId}"`
+      )
+    }
+    if (!Array.isArray(p.estimatorNames)) {
+      throw new ValidationError('VotingEnsemble manifest must declare estimatorNames')
+    }
+    assertRequiredLoaders(manifest)
     const ens = new VotingEnsemble({
       task: p.task,
       voting: p.voting,
@@ -298,15 +296,30 @@ class VotingEnsemble {
     ens.#classes = p.classes ? new Int32Array(p.classes) : null
     ens.#specs = p.estimatorNames.map(name => [name, null, null])
     ens.#models = []
-    for (const name of p.estimatorNames) {
-      const entry = toc.find(t => t.id === name)
-      if (!entry) throw new ValidationError(`No artifact for estimator "${name}"`)
-      const blob = blobs.subarray(entry.offset, entry.offset + entry.length)
-      const model = await registryLoad(blob)
-      ens.#models.push(model)
+    try {
+      for (const name of p.estimatorNames) {
+        const entry = toc.find(t => t.id === name)
+        if (!entry) throw new ValidationError(`No artifact for estimator "${name}"`)
+        const blob = blobs.subarray(entry.offset, entry.offset + entry.length)
+        const model = await registryLoad(blob, context)
+        ens.#models.push(model)
+      }
+      ens.#fitted = true
+      return ens
+    } catch (error) {
+      _disposeLoaded(ens.#models)
+      throw error
     }
-    ens.#fitted = true
-    return ens
+  }
+}
+
+function _disposeLoaded(models) {
+  for (let i = models.length - 1; i >= 0; i--) {
+    try {
+      if (typeof models[i]?.dispose === 'function') models[i].dispose()
+    } catch {
+      // Preserve the load error; cleanup is best effort for partial state.
+    }
   }
 }
 

@@ -1,0 +1,5 @@
+@wlearn/preprocess
+Copyright 2026 Anton Zemlyansky
+
+This package uses Tranfi's public prepared-transform API. Tranfi is an independent
+Apache-2.0-licensed data-processing project and does not depend on wlearn.

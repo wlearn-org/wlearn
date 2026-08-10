@@ -248,6 +248,64 @@ describe('Pipeline.load', () => {
 
     loaded.dispose()
   })
+
+  it('forwards one load context to every nested step', async () => {
+    const contexts = []
+    register('wlearn.mock.transformer.context@1', (manifest, toc, blobs, context) => {
+      contexts.push(context)
+      const transformer = createMockTransformer('context')
+      transformer.fit(X, y)
+      return transformer
+    }, { acceptsContext: true })
+    register('wlearn.mock.classifier@1', (manifest, toc, blobs, context) => {
+      contexts.push(context)
+      const classifier = createMockClassifier()
+      classifier.fit(X, y)
+      return classifier
+    }, { acceptsContext: true })
+
+    const pipeline = new Pipeline([
+      ['transform', createMockTransformer('context')],
+      ['classify', createMockClassifier()]
+    ])
+    pipeline.fit(X, y)
+    const runtimeOptions = { maxPlanBytes: 123 }
+    const loaded = await Pipeline.load(pipeline.save(), {
+      loaderOptions: { 'wlearn.preprocess.tabular@1': runtimeOptions }
+    })
+
+    assert.equal(contexts.length, 2)
+    assert.strictEqual(contexts[0], contexts[1])
+    assert.strictEqual(
+      contexts[0].loaderOptions['wlearn.preprocess.tabular@1'], runtimeOptions
+    )
+    loaded.dispose()
+    pipeline.dispose()
+  })
+
+  it('verifies the outer bundle hash before loading steps', async () => {
+    const pipe = new Pipeline([['classify', createMockClassifier()]])
+    pipe.fit(X, y)
+    const bytes = pipe.save()
+    const { toc } = decodeBundle(bytes)
+    const originalHash = new TextEncoder().encode(toc[0].sha256)
+    const replacement = new TextEncoder().encode('0'.repeat(64))
+    const corrupted = bytes.slice()
+    let replacements = 0
+    for (let i = 0; i <= corrupted.length - originalHash.length; i++) {
+      let matches = true
+      for (let j = 0; j < originalHash.length; j++) {
+        if (corrupted[i + j] !== originalHash[j]) { matches = false; break }
+      }
+      if (!matches) continue
+      corrupted.set(replacement, i)
+      replacements++
+      i += originalHash.length - 1
+    }
+    assert.equal(replacements, 2, 'manifest and TOC hash declarations should both change')
+    await assert.rejects(() => Pipeline.load(corrupted), /SHA-256 mismatch/)
+    pipe.dispose()
+  })
 })
 
 describe('Pipeline dispose', () => {

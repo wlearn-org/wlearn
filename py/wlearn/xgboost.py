@@ -11,7 +11,7 @@ import numpy as np
 import xgboost as xgb
 
 from .errors import NotFittedError, DisposedError
-from .bundle import encode_bundle
+from .bundle import encode_bundle, write_bundle_output
 from .registry import register
 
 CLASSIFIER_OBJECTIVES = frozenset([
@@ -194,23 +194,24 @@ class XGBModel:
         ss_tot = np.sum((y - y_mean) ** 2)
         return 0.0 if ss_tot == 0 else float(1 - ss_res / ss_tot)
 
-    def save(self):
+    def save(self, path=None):
         self._ensure_fitted()
-        fd, path = tempfile.mkstemp(suffix='.ubj')
+        output_path = path
+        fd, tmp_path = tempfile.mkstemp(suffix='.ubj')
         try:
             os.close(fd)
-            self._booster.save_model(path)
-            with open(path, 'rb') as f:
+            self._booster.save_model(tmp_path)
+            with open(tmp_path, 'rb') as f:
                 model_bytes = f.read()
         finally:
-            os.unlink(path)
+            os.unlink(tmp_path)
 
         obj = self._params.get('objective', 'reg:squarederror')
         type_id = ('wlearn.xgboost.classifier@1'
                    if obj in CLASSIFIER_OBJECTIVES
                    else 'wlearn.xgboost.regressor@1')
 
-        return encode_bundle(
+        bundle = encode_bundle(
             {
                 'typeId': type_id,
                 'params': self.get_params(),
@@ -222,6 +223,7 @@ class XGBModel:
             },
             [{'id': 'model', 'data': model_bytes}],
         )
+        return write_bundle_output(bundle, output_path)
 
     def dispose(self):
         if self._disposed:

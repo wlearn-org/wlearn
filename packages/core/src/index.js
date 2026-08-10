@@ -5,7 +5,10 @@ const {
   RegistryError,
   ValidationError,
   NotFittedError,
-  DisposedError
+  DisposedError,
+  ResourceLimitError,
+  CancelledError,
+  BackendError
 } = require('./errors.js')
 
 // matrix
@@ -15,10 +18,14 @@ const { normalizeX, normalizeY, makeDense, validateMatrix } = require('./matrix.
 const { sha256Sync } = require('./hash.js')
 
 // bundle
-const { encodeBundle, decodeBundle, validateBundle, encodeJSON, decodeJSON } = require('./bundle.js')
+const {
+  DEFAULT_BUNDLE_LIMITS, encodeBundle, decodeBundle, validateBundle, encodeJSON, decodeJSON
+} = require('./bundle.js')
 
 // registry
-const { register, load, loadSync, getRegistry } = require('./registry.js')
+const {
+  register, load, loadSync, getRegistry, assertRequiredLoaders
+} = require('./registry.js')
 
 // pipeline
 const { Pipeline } = require('./pipeline.js')
@@ -50,14 +57,15 @@ const { createModelClass, detectTask } = require('./model.js')
 module.exports = {
   // errors
   WlearnError, BundleError, RegistryError, ValidationError, NotFittedError, DisposedError,
+  ResourceLimitError, CancelledError, BackendError,
   // matrix
   normalizeX, normalizeY, makeDense, validateMatrix,
   // hash
   sha256Sync,
   // bundle
-  encodeBundle, decodeBundle, validateBundle, encodeJSON, decodeJSON,
+  DEFAULT_BUNDLE_LIMITS, encodeBundle, decodeBundle, validateBundle, encodeJSON, decodeJSON,
   // registry
-  register, load, loadSync, getRegistry,
+  register, load, loadSync, getRegistry, assertRequiredLoaders,
   // pipeline
   Pipeline, Step,
   // preprocessing

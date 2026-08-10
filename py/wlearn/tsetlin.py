@@ -33,7 +33,7 @@ import struct
 import numpy as np
 
 from .errors import NotFittedError, DisposedError
-from .bundle import encode_bundle
+from .bundle import encode_bundle, write_bundle_output
 from .registry import register
 
 TM01_MAGIC = b'TM01'
@@ -552,7 +552,7 @@ class TsetlinModel:
             return 0.0 if ss_tot == 0 else float(1 - ss_res / ss_tot)
         return float(np.mean(preds == y))
 
-    def save(self):
+    def save(self, path=None):
         self._ensure_fitted()
 
         # Build TM01 blob
@@ -611,11 +611,12 @@ class TsetlinModel:
             metadata['classes'] = (self._classes.tolist()
                                    if self._classes is not None else [])
 
-        return encode_bundle(
+        bundle = encode_bundle(
             {'typeId': type_id, 'params': self.get_params(),
              'metadata': metadata},
             [{'id': 'model', 'data': model_blob}],
         )
+        return write_bundle_output(bundle, path)
 
     def dispose(self):
         if self._disposed:

@@ -3,8 +3,11 @@
 import numpy as np
 
 from ..errors import ValidationError, NotFittedError, DisposedError
-from ..bundle import encode_bundle, decode_bundle
-from ..registry import register, load as registry_load
+from ..bundle import encode_bundle, validate_bundle, write_bundle_output
+from ..registry import (
+    register, load as registry_load, _load_with_context,
+    assert_required_loaders,
+)
 from ..automl._cv import accuracy, r2_score, stratified_k_fold, k_fold
 
 TYPE_ID_CLS = 'wlearn.ensemble.stacking.classifier@1'
@@ -186,7 +189,7 @@ class StackingEnsemble:
             return accuracy(y, preds)
         return r2_score(y, preds)
 
-    def save(self):
+    def save(self, path=None):
         self._ensure_fitted()
         type_id = TYPE_ID_CLS if self._task == 'classification' else TYPE_ID_REG
         manifest = {
@@ -215,12 +218,18 @@ class StackingEnsemble:
             'data': self._meta_model.save(),
             'mediaType': 'application/x-wlearn-bundle',
         })
-        return encode_bundle(manifest, artifacts)
+        return write_bundle_output(encode_bundle(manifest, artifacts), path)
 
     @classmethod
-    def load(cls, data):
-        manifest, toc, blobs = decode_bundle(data)
-        return cls._load_from_parts(manifest, toc, blobs)
+    def load(cls, data, *, loader_options=None):
+        manifest, _, _ = validate_bundle(data)
+        if manifest.get('typeId') not in (TYPE_ID_CLS, TYPE_ID_REG):
+            raise ValidationError(
+                f'StackingEnsemble.load expected typeId "{TYPE_ID_CLS}" or '
+                f'"{TYPE_ID_REG}", '
+                f'got "{manifest.get("typeId")}"')
+        cls._register()
+        return registry_load(data, loader_options=loader_options)
 
     def dispose(self):
         if self._disposed:
@@ -306,15 +315,28 @@ class StackingEnsemble:
             return
         _registered = True
 
-        def loader(manifest, toc, blobs):
-            return StackingEnsemble._load_from_parts(manifest, toc, blobs)
+        def loader(manifest, toc, blobs, context):
+            return StackingEnsemble._load_from_parts(
+                manifest, toc, blobs, context)
 
-        register(TYPE_ID_CLS, loader)
-        register(TYPE_ID_REG, loader)
+        register(TYPE_ID_CLS, loader, accepts_context=True)
+        register(TYPE_ID_REG, loader, accepts_context=True)
 
     @staticmethod
-    def _load_from_parts(manifest, toc, blobs):
+    def _load_from_parts(manifest, toc, blobs, context):
         p = manifest['params']
+        expected_type_id = TYPE_ID_REG if p.get('task') == 'regression' \
+            else TYPE_ID_CLS
+        if manifest.get('typeId') != expected_type_id:
+            raise ValidationError(
+                f'StackingEnsemble.load expected typeId "{expected_type_id}", '
+                f'got "{manifest.get("typeId")}"')
+        if (not isinstance(p.get('estimatorNames'), list) or
+                not isinstance(p.get('metaName'), str)):
+            raise ValidationError(
+                'StackingEnsemble manifest must declare base and meta '
+                'estimators')
+        assert_required_loaders(manifest)
         ens = StackingEnsemble(
             task=p['task'],
             cv=p.get('cv', 5),
@@ -328,18 +350,41 @@ class StackingEnsemble:
         ens._meta_spec = (p['metaName'], None, None)
 
         ens._base_models = []
-        for name in p['estimatorNames']:
-            entry = next((t for t in toc if t['id'] == name), None)
-            if entry is None:
-                raise ValidationError(f'No artifact for base estimator "{name}"')
-            blob = bytes(blobs[entry['offset']:entry['offset'] + entry['length']])
-            ens._base_models.append(registry_load(blob))
+        try:
+            for name in p['estimatorNames']:
+                entry = next((t for t in toc if t['id'] == name), None)
+                if entry is None:
+                    raise ValidationError(
+                        f'No artifact for base estimator "{name}"')
+                blob = bytes(
+                    blobs[entry['offset']:entry['offset'] + entry['length']])
+                ens._base_models.append(_load_with_context(blob, context))
 
-        meta_entry = next((t for t in toc if t['id'] == p['metaName']), None)
-        if meta_entry is None:
-            raise ValidationError(f'No artifact for meta estimator "{p["metaName"]}"')
-        meta_blob = bytes(blobs[meta_entry['offset']:meta_entry['offset'] + meta_entry['length']])
-        ens._meta_model = registry_load(meta_blob)
+            meta_entry = next(
+                (t for t in toc if t['id'] == p['metaName']), None)
+            if meta_entry is None:
+                raise ValidationError(
+                    f'No artifact for meta estimator "{p["metaName"]}"')
+            meta_blob = bytes(
+                blobs[meta_entry['offset']:
+                      meta_entry['offset'] + meta_entry['length']])
+            ens._meta_model = _load_with_context(meta_blob, context)
 
-        ens._fitted = True
-        return ens
+            ens._fitted = True
+            return ens
+        except Exception:
+            _dispose_loaded([
+                *ens._base_models,
+                ens._meta_model,
+            ])
+            raise
+
+
+def _dispose_loaded(models):
+    for model in reversed(models):
+        try:
+            if hasattr(model, 'dispose'):
+                model.dispose()
+        except Exception:
+            # Preserve the load error; cleanup is best effort for partial state.
+            pass

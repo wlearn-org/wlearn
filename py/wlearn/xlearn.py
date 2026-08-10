@@ -33,7 +33,7 @@ import struct
 import numpy as np
 
 from .errors import NotFittedError, DisposedError
-from .bundle import encode_bundle
+from .bundle import encode_bundle, write_bundle_output
 from .registry import register
 
 
@@ -368,7 +368,7 @@ class XLearnModel:
         ss_tot = np.sum((y - y_mean) ** 2)
         return 0.0 if ss_tot == 0 else float(1 - ss_res / ss_tot)
 
-    def save(self):
+    def save(self, path=None):
         self._ensure_fitted()
         if self._raw_blob is not None:
             model_blob = self._raw_blob
@@ -395,11 +395,12 @@ class XLearnModel:
                         if self._classes is not None else None),
         }
 
-        return encode_bundle(
+        bundle = encode_bundle(
             {'typeId': type_id, 'params': self.get_params(),
              'metadata': metadata},
             artifacts,
         )
+        return write_bundle_output(bundle, path)
 
     def dispose(self):
         if self._disposed:

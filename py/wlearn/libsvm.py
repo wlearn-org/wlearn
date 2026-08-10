@@ -11,7 +11,7 @@ import numpy as np
 from libsvm.svmutil import svm_load_model, svm_save_model, svm_predict
 
 from .errors import NotFittedError, DisposedError
-from .bundle import encode_bundle
+from .bundle import encode_bundle, write_bundle_output
 from .registry import register
 
 SVR_TYPES = frozenset([3, 4])  # EPSILON_SVR, NU_SVR
@@ -143,27 +143,29 @@ class SVMModel:
 
         return float(np.mean(preds == y))
 
-    def save(self):
+    def save(self, path=None):
         self._ensure_fitted()
 
-        fd, path = tempfile.mkstemp(suffix='.model')
+        output_path = path
+        fd, tmp_path = tempfile.mkstemp(suffix='.model')
         try:
             os.close(fd)
-            svm_save_model(path, self._model)
-            with open(path, 'rb') as f:
+            svm_save_model(tmp_path, self._model)
+            with open(tmp_path, 'rb') as f:
                 model_bytes = f.read()
         finally:
-            os.unlink(path)
+            os.unlink(tmp_path)
 
         svm_type = self._params.get('svmType', 0)
         type_id = ('wlearn.libsvm.regressor@1'
                    if svm_type in SVR_TYPES
                    else 'wlearn.libsvm.classifier@1')
 
-        return encode_bundle(
+        bundle = encode_bundle(
             {'typeId': type_id, 'params': self.get_params()},
             [{'id': 'model', 'data': model_bytes}],
         )
+        return write_bundle_output(bundle, output_path)
 
     def dispose(self):
         if self._disposed:

@@ -41,4 +41,35 @@ class DisposedError extends WlearnError {
   }
 }
 
-module.exports = { WlearnError, BundleError, RegistryError, ValidationError, NotFittedError, DisposedError }
+class ResourceLimitError extends WlearnError {
+  constructor(message = 'Resource limit exceeded.') {
+    super(message, 'ERR_RESOURCE_LIMIT')
+    this.name = 'ResourceLimitError'
+  }
+}
+
+class CancelledError extends WlearnError {
+  constructor(message = 'Operation cancelled.') {
+    super(message, 'ERR_CANCELLED')
+    this.name = 'CancelledError'
+  }
+}
+
+class BackendError extends WlearnError {
+  constructor(message = 'Backend operation failed.') {
+    super(message, 'ERR_BACKEND')
+    this.name = 'BackendError'
+  }
+}
+
+module.exports = {
+  WlearnError,
+  BundleError,
+  RegistryError,
+  ValidationError,
+  NotFittedError,
+  DisposedError,
+  ResourceLimitError,
+  CancelledError,
+  BackendError
+}

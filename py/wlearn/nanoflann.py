@@ -19,7 +19,7 @@ import numpy as np
 import pynanoflann
 
 from .errors import NotFittedError, DisposedError
-from .bundle import encode_bundle
+from .bundle import encode_bundle, write_bundle_output
 from .registry import register
 
 NF01_MAGIC = b'NF01'
@@ -187,7 +187,7 @@ class KNNModel:
             return 0.0 if ss_tot == 0 else float(1 - ss_res / ss_tot)
         return float(np.mean(preds == y))
 
-    def save(self):
+    def save(self, path=None):
         self._ensure_fitted()
 
         task = self._params.get('task', 'classification')
@@ -220,11 +220,12 @@ class KNNModel:
             metadata['nClasses'] = self._n_classes
             metadata['classes'] = self._classes.tolist()
 
-        return encode_bundle(
+        bundle = encode_bundle(
             {'typeId': type_id, 'params': self.get_params(),
              'metadata': metadata},
             [{'id': 'model', 'data': model_blob}],
         )
+        return write_bundle_output(bundle, path)
 
     def dispose(self):
         if self._disposed:

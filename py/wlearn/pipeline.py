@@ -1,6 +1,9 @@
 from .errors import ValidationError, NotFittedError, DisposedError
-from .bundle import encode_bundle, decode_bundle
-from .registry import register, load as registry_load
+from .bundle import encode_bundle, validate_bundle, write_bundle_output
+from .registry import (
+    register, load as registry_load, _load_with_context,
+    assert_required_loaders,
+)
 
 PIPELINE_TYPE_ID = 'wlearn.pipeline@1'
 
@@ -77,7 +80,7 @@ class Pipeline:
         return last.score(transformed, y)
 
     @classmethod
-    def load(cls, data):
+    def load(cls, data, *, loader_options=None):
         """Load a pipeline from a WLRN bundle.
 
         Each step's artifact is loaded via the global registry.
@@ -88,22 +91,45 @@ class Pipeline:
         Returns:
             Pipeline instance (fitted)
         """
-        manifest, toc, blobs = decode_bundle(data)
-        steps = []
-        for step_info in manifest.get('steps', []):
-            name = step_info['name']
-            entry = next((t for t in toc if t['id'] == name), None)
-            if entry is None:
-                raise ValidationError(
-                    f'No artifact found for pipeline step "{name}"')
-            blob = bytes(blobs[entry['offset']:entry['offset'] + entry['length']])
-            estimator = registry_load(blob)
-            steps.append((name, estimator))
-        pipe = cls(steps)
-        pipe._fitted = True
-        return pipe
+        manifest, _, _ = validate_bundle(data)
+        actual_type_id = manifest.get('typeId')
+        if actual_type_id != PIPELINE_TYPE_ID:
+            raise ValidationError(
+                f'Pipeline.load expected typeId "{PIPELINE_TYPE_ID}", '
+                f'got "{actual_type_id}"')
+        return registry_load(data, loader_options=loader_options)
 
-    def save(self):
+    @classmethod
+    def _load_from_parts(cls, manifest, toc, blobs, context):
+        if manifest.get('typeId') != PIPELINE_TYPE_ID:
+            raise ValidationError(
+                f'Pipeline.load expected typeId "{PIPELINE_TYPE_ID}", '
+                f'got "{manifest.get("typeId")}"')
+        step_infos = manifest.get('steps')
+        if not isinstance(step_infos, list) or not step_infos:
+            raise ValidationError(
+                'Pipeline manifest must contain at least one step')
+        assert_required_loaders(manifest)
+        steps = []
+        try:
+            for step_info in step_infos:
+                name = step_info['name']
+                entry = next((t for t in toc if t['id'] == name), None)
+                if entry is None:
+                    raise ValidationError(
+                        f'No artifact found for pipeline step "{name}"')
+                blob = bytes(
+                    blobs[entry['offset']:entry['offset'] + entry['length']])
+                estimator = _load_with_context(blob, context)
+                steps.append((name, estimator))
+            pipe = cls(steps)
+            pipe._fitted = True
+            return pipe
+        except Exception:
+            _dispose_loaded([estimator for _, estimator in steps])
+            raise
+
+    def save(self, path=None):
         """Save pipeline to a WLRN bundle.
 
         Returns:
@@ -122,7 +148,7 @@ class Pipeline:
             {'id': name, 'data': est.save(), 'mediaType': 'application/x-wlearn-bundle'}
             for name, est in self._steps
         ]
-        return encode_bundle(manifest, artifacts)
+        return write_bundle_output(encode_bundle(manifest, artifacts), path)
 
     def dispose(self):
         if self._disposed:
@@ -152,21 +178,19 @@ class Pipeline:
             raise NotFittedError('Pipeline is not fitted. Call fit() first.')
 
 
-def _pipeline_loader(manifest, toc, blobs):
+def _pipeline_loader(manifest, toc, blobs, context):
     """Registry loader for wlearn.pipeline@1 bundles."""
-    steps = []
-    for step_info in manifest.get('steps', []):
-        name = step_info['name']
-        entry = next((t for t in toc if t['id'] == name), None)
-        if entry is None:
-            raise ValidationError(
-                f'No artifact found for pipeline step "{name}"')
-        blob = bytes(blobs[entry['offset']:entry['offset'] + entry['length']])
-        estimator = registry_load(blob)
-        steps.append((name, estimator))
-    pipe = Pipeline(steps)
-    pipe._fitted = True
-    return pipe
+    return Pipeline._load_from_parts(manifest, toc, blobs, context)
 
 
-register(PIPELINE_TYPE_ID, _pipeline_loader)
+def _dispose_loaded(estimators):
+    for estimator in reversed(estimators):
+        try:
+            if hasattr(estimator, 'dispose'):
+                estimator.dispose()
+        except Exception:
+            # Preserve the load error; cleanup is best effort for partial state.
+            pass
+
+
+register(PIPELINE_TYPE_ID, _pipeline_loader, accepts_context=True)

@@ -29,3 +29,18 @@ class NotFittedError(WlearnError):
 class DisposedError(WlearnError):
     def __init__(self, message='Model has been disposed.'):
         super().__init__(message, 'ERR_DISPOSED')
+
+
+class ResourceLimitError(WlearnError):
+    def __init__(self, message='Resource limit exceeded.'):
+        super().__init__(message, 'ERR_RESOURCE_LIMIT')
+
+
+class CancelledError(WlearnError):
+    def __init__(self, message='Operation cancelled.'):
+        super().__init__(message, 'ERR_CANCELLED')
+
+
+class BackendError(WlearnError):
+    def __init__(self, message='Backend operation failed.'):
+        super().__init__(message, 'ERR_BACKEND')

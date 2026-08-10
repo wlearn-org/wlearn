@@ -10,7 +10,7 @@ import json
 import numpy as np
 
 from .errors import NotFittedError, DisposedError, ValidationError
-from .bundle import encode_bundle
+from .bundle import encode_bundle, write_bundle_output
 from .registry import register
 
 STANDARD_SCALER_TYPE_ID = 'wlearn.preprocess.standard_scaler@1'
@@ -68,16 +68,17 @@ class StandardScaler:
         self.fit(X, y)
         return self.transform(X)
 
-    def save(self):
+    def save(self, path=None):
         self._ensure_fitted()
         artifact = json.dumps(
             {'means': self._means.tolist(), 'stds': self._stds.tolist()},
             sort_keys=True, separators=(',', ':'),
         ).encode()
-        return encode_bundle(
+        bundle = encode_bundle(
             {'typeId': STANDARD_SCALER_TYPE_ID, 'params': self.get_params()},
             [{'id': 'params', 'data': artifact, 'mediaType': 'application/json'}],
         )
+        return write_bundle_output(bundle, path)
 
     @staticmethod
     def _from_bundle(manifest, toc, blobs):
@@ -165,16 +166,17 @@ class MinMaxScaler:
         self.fit(X, y)
         return self.transform(X)
 
-    def save(self):
+    def save(self, path=None):
         self._ensure_fitted()
         artifact = json.dumps(
             {'mins': self._mins.tolist(), 'maxs': self._maxs.tolist()},
             sort_keys=True, separators=(',', ':'),
         ).encode()
-        return encode_bundle(
+        bundle = encode_bundle(
             {'typeId': MINMAX_SCALER_TYPE_ID, 'params': self.get_params()},
             [{'id': 'params', 'data': artifact, 'mediaType': 'application/json'}],
         )
+        return write_bundle_output(bundle, path)
 
     @staticmethod
     def _from_bundle(manifest, toc, blobs):
