@@ -89,4 +89,17 @@ describe('SuccessiveHalvingSearch', () => {
   it('throws on empty models', () => {
     assert.throws(() => new SuccessiveHalvingSearch([]), ValidationError)
   })
+
+  it('rejects when every candidate fails before evaluation', async () => {
+    class AlwaysFails {
+      static classId = 'wlearn.test.always-fails@1'
+      static defaultSearchSpace() { return {} }
+      static async create() { throw new Error('create failed') }
+    }
+    const halving = new SuccessiveHalvingSearch(
+      [{ name: 'fails', cls: AlwaysFails }],
+      { nIter: 2, cv: 2, task: 'classification' }
+    )
+    await assert.rejects(() => halving.fit(X, yCls), /create failed/)
+  })
 })

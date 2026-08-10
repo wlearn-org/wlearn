@@ -328,10 +328,19 @@ function createPreprocessAPI(defaultBackend, backendName) {
     TYPE_ID,
     PLAN_MEDIA_TYPE,
     Preprocessor,
+    resolvePreprocessConfig,
     registerPreprocess,
     StandardScaler,
     MinMaxScaler
   }
+}
+
+/**
+ * Resolve and validate a public preprocessing request without loading Tranfi.
+ * AutoML uses this pure boundary before candidate IDs are created.
+ */
+function resolvePreprocessConfig(config = {}) {
+  return freezeJSON(resolveConfig(config))
 }
 
 async function loadFromParts(Preprocessor, backend, manifest, toc, blobs, runtimeOptions) {
@@ -949,5 +958,6 @@ module.exports = {
   createPreprocessAPI,
   buildRecipe,
   recipeFingerprint,
-  resolveConfig
+  resolveConfig,
+  resolvePreprocessConfig
 }

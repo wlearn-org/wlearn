@@ -252,6 +252,13 @@ describe('logLoss', () => {
       ValidationError
     )
   })
+
+  it('throws on non-finite probabilities', () => {
+    assert.throws(
+      () => logLoss(new Int32Array([0, 1]), new Float64Array([0.5, 0.5, NaN, 0.5])),
+      ValidationError
+    )
+  })
 })
 
 describe('rocAuc', () => {
@@ -275,6 +282,14 @@ describe('rocAuc', () => {
     approx(rocAuc(yTrue, scores), 0)
   })
 
+  it('uses average ranks for tied scores', () => {
+    approx(rocAuc(new Int32Array([0, 1]), new Float64Array([0.5, 0.5])), 0.5)
+    approx(
+      rocAuc(new Int32Array([0, 1, 0, 1]), new Float64Array([0.5, 0.5, 0.2, 0.8])),
+      0.875
+    )
+  })
+
   it('throws on >2 classes', () => {
     assert.throws(
       () => rocAuc(new Int32Array([0, 1, 2]), new Float64Array([0.1, 0.5, 0.9])),
@@ -294,5 +309,103 @@ describe('rocAuc', () => {
       () => rocAuc(new Int32Array([0, 1]), new Float64Array([0.5])),
       ValidationError
     )
+  })
+
+  it('throws on non-finite scores', () => {
+    assert.throws(
+      () => rocAuc(new Int32Array([0, 1]), new Float64Array([0.5, NaN])),
+      ValidationError
+    )
+  })
+})
+
+describe('extended metric semantics', () => {
+  it('supports sample-weighted classification and regression metrics', () => {
+    approx(accuracy(
+      new Int32Array([0, 1, 1, 0]),
+      new Int32Array([0, 0, 1, 1]),
+      { sampleWeight: new Float64Array([1, 3, 5, 1]) }
+    ), 0.6)
+    approx(meanSquaredError(
+      new Float64Array([0, 0, 0]),
+      new Float64Array([1, 2, 3]),
+      { sampleWeight: new Float64Array([1, 2, 1]) }
+    ), (1 + 8 + 9) / 4)
+    approx(meanAbsoluteError(
+      new Float64Array([0, 0, 0]),
+      new Float64Array([1, 2, 3]),
+      { sampleWeight: new Float64Array([1, 2, 1]) }
+    ), (1 + 4 + 3) / 4)
+    approx(r2Score(
+      new Float64Array([1, 2, 4]),
+      new Float64Array([1, 1, 5]),
+      { sampleWeight: new Float64Array([1, 2, 1]) }
+    ), 1 - 3 / 4.75)
+  })
+
+  it('supports weighted confusion matrices and weighted macro-style averages', () => {
+    const { matrix } = confusionMatrix(
+      new Int32Array([0, 0, 1, 1]),
+      new Int32Array([0, 1, 0, 1]),
+      { sampleWeight: new Float64Array([1, 2, 3, 4]) }
+    )
+    assert(matrix instanceof Float64Array)
+    assert.deepEqual([...matrix], [1, 2, 3, 4])
+
+    const yTrue = new Int32Array([0, 0, 1, 1, 1])
+    const yPred = new Int32Array([0, 1, 1, 0, 1])
+    const weights = new Float64Array([1, 1, 2, 2, 2])
+    approx(precisionScore(yTrue, yPred, { average: 'weighted', sampleWeight: weights }), ((1 / 3) * 2 + (4 / 5) * 6) / 8)
+    approx(recallScore(yTrue, yPred, { average: 'weighted', sampleWeight: weights }), (0.5 * 2 + (4 / 6) * 6) / 8)
+    approx(f1Score(yTrue, yPred, { average: 'weighted', sampleWeight: weights }), ((2 / 5) * 2 + (8 / 11) * 6) / 8)
+  })
+
+  it('supports explicit zero-division warning behavior', () => {
+    const warnings = []
+    approx(precisionScore(
+      new Int32Array([0, 0]),
+      new Int32Array([0, 0]),
+      { classes: [0, 1], average: 'macro', zeroDivision: 'warn', warnings }
+    ), 0.5)
+    assert.equal(warnings.length, 1)
+    assert.equal(warnings[0].type, 'undefined_metric')
+  })
+
+  it('supports weighted log loss and weighted AUC', () => {
+    approx(logLoss(
+      new Int32Array([0, 1]),
+      new Float64Array([0.75, 0.25, 0.25, 0.75]),
+      { sampleWeight: new Float64Array([1, 3]) }
+    ), -Math.log(0.75))
+    approx(rocAuc(
+      new Int32Array([0, 1, 0, 1]),
+      new Float64Array([0.1, 0.2, 0.3, 0.4]),
+      { sampleWeight: new Float64Array([1, 2, 3, 4]) }
+    ), 0.75)
+  })
+
+  it('supports multiclass one-vs-rest and one-vs-one AUC', () => {
+    const yTrue = new Int32Array([0, 1, 2, 0, 1, 2])
+    const scores = new Float64Array([
+      0.9, 0.05, 0.05,
+      0.05, 0.9, 0.05,
+      0.05, 0.05, 0.9,
+      0.8, 0.1, 0.1,
+      0.1, 0.8, 0.1,
+      0.1, 0.1, 0.8
+    ])
+    approx(rocAuc(yTrue, scores, { classes: [0, 1, 2], multiClass: 'ovr' }), 1)
+    approx(rocAuc(yTrue, scores, { classes: [0, 1, 2], multiClass: 'ovo' }), 1)
+  })
+
+  it('can return NaN with warning for undefined AUC', () => {
+    const warnings = []
+    const value = rocAuc(
+      new Int32Array([1, 1, 1]),
+      new Float64Array([0.1, 0.5, 0.9]),
+      { undefinedValue: 'warn', warnings }
+    )
+    assert(Number.isNaN(value))
+    assert.equal(warnings.length, 1)
   })
 })

@@ -1,9 +1,10 @@
 """Shared utilities matching JS automl/common.js."""
 
-import json
 import time
 
 import numpy as np
+
+from ._candidate import make_candidate_id, seed_for
 
 
 def detect_task(y):
@@ -20,48 +21,6 @@ def detect_task(y):
             return 'regression'
         unique.add(v_float)
     return 'classification' if len(unique) <= 20 else 'regression'
-
-
-def _stable_stringify(obj):
-    """Stable JSON stringify with sorted keys matching JS stableStringify."""
-    if obj is None:
-        return 'null'
-    if isinstance(obj, bool):
-        return 'true' if obj else 'false'
-    if isinstance(obj, (int, float)):
-        return str(obj)
-    if isinstance(obj, str):
-        return json.dumps(obj)
-    if isinstance(obj, (list, tuple)):
-        return '[' + ','.join(_stable_stringify(v) for v in obj) + ']'
-    if isinstance(obj, dict):
-        keys = sorted(obj.keys())
-        return '{' + ','.join(
-            json.dumps(k) + ':' + _stable_stringify(obj[k]) for k in keys
-        ) + '}'
-    return str(obj)
-
-
-def make_candidate_id(model_label, params):
-    """Stable candidate ID from model label and params."""
-    return model_label + ':' + _stable_stringify(params)
-
-
-def _hash_string(s):
-    """FNV-1a inspired hash matching JS hashString."""
-    h = 0x811c9dc5
-    for ch in s:
-        h ^= ord(ch)
-        h = (h * 0x01000193) & 0x7fffffff
-    return h
-
-
-def seed_for(candidate_id, fold_idx, base_seed):
-    """Derive a deterministic seed from base seed, candidate ID, and fold index."""
-    h = _hash_string(candidate_id)
-    s = (base_seed * 2654435761 + h * 40503 + fold_idx * 65537) & 0x7fffffff
-    s = (((s >> 16) ^ s) * 0x45d9f3b) & 0x7fffffff
-    return s
 
 
 def partial_shuffle(indices, k, rng):

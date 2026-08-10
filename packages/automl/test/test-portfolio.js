@@ -77,7 +77,7 @@ describe('getPortfolio', () => {
 describe('PortfolioStrategy', () => {
   it('yields all portfolio configs for known models', () => {
     const strategy = new PortfolioStrategy(
-      [{ name: 'xgb', cls: SearchableMock }],
+      [{ name: 'xgb', portfolioKey: 'xgb', cls: SearchableMock }],
       { task: 'classification' }
     )
     let count = 0
@@ -92,8 +92,8 @@ describe('PortfolioStrategy', () => {
   it('yields correct total for multiple models', () => {
     const strategy = new PortfolioStrategy(
       [
-        { name: 'xgb', cls: SearchableMock },
-        { name: 'knn', cls: SearchableMock },
+        { name: 'xgb', portfolioKey: 'xgb', classId: 'wlearn.test.xgb@1', cls: SearchableMock },
+        { name: 'knn', portfolioKey: 'knn', classId: 'wlearn.test.knn@1', cls: SearchableMock },
       ],
       { task: 'classification' }
     )
@@ -108,7 +108,7 @@ describe('PortfolioStrategy', () => {
 
   it('fixed params override portfolio configs', () => {
     const strategy = new PortfolioStrategy(
-      [{ name: 'xgb', cls: SearchableMock, params: { eta: 999 } }],
+      [{ name: 'xgb', portfolioKey: 'xgb', cls: SearchableMock, params: { eta: 999 } }],
       { task: 'classification' }
     )
     while (!strategy.isDone()) {
@@ -134,7 +134,7 @@ describe('PortfolioStrategy', () => {
 
   it('returns null after exhaustion', () => {
     const strategy = new PortfolioStrategy(
-      [{ name: 'knn', cls: SearchableMock }],
+      [{ name: 'knn', portfolioKey: 'knn', cls: SearchableMock }],
       { task: 'classification' }
     )
     // Drain all
@@ -145,7 +145,7 @@ describe('PortfolioStrategy', () => {
 
   it('candidates have candidateId, cls, params', () => {
     const strategy = new PortfolioStrategy(
-      [{ name: 'knn', cls: SearchableMock }],
+      [{ name: 'knn', portfolioKey: 'knn', cls: SearchableMock }],
       { task: 'classification' }
     )
     const task = strategy.next()
@@ -157,7 +157,7 @@ describe('PortfolioStrategy', () => {
 
   it('report is a no-op', () => {
     const strategy = new PortfolioStrategy(
-      [{ name: 'knn', cls: SearchableMock }],
+      [{ name: 'knn', portfolioKey: 'knn', cls: SearchableMock }],
       { task: 'classification' }
     )
     strategy.report({ candidateId: 'x', meanScore: 0.5 })
@@ -247,8 +247,8 @@ describe('autoFit with strategy=portfolio', () => {
   it('strategy=portfolio with ensemble', async () => {
     const result = await autoFit(
       [
-        { name: 'm1', cls: SearchableMock },
-        { name: 'm2', cls: SearchableMock },
+        { name: 'm1', classId: 'wlearn.test.m1@1', cls: SearchableMock },
+        { name: 'm2', classId: 'wlearn.test.m2@1', cls: SearchableMock },
       ],
       X, yCls,
       { cv: 2, task: 'classification', strategy: 'portfolio', ensemble: true, ensembleSize: 3 }

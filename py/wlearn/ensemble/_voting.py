@@ -52,21 +52,32 @@ class VotingEnsemble:
     def fit(self, X, y):
         self._ensure_alive()
 
+        classes = self._classes
         if self._task == 'classification':
             labels = sorted(set(int(v) for v in y))
-            self._classes = np.array(labels, dtype=np.int32)
+            classes = np.array(labels, dtype=np.int32)
 
-        if self._weights is None:
+        weights = self._weights
+        if weights is None:
             n = len(self._specs)
-            self._weights = np.full(n, 1.0 / n, dtype=np.float64)
+            weights = np.full(n, 1.0 / n, dtype=np.float64)
 
-        self._models = []
-        for name, est_cls, params in self._specs:
-            model = est_cls.create(params or {})
-            model.fit(X, y)
-            self._models.append(model)
+        models = []
+        try:
+            for _name, est_cls, params in self._specs:
+                model = est_cls.create(params or {})
+                models.append(model)
+                model.fit(X, y)
+        except Exception as exc:
+            _dispose_owned(models, exc)
+            raise
 
+        previous = self._models or []
+        self._models = models
+        self._classes = classes
+        self._weights = weights
         self._fitted = True
+        _dispose_owned(previous)
         return self
 
     def predict(self, X):
@@ -128,7 +139,9 @@ class VotingEnsemble:
                 'voting': self._voting,
                 'weights': list(self._weights),
                 'estimatorNames': [s[0] for s in self._specs],
-                'classes': list(self._classes) if self._classes is not None else None,
+                'classes': (
+                    [int(value) for value in self._classes]
+                    if self._classes is not None else None),
             },
         }
         artifacts = [
@@ -156,9 +169,7 @@ class VotingEnsemble:
         if self._disposed:
             return
         self._disposed = True
-        if self._models:
-            for m in self._models:
-                m.dispose()
+        _dispose_owned(self._models or [])
 
     def get_params(self):
         return {
@@ -273,10 +284,17 @@ class VotingEnsemble:
 
 
 def _dispose_loaded(models):
+    _dispose_owned(models, RuntimeError('preserve load error'))
+
+
+def _dispose_owned(models, operation_error=None):
+    first_error = None
     for model in reversed(models):
         try:
             if hasattr(model, 'dispose'):
                 model.dispose()
-        except Exception:
-            # Preserve the load error; cleanup is best effort for partial state.
-            pass
+        except Exception as exc:
+            if first_error is None:
+                first_error = exc
+    if operation_error is None and first_error is not None:
+        raise first_error

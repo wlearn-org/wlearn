@@ -33,8 +33,8 @@ describe('RandomSearch regression snapshot', () => {
   it('produces 6 entries for 2 models with nIter=3', async () => {
     const search = new RandomSearch(
       [
-        { name: 'm1', cls: SearchableMock },
-        { name: 'm2', cls: SearchableMock },
+        { name: 'm1', classId: 'wlearn.test.m1@1', cls: SearchableMock },
+        { name: 'm2', classId: 'wlearn.test.m2@1', cls: SearchableMock },
       ],
       { nIter: 3, cv: 2, seed: 42, task: 'classification' }
     )

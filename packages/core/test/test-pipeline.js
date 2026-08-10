@@ -180,6 +180,23 @@ describe('Pipeline', () => {
     assert.deepEqual(params.classify, { type: 'classifier' })
   })
 
+  it('defensively snapshots candidate provenance', () => {
+    const source = {
+      candidate: {
+        model: { classId: 'wlearn.test.model@1', params: { depth: 3 } },
+      },
+    }
+    const pipe = new Pipeline(
+      [['classify', createMockClassifier()]],
+      { provenance: source }
+    )
+    source.candidate.model.params.depth = 99
+    assert.equal(pipe.provenance.candidate.model.params.depth, 3)
+    const exposed = pipe.provenance
+    exposed.candidate.model.params.depth = 7
+    assert.equal(pipe.provenance.candidate.model.params.depth, 3)
+  })
+
   it('throws NotFittedError before fit', () => {
     const clf = createMockClassifier()
     const pipe = new Pipeline([['classify', clf]])
@@ -190,7 +207,15 @@ describe('Pipeline', () => {
   it('save produces valid WLRN bundle', () => {
     const t1 = createMockTransformer('t1')
     const clf = createMockClassifier()
-    const pipe = new Pipeline([['transform', t1], ['classify', clf]])
+    const provenance = {
+      candidate: {
+        model: { classId: 'wlearn.test.model@1', params: { depth: 3 } },
+      },
+    }
+    const pipe = new Pipeline(
+      [['transform', t1], ['classify', clf]],
+      { provenance }
+    )
     pipe.fit(X, y)
 
     const bytes = pipe.save()
@@ -202,6 +227,7 @@ describe('Pipeline', () => {
     assert.equal(manifest.steps.length, 2)
     assert.equal(manifest.steps[0].name, 'transform')
     assert.equal(manifest.steps[1].name, 'classify')
+    assert.deepEqual(manifest.metadata.provenance, provenance)
     assert.equal(toc.length, 2)
 
     // Each step blob should be a valid WLRN bundle
@@ -235,7 +261,15 @@ describe('Pipeline.load', () => {
 
     const t1 = createMockTransformer('t1')
     const clf = createMockClassifier()
-    const pipe = new Pipeline([['transform', t1], ['classify', clf]])
+    const provenance = {
+      candidate: {
+        model: { classId: 'wlearn.test.model@1', params: { depth: 3 } },
+      },
+    }
+    const pipe = new Pipeline(
+      [['transform', t1], ['classify', clf]],
+      { provenance }
+    )
     pipe.fit(X, y)
 
     const bytes = pipe.save()
@@ -245,6 +279,7 @@ describe('Pipeline.load', () => {
     const preds = loaded.predict(X)
     assert(preds instanceof Float64Array)
     assert.equal(preds.length, 3)
+    assert.deepEqual(loaded.provenance, provenance)
 
     loaded.dispose()
   })

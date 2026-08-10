@@ -1,6 +1,8 @@
-const { normalizeX, normalizeY, makeLCG, getScorer } = require('@wlearn/core')
+const {
+  normalizeX, normalizeY, makeLCG, getScorer, Archive, ValidationError
+} = require('@wlearn/core')
 const { Leaderboard } = require('./leaderboard.js')
-const { now, seedFor, partialShuffle } = require('./common.js')
+const { now, makeCandidateId, seedFor, partialShuffle } = require('./common.js')
 
 const { ceil, min } = Math
 
@@ -44,6 +46,10 @@ class Executor {
   #seed
   #startTime
   #leaderboard
+  #archive
+  #metric
+  #failedSeq = 0
+  #firstError = null
   #onProgress
 
   /**
@@ -57,6 +63,9 @@ class Executor {
    * @param {Function} opts.onProgress - optional progress callback
    */
   constructor({ folds, scoring, X, y, timeLimitMs = 0, seed = 42, onProgress }) {
+    if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) {
+      throw new ValidationError('Executor seed must be an unsigned 32-bit integer')
+    }
     this.#folds = folds
     this.#scorerFn = getScorer(scoring)
     this.#X = X
@@ -65,11 +74,31 @@ class Executor {
     this.#seed = seed
     this.#startTime = now()
     this.#leaderboard = new Leaderboard()
+    this.#metric = typeof scoring === 'string' ? scoring : 'score'
+    this.#archive = new Archive({
+      id: 'automl',
+      measures: [this.#metric],
+      primaryMeasure: this.#metric,
+      direction: 'maximize',
+      metadata: {
+        source: '@wlearn/automl',
+        seed,
+        folds: folds.length
+      }
+    })
     this.#onProgress = onProgress || null
   }
 
   get leaderboard() {
     return this.#leaderboard
+  }
+
+  get archive() {
+    return this.#archive
+  }
+
+  get firstError() {
+    return this.#firstError
   }
 
   get isTimedOut() {
@@ -87,21 +116,28 @@ class Executor {
    * @param {object} [candidateEval.budget] - optional budget constraint
    * @returns {Promise<object>} CandidateResult
    */
-  async evaluateCandidate({ candidateId, cls, params, budget }) {
+  async evaluateCandidate({ candidateId, candidate, cls, params, budget }) {
+    if (makeCandidateId(candidate) !== candidateId) {
+      throw new ValidationError('candidateId does not match the structured candidate')
+    }
     const folds = this.#folds
     const scores = new Float64Array(folds.length)
+    const foldSeeds = new Uint32Array(folds.length)
     const t0 = now()
     let totalTrainUsed = 0
 
     // Resolve effective params (apply rounds budget if applicable)
-    const effectiveParams = this.#applyRoundsBudget(cls, params, budget)
+    const effectiveParams = this.#applyRoundsBudget(
+      cls, candidate.model.params, budget
+    )
 
     for (let f = 0; f < folds.length; f++) {
+      foldSeeds[f] = seedFor(candidate, f, this.#seed)
       let { train, test } = folds[f]
 
       // Apply subsample budget to train only
       if (budget && budget.type === 'subsample') {
-        train = this.#subsampleTrain(train, budget.value, candidateId, f)
+        train = this.#subsampleTrain(train, budget.value, candidate, f)
       }
 
       totalTrainUsed += train.length
@@ -112,12 +148,20 @@ class Executor {
       const ytest = subsetY(this.#y, test)
 
       const model = await cls.create(effectiveParams)
+      let operationError = null
       try {
         model.fit(Xtrain, ytrain)
         const preds = await model.predict(Xtest)
         scores[f] = this.#scorerFn(ytest, preds)
+      } catch (error) {
+        operationError = error
+        throw error
       } finally {
-        model.dispose()
+        try {
+          model.dispose()
+        } catch (disposeError) {
+          if (operationError === null) throw disposeError
+        }
       }
     }
 
@@ -125,21 +169,83 @@ class Executor {
 
     // Record in leaderboard
     const entry = this.#leaderboard.add({
-      modelName: candidateId.split(':')[0],
-      params,
+      candidateId,
+      candidate,
       scores,
+      baseSeed: this.#seed,
+      foldSeeds,
       fitTimeMs,
+    })
+
+    this.#archive.add({
+      trialId: `automl-${entry.id}`,
+      candidateId,
+      seed: this.#seed,
+      params: candidate.model.params,
+      budget,
+      status: 'ok',
+      scores: { [this.#metric]: entry.meanScore },
+      primaryScore: entry.meanScore,
+      timings: { fitTimeMs },
+      metadata: {
+        sourceCandidateId: candidateId,
+        candidate,
+        leaderboardId: entry.id,
+        modelName: entry.modelName,
+        foldScores: Array.from(scores),
+        foldSeeds: Array.from(foldSeeds, (value, foldId) => ({
+          foldId,
+          seed: value,
+        })),
+        stdScore: entry.stdScore,
+        nTrainUsed: Math.round(totalTrainUsed / folds.length),
+        nTest: folds[0].test.length
+      }
     })
 
     return {
       candidateId,
+      candidate,
+      params: candidate.model.params,
       meanScore: entry.meanScore,
       foldScores: scores,
+      baseSeed: this.#seed,
+      foldSeeds,
       stdScore: entry.stdScore,
       fitTimeMs,
       nTrainUsed: Math.round(totalTrainUsed / folds.length),
       nTest: folds[0].test.length,
     }
+  }
+
+  recordFailure(task, error, phase = 'fit') {
+    if (this.#firstError === null) this.#firstError = error
+    const candidateId = task && task.candidateId ? task.candidateId : 'candidate'
+    const seq = this.#failedSeq++
+    return this.#archive.fail({
+      trialId: `automl-failed-${seq}`,
+      candidateId,
+      seed: this.#seed,
+      params: task && task.candidate ? task.candidate.model.params : {},
+      budget: task ? task.budget : undefined,
+      metadata: {
+        sourceCandidateId: candidateId,
+        candidate: task ? task.candidate : null,
+        foldSeeds: task && task.candidate
+          ? this.#foldSeeds(task.candidate)
+          : [],
+        modelName: task && task.candidate
+          ? task.candidate.model.displayName
+          : 'candidate'
+      }
+    }, error, phase)
+  }
+
+  #foldSeeds(candidate) {
+    return this.#folds.map((_fold, foldId) => ({
+      foldId,
+      seed: seedFor(candidate, foldId, this.#seed),
+    }))
   }
 
   /**
@@ -160,12 +266,12 @@ class Executor {
    * Subsample train indices using partial Fisher-Yates with deterministic seed.
    * Returns a new array of selected indices. Test indices are never subsampled.
    */
-  #subsampleTrain(train, fraction, candidateId, foldIdx) {
+  #subsampleTrain(train, fraction, candidate, foldIdx) {
     const k = Math.max(1, ceil(train.length * fraction))
     if (k >= train.length) return train
     // Copy to avoid mutating the original fold indices
     const copy = new Int32Array(train)
-    const seed = seedFor(candidateId, foldIdx, this.#seed)
+    const seed = seedFor(candidate, foldIdx, this.#seed)
     const rng = makeLCG(seed)
     return partialShuffle(copy, k, rng)
   }
@@ -192,19 +298,20 @@ class Executor {
             bestScore: best ? best.meanScore : null,
             bestModel: best ? best.modelName : null,
             lastCandidate: {
-              model: result.candidateId.split(':')[0],
+              model: result.candidate.model.displayName,
               score: result.meanScore,
               timeMs: result.fitTimeMs,
             },
             elapsedMs: now() - this.#startTime,
           })
         }
-      } catch {
+      } catch (error) {
         done++
+        this.recordFailure(task, error)
         // Skip failed candidates (invalid params, create errors, etc.)
       }
     }
-    return { leaderboard: this.#leaderboard }
+    return { leaderboard: this.#leaderboard, archive: this.#archive }
   }
 }
 

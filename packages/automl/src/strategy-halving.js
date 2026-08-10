@@ -1,6 +1,8 @@
 const { makeLCG } = require('@wlearn/core')
 const { sampleConfig } = require('./sampler.js')
-const { makeCandidateId } = require('./common.js')
+const {
+  createCandidateTask, normalizeModelSpecs, preprocessChoices
+} = require('./candidate.js')
 
 const { ceil, log, max, min, floor } = Math
 
@@ -46,7 +48,8 @@ class HalvingStrategy {
     // Generate all candidate configs
     const rng = makeLCG(seed)
     const allCandidates = []
-    for (const model of models) {
+    const seen = new Map()
+    for (const model of normalizeModelSpecs(models)) {
       const space = model.searchSpace || model.cls.defaultSearchSpace?.() || {}
       const effectiveSpace = { ...space }
       if (model.params) {
@@ -58,12 +61,11 @@ class HalvingStrategy {
       for (let i = 0; i < nIter; i++) {
         const config = sampleConfig(effectiveSpace, configRng)
         const params = { ...config, ...(model.params || {}) }
-        const candidateId = makeCandidateId(model.name, params)
-        allCandidates.push({
-          candidateId,
-          cls: model.cls,
-          params,
-        })
+        for (const preprocess of preprocessChoices(model)) {
+          allCandidates.push(createCandidateTask(
+            model, params, preprocess, seen
+          ))
+        }
       }
     }
 

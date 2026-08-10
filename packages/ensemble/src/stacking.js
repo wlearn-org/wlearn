@@ -64,12 +64,14 @@ class StackingEnsemble {
     const yn = normalizeY(y)
     const n = Xn.rows
 
-    // Discover classes
+    // Discover classes without changing the currently fitted state.
+    let classes = null
+    let nClasses = 0
     if (this.#task === 'classification') {
       const labelSet = new Set()
       for (let i = 0; i < yn.length; i++) labelSet.add(yn[i])
-      this.#classes = new Int32Array([...labelSet].sort((a, b) => a - b))
-      this.#nClasses = this.#classes.length
+      classes = new Int32Array([...labelSet].sort((a, b) => a - b))
+      nClasses = classes.length
     }
 
     // Generate folds
@@ -79,7 +81,7 @@ class StackingEnsemble {
 
     // Step 1: Generate OOF predictions for each base model
     const nBase = this.#baseSpecs.length
-    const colsPerModel = this.#task === 'classification' ? this.#nClasses : 1
+    const colsPerModel = this.#task === 'classification' ? nClasses : 1
     const oofCols = nBase * colsPerModel
     const oofData = new Float64Array(n * oofCols)
 
@@ -91,14 +93,15 @@ class StackingEnsemble {
         const Xtest = _subsetX(Xn, test)
 
         const model = await EstClass.create(params || {})
+        let operationError = null
         try {
           model.fit(Xtrain, ytrain)
           if (this.#task === 'classification') {
             const proba = await model.predictProba(Xtest)
             for (let i = 0; i < test.length; i++) {
               const row = test[i]
-              for (let c = 0; c < this.#nClasses; c++) {
-                oofData[row * oofCols + b * colsPerModel + c] = proba[i * this.#nClasses + c]
+              for (let c = 0; c < nClasses; c++) {
+                oofData[row * oofCols + b * colsPerModel + c] = proba[i * nClasses + c]
               }
             }
           } else {
@@ -107,49 +110,66 @@ class StackingEnsemble {
               oofData[test[i] * oofCols + b] = preds[i]
             }
           }
+        } catch (error) {
+          operationError = error
+          throw error
         } finally {
-          model.dispose()
+          _disposeOwned([model], operationError)
         }
       }
     }
 
     // Step 2: Build meta-feature matrix
     let metaX
+    let nMetaCols
     if (this.#passthrough) {
-      this.#nMetaCols = oofCols + Xn.cols
-      const metaData = new Float64Array(n * this.#nMetaCols)
+      nMetaCols = oofCols + Xn.cols
+      const metaData = new Float64Array(n * nMetaCols)
       for (let i = 0; i < n; i++) {
         // OOF predictions
         metaData.set(
           oofData.subarray(i * oofCols, (i + 1) * oofCols),
-          i * this.#nMetaCols
+          i * nMetaCols
         )
         // Original features
         metaData.set(
           Xn.data.subarray(i * Xn.cols, (i + 1) * Xn.cols),
-          i * this.#nMetaCols + oofCols
+          i * nMetaCols + oofCols
         )
       }
-      metaX = { data: metaData, rows: n, cols: this.#nMetaCols }
+      metaX = { data: metaData, rows: n, cols: nMetaCols }
     } else {
-      this.#nMetaCols = oofCols
+      nMetaCols = oofCols
       metaX = { data: oofData, rows: n, cols: oofCols }
     }
 
-    // Step 3: Train base models on full data
-    this.#baseModels = []
-    for (const [, EstClass, params] of this.#baseSpecs) {
-      const model = await EstClass.create(params || {})
-      model.fit(Xn, yn)
-      this.#baseModels.push(model)
+    // Steps 3-4 build replacement state transactionally. Every successful
+    // create transfers ownership immediately, before fit can fail.
+    const baseModels = []
+    let metaModel = null
+    try {
+      for (const [, EstClass, params] of this.#baseSpecs) {
+        const model = await EstClass.create(params || {})
+        baseModels.push(model)
+        model.fit(Xn, yn)
+      }
+
+      const [, MetaClass, metaParams] = this.#metaSpec
+      metaModel = await MetaClass.create(metaParams || {})
+      metaModel.fit(metaX, yn)
+    } catch (error) {
+      _disposeOwned([...baseModels, metaModel], error)
+      throw error
     }
 
-    // Step 4: Train meta-model on OOF features
-    const [, MetaClass, metaParams] = this.#metaSpec
-    this.#metaModel = await MetaClass.create(metaParams || {})
-    this.#metaModel.fit(metaX, yn)
-
+    const previous = [...(this.#baseModels || []), this.#metaModel]
+    this.#baseModels = baseModels
+    this.#metaModel = metaModel
+    this.#classes = classes
+    this.#nClasses = nClasses
+    this.#nMetaCols = nMetaCols
     this.#fitted = true
+    _disposeOwned(previous)
     return this
   }
 
@@ -222,10 +242,7 @@ class StackingEnsemble {
   dispose() {
     if (this.#disposed) return
     this.#disposed = true
-    if (this.#baseModels) {
-      for (const m of this.#baseModels) m.dispose()
-    }
-    if (this.#metaModel) this.#metaModel.dispose()
+    _disposeOwned([...(this.#baseModels || []), this.#metaModel])
   }
 
   getParams() {
@@ -373,13 +390,19 @@ class StackingEnsemble {
 }
 
 function _disposeLoaded(models) {
+  _disposeOwned(models, new Error('preserve load error'))
+}
+
+function _disposeOwned(models, operationError = null) {
+  let firstError = null
   for (let i = models.length - 1; i >= 0; i--) {
     try {
       if (typeof models[i]?.dispose === 'function') models[i].dispose()
-    } catch {
-      // Preserve the load error; cleanup is best effort for partial state.
+    } catch (error) {
+      if (firstError === null) firstError = error
     }
   }
+  if (operationError === null && firstError !== null) throw firstError
 }
 
 // --- Subset helpers ---

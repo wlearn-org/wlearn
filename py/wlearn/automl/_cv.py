@@ -90,10 +90,12 @@ def k_fold(n, k=5, do_shuffle=True, seed=42):
 
     Returns list of (train_indices, test_indices) as np.int32 arrays.
     """
+    if not isinstance(n, int) or n < 2:
+        raise ValidationError('kFold: n must be an integer >= 2')
+    if not isinstance(k, int) or k < 2:
+        raise ValidationError('kFold: k must be an integer >= 2')
     if n < k:
         raise ValidationError(f'kFold: n ({n}) must be >= k ({k})')
-    if k < 2:
-        raise ValidationError('kFold: k must be >= 2')
 
     indices = np.arange(n, dtype=np.int32)
     if do_shuffle:
@@ -129,28 +131,33 @@ def stratified_k_fold(y, k=5, do_shuffle=True, seed=42):
     Returns list of (train_indices, test_indices) as np.int32 arrays.
     """
     n = len(y)
+    if not isinstance(k, int) or k < 2:
+        raise ValidationError('stratifiedKFold: k must be an integer >= 2')
     if n < k:
         raise ValidationError(f'stratifiedKFold: n ({n}) must be >= k ({k})')
-    if k < 2:
-        raise ValidationError('stratifiedKFold: k must be >= 2')
 
     # Group indices by class
     class_map = {}
     for i in range(n):
-        label = int(y[i])
+        label = y[i].item() if hasattr(y[i], 'item') else y[i]
         if label not in class_map:
             class_map[label] = []
         class_map[label].append(i)
+    for label, indices in class_map.items():
+        if len(indices) < k:
+            raise ValidationError(
+                f'stratifiedKFold: class "{label}" has only {len(indices)} samples, less than k ({k})'
+            )
 
     if do_shuffle:
         rng = make_lcg(seed)
-        for label in sorted(class_map.keys()):
+        for label in class_map.keys():
             indices = class_map[label]
             shuffle(indices, rng)
 
     # Assign each class's samples round-robin to folds
     fold_tests = [[] for _ in range(k)]
-    for label in sorted(class_map.keys()):
+    for label in class_map.keys():
         indices = class_map[label]
         for i, idx in enumerate(indices):
             fold_tests[i % k].append(idx)

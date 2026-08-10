@@ -191,4 +191,62 @@ describe('StackingEnsemble lifecycle', () => {
     stk.setParams({ cv: 5 })
     assert.equal(stk.getParams().cv, 5)
   })
+
+  for (const failure of ['later-base', 'meta']) {
+    it(`transactionally releases full-data children after ${failure} failure`, async () => {
+      const events = []
+      const live = { count: 0 }
+      const fitError = new Error(`${failure} fit failed`)
+      function modelClass(label, { failFull = false, cleanupThrows = false } = {}) {
+        return class {
+          #disposed = false
+          #full = false
+          static async create() {
+            live.count++
+            return new this()
+          }
+          fit(X) {
+            this.#full = X.rows === 10
+            if (this.#full && failFull) throw fitError
+            return this
+          }
+          predict(X) { return new Int32Array(X.rows) }
+          predictProba(X) {
+            const out = new Float64Array(X.rows * 2)
+            out.fill(0.5)
+            return out
+          }
+          dispose() {
+            if (this.#disposed) return
+            this.#disposed = true
+            live.count--
+            events.push(`${label}:dispose:${this.#full ? 'full' : 'oof'}`)
+            if (this.#full && cleanupThrows) {
+              throw new Error(`${label} cleanup failed`)
+            }
+          }
+        }
+      }
+      const Base1 = modelClass('base1', { cleanupThrows: true })
+      const Base2 = modelClass('base2', {
+        failFull: failure === 'later-base',
+      })
+      const Meta = modelClass('meta', { failFull: failure === 'meta' })
+      const ensemble = await StackingEnsemble.create({
+        estimators: [['base1', Base1, {}], ['base2', Base2, {}]],
+        finalEstimator: ['meta', Meta, {}],
+        cv: 2,
+        task: 'classification',
+      })
+
+      await assert.rejects(() => ensemble.fit(X, yCls), error => error === fitError)
+      assert.equal(live.count, 0)
+      const fullDisposals = events.filter(event => event.endsWith(':full'))
+      assert.deepEqual(fullDisposals, failure === 'later-base'
+        ? ['base2:dispose:full', 'base1:dispose:full']
+        : ['meta:dispose:full', 'base2:dispose:full', 'base1:dispose:full'])
+      ensemble.dispose()
+      assert.equal(live.count, 0)
+    })
+  }
 })

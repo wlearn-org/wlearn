@@ -9,7 +9,13 @@
 const { stratifiedKFold, kFold, normalizeX, normalizeY,
   ValidationError } = require('@wlearn/core')
 const { Executor } = require('./executor.js')
-const { detectTask, makeCandidateId } = require('./common.js')
+const { detectTask } = require('./common.js')
+const {
+  createCandidateTask, normalizeModelSpecs,
+  preprocessChoices
+} = require('./candidate.js')
+const { fitCandidate } = require('./candidate-pipeline.js')
+const { cloneLeaderboardEntry } = require('./leaderboard.js')
 
 // ---------------------------------------------------------------------------
 // Portfolio configs: task -> model_name -> list of param dicts
@@ -340,18 +346,23 @@ class PortfolioStrategy {
    */
   constructor(models, { task = 'classification', seed = 42 } = {}) {
     const portfolio = getPortfolio(task)
+    const seen = new Map()
 
-    for (const model of models) {
-      const name = model.name
-      const cls = model.cls
+    for (const model of normalizeModelSpecs(models)) {
+      const portfolioKey = model.portfolioKey
+        ?? model.cls.portfolioKey
+        ?? model.classId
       const fixed = model.params || {}
 
-      const configs = portfolio[name] || [{}]
+      const configs = portfolio[portfolioKey] || [{}]
 
       for (const config of configs) {
         const params = { ...config, ...fixed }
-        const candidateId = makeCandidateId(name, params)
-        this.#queue.push({ candidateId, cls, params })
+        for (const preprocess of preprocessChoices(model)) {
+          this.#queue.push(createCandidateTask(
+            model, params, preprocess, seen
+          ))
+        }
       }
     }
 
@@ -382,12 +393,13 @@ class PortfolioSearch {
   #opts
   #leaderboard = null
   #bestResult = null
+  #archive = null
 
   constructor(models, opts = {}) {
     if (!models || models.length === 0) {
       throw new ValidationError('PortfolioSearch: at least one model is required')
     }
-    this.#models = models
+    this.#models = normalizeModelSpecs(models, 'PortfolioSearch models')
     this.#opts = {
       scoring: null,
       cv: 5,
@@ -422,15 +434,17 @@ class PortfolioSearch {
 
     const strategy = new PortfolioStrategy(this.#models, { task, seed })
 
-    const { leaderboard } = await executor.runStrategy(strategy)
+    const { leaderboard, archive } = await executor.runStrategy(strategy)
 
     if (leaderboard.length === 0) {
+      if (executor.firstError !== null) throw executor.firstError
       throw new ValidationError('PortfolioSearch: no candidates were evaluated')
     }
 
     this.#leaderboard = leaderboard
+    this.#archive = archive
     this.#bestResult = leaderboard.best()
-    return { leaderboard, bestResult: this.#bestResult }
+    return { leaderboard, archive, bestResult: leaderboard.best() }
   }
 
   async refitBest(X, y) {
@@ -438,16 +452,13 @@ class PortfolioSearch {
       throw new ValidationError('PortfolioSearch: must call fit() first')
     }
     const best = this.#bestResult
-    const model = this.#models.find(m => m.name === best.modelName)
-    const instance = await model.cls.create(best.params)
-    const Xn = normalizeX(X)
-    const yn = normalizeY(y)
-    instance.fit(Xn, yn)
-    return instance
+    const model = this.#models.find(m => m.classId === best.candidate.model.classId)
+    return fitCandidate(model, best.candidate, X, y, best.candidateId)
   }
 
   get leaderboard() { return this.#leaderboard }
-  get bestResult() { return this.#bestResult }
+  get bestResult() { return cloneLeaderboardEntry(this.#bestResult) }
+  get archive() { return this.#archive }
 }
 
 module.exports = { PORTFOLIO, getPortfolio, PortfolioStrategy, PortfolioSearch }

@@ -31,6 +31,10 @@ export interface PreprocessOutputField extends PreprocessInputField {
 export declare const TYPE_ID: 'wlearn.preprocess.tabular@1'
 export declare const PLAN_MEDIA_TYPE: 'application/x-tranfi-transform-plan'
 
+export declare function resolvePreprocessConfig(
+  config?: PreprocessConfig | PreprocessResolvedConfig
+): Readonly<PreprocessResolvedConfig>
+
 export interface PreprocessRuntimeOptions {
   limits?: Record<string, number>
   cancelFlag?: Int32Array

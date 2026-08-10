@@ -67,6 +67,11 @@ _LIMIT_NAMES = {
 }
 
 
+def resolve_preprocess_config(config=None):
+    """Resolve a preprocessing request without importing or initializing Tranfi."""
+    return _clone_json(_resolve_config(config))
+
+
 class Preprocessor:
     """A wlearn Transformer backed by one immutable Tranfi plan."""
 

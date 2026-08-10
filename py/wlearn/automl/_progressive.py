@@ -1,11 +1,15 @@
 """Progressive search matching JS automl/progressive.js."""
 
+from copy import deepcopy
+
 import math
 
 import numpy as np
 
 from ..errors import ValidationError
 from ._common import detect_task, scorer_greater_is_better
+from ._candidate import normalize_model_specs
+from ._candidate_pipeline import fit_candidate
 from ._cv import stratified_k_fold, k_fold, get_scorer
 from ._executor import Executor
 from ._strategy_progressive import ProgressiveStrategy
@@ -21,7 +25,7 @@ class ProgressiveSearch:
         if not models:
             raise ValidationError(
                 'ProgressiveSearch: at least one model is required')
-        self._models = models
+        self._models = normalize_model_specs(models, 'ProgressiveSearch models')
         self._scoring = scoring
         self._cv = cv
         self._seed = seed
@@ -32,6 +36,7 @@ class ProgressiveSearch:
         self._probe_fraction = probe_fraction
         self._leaderboard = None
         self._best_result = None
+        self._archive = None
 
     def fit(self, X, y):
         task = self._task or detect_task(y)
@@ -84,12 +89,15 @@ class ProgressiveSearch:
                 break
             try:
                 result = probe_executor.evaluate_candidate(
-                    cand['candidateId'], cand['cls'], cand['params'],
+                    cand['candidateId'], cand['candidate'],
+                    cand['cls'], cand['params'],
                     cand.get('budget'))
                 strategy.report(result)
-            except Exception:
+            except Exception as exc:
+                probe_executor.record_failure(cand, exc)
                 strategy.report({
                     'candidateId': cand['candidateId'],
+                    'candidate': cand['candidate'],
                     'meanScore': -float('inf'),
                     'foldScores': np.zeros(1),
                     'stdScore': 0,
@@ -117,24 +125,32 @@ class ProgressiveSearch:
                 break
             try:
                 full_executor.evaluate_candidate(
-                    cand['candidateId'], cand['cls'], cand['params'],
+                    cand['candidateId'], cand['candidate'],
+                    cand['cls'], cand['params'],
                     cand.get('budget'))
-            except Exception:
-                pass
+            except Exception as exc:
+                full_executor.record_failure(cand, exc)
 
         leaderboard = full_executor.leaderboard
         if leaderboard.length == 0:
             probe_lb = probe_executor.leaderboard
             if probe_lb.length == 0:
+                first_error = (
+                    probe_executor.first_error or full_executor.first_error)
+                if first_error is not None:
+                    raise first_error
                 raise ValidationError(
                     'ProgressiveSearch: no candidates were evaluated')
             self._leaderboard = probe_lb
+            self._archive = probe_executor.archive
         else:
             self._leaderboard = leaderboard
+            self._archive = full_executor.archive
 
         self._best_result = self._leaderboard.best()
         return {'leaderboard': self._leaderboard,
-                'bestResult': self._best_result}
+                'archive': self._archive,
+                'bestResult': self._leaderboard.best()}
 
     def refit_best(self, X, y):
         if self._best_result is None:
@@ -143,12 +159,11 @@ class ProgressiveSearch:
         best = self._best_result
         model_spec = None
         for m in self._models:
-            if m['name'] == best['modelName']:
+            if m['classId'] == best['candidate']['model']['classId']:
                 model_spec = m
                 break
-        instance = model_spec['cls'].create(best['params'])
-        instance.fit(X, y)
-        return instance
+        return fit_candidate(
+            model_spec, best['candidate'], X, y, best['candidateId'])
 
     @property
     def leaderboard(self):
@@ -156,4 +171,8 @@ class ProgressiveSearch:
 
     @property
     def best_result(self):
-        return self._best_result
+        return deepcopy(self._best_result)
+
+    @property
+    def archive(self):
+        return self._archive

@@ -9,10 +9,17 @@ strengths, depths, learning rates, and structural choices to provide
 ensemble diversity without runtime tuning.
 """
 
+from copy import deepcopy
+
 import numpy as np
 
 from ..errors import ValidationError
-from ._common import detect_task, make_candidate_id, scorer_greater_is_better
+from ._common import detect_task, scorer_greater_is_better
+from ._candidate import (
+    create_candidate_task, normalize_model_specs,
+    preprocess_choices,
+)
+from ._candidate_pipeline import fit_candidate
 from ._cv import stratified_k_fold, k_fold, get_scorer
 from ._executor import Executor
 
@@ -422,22 +429,23 @@ class PortfolioStrategy:
         portfolio = get_portfolio(task)
         self._queue = []
         self._index = 0
+        seen = {}
 
-        for model in models:
-            name = model['name']
-            cls = model['cls']
+        for model in normalize_model_specs(models):
+            portfolio_key = model.get('portfolioKey')
+            if portfolio_key is None:
+                portfolio_key = getattr(
+                    model['cls'], 'portfolio_key',
+                    getattr(model['cls'], 'portfolioKey', model['classId']))
             fixed = model.get('params') or {}
 
-            configs = portfolio.get(name, [{}])
+            configs = portfolio.get(portfolio_key, [{}])
 
             for config in configs:
                 params = {**config, **fixed}
-                candidate_id = make_candidate_id(name, params)
-                self._queue.append({
-                    'candidateId': candidate_id,
-                    'cls': cls,
-                    'params': params,
-                })
+                for preprocess in preprocess_choices(model):
+                    self._queue.append(create_candidate_task(
+                        model, params, preprocess, seen))
 
         self._total = len(self._queue)
 
@@ -470,7 +478,7 @@ class PortfolioSearch:
         if not models:
             raise ValidationError(
                 'PortfolioSearch: at least one model is required')
-        self._models = models
+        self._models = normalize_model_specs(models, 'PortfolioSearch models')
         self._scoring = scoring
         self._cv = cv
         self._seed = seed
@@ -478,6 +486,7 @@ class PortfolioSearch:
         self._max_time_ms = max_time_ms
         self._leaderboard = None
         self._best_result = None
+        self._archive = None
 
     def fit(self, X, y):
         """Run the portfolio search.
@@ -512,12 +521,16 @@ class PortfolioSearch:
 
         leaderboard = result['leaderboard']
         if leaderboard.length == 0:
+            if executor.first_error is not None:
+                raise executor.first_error
             raise ValidationError(
                 'PortfolioSearch: no candidates were evaluated')
 
         self._leaderboard = leaderboard
+        self._archive = result['archive']
         self._best_result = leaderboard.best()
-        return {'leaderboard': leaderboard, 'bestResult': self._best_result}
+        return {'leaderboard': leaderboard, 'archive': self._archive,
+                'bestResult': leaderboard.best()}
 
     def refit_best(self, X, y):
         """Refit the best candidate on full data."""
@@ -526,12 +539,15 @@ class PortfolioSearch:
         best = self._best_result
         model_spec = None
         for m in self._models:
-            if m['name'] == best['modelName']:
+            if m['classId'] == best['candidate']['model']['classId']:
                 model_spec = m
                 break
-        instance = model_spec['cls'].create(best['params'])
-        instance.fit(X, y)
-        return instance
+        return fit_candidate(
+            model_spec, best['candidate'], X, y, best['candidateId'])
+
+    @property
+    def archive(self):
+        return self._archive
 
     @property
     def leaderboard(self):
@@ -539,4 +555,4 @@ class PortfolioSearch:
 
     @property
     def best_result(self):
-        return self._best_result
+        return deepcopy(self._best_result)

@@ -36,6 +36,7 @@ tsetlin-fit = ["tmu>=0.7", "numpy>=1.22"]
 lightgbm = ["lightgbm>=4.0", "numpy>=1.22"]
 stochtree = ["stochtree>=0.1", "numpy>=1.22"]
 nn = ["numpy>=1.22"]
+bo = ["wlearn-bo>=0.1.0"]
 preprocess = ["tranfi>=0.2,<0.3"]
 all = [
     "xgboost>=2.0",
@@ -48,9 +49,10 @@ all = [
     "lightgbm>=4.0",
     "stochtree>=0.1",
     "numpy>=1.22",
+    "wlearn-bo>=0.1.0",
     "tranfi>=0.2,<0.3",
 ]
-test = ["pytest>=7.0"]
+test = ["pytest>=7.0", "hypothesis>=6.0"]
 
 [tool.setuptools.packages.find]
 include = ["wlearn*"]

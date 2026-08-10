@@ -1,9 +1,18 @@
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
 const {
-  detectTask, makeCandidateId, seedFor, partialShuffle,
-  scorerGreaterIsBetter
+  detectTask, partialShuffle, scorerGreaterIsBetter
 } = require('../src/common.js')
+const {
+  candidateCanonicalBytes, candidateHash, createCandidate,
+  makeCandidateId, normalizeModelSpecs, seedFor
+} = require('../src/candidate.js')
+
+const vectors = JSON.parse(fs.readFileSync(
+  path.join(__dirname, 'candidate-v1.json'), 'utf8'
+))
 
 describe('detectTask', () => {
   it('classifies Int32Array as classification', () => {
@@ -25,73 +34,95 @@ describe('detectTask', () => {
   })
 })
 
-describe('makeCandidateId', () => {
-  it('produces stable ids', () => {
-    const a = makeCandidateId('lr', { C: 1, eps: 0.01 })
-    const b = makeCandidateId('lr', { C: 1, eps: 0.01 })
-    assert.equal(a, b)
+describe('candidate identity v1', () => {
+  for (const vector of vectors.cases) {
+    it(`matches shared canonical/hash/seed vector ${vector.name}`, () => {
+      const candidate = createCandidate(
+        vector.model, vector.params, vector.preprocess
+      )
+      assert.equal(
+        Buffer.from(candidateCanonicalBytes(candidate)).toString('utf8'),
+        vector.canonicalUtf8
+      )
+      assert.equal(candidateHash(candidate), vector.sha256)
+      assert.equal(makeCandidateId(candidate), vector.candidateId)
+      for (const seed of vector.seeds) {
+        assert.equal(
+          seedFor(candidate, seed.foldId, seed.baseSeed), seed.value
+        )
+      }
+    })
+  }
+
+  it('ignores display-name changes but distinguishes class and preprocessing', () => {
+    const first = createCandidate(
+      { displayName: 'first', classId: 'wlearn.test.a@1' }, { x: 1 }
+    )
+    const renamed = createCandidate(
+      { displayName: 'renamed', classId: 'wlearn.test.a@1' }, { x: 1 }
+    )
+    const otherClass = createCandidate(
+      { displayName: 'first', classId: 'wlearn.test.b@1' }, { x: 1 }
+    )
+    const withPreprocess = createCandidate(
+      first.model, first.model.params, vectors.cases[1].preprocess
+    )
+    assert.equal(makeCandidateId(first), makeCandidateId(renamed))
+    assert.notEqual(makeCandidateId(first), makeCandidateId(otherClass))
+    assert.notEqual(makeCandidateId(first), makeCandidateId(withPreprocess))
   })
 
-  it('is key-order independent', () => {
-    const a = makeCandidateId('lr', { C: 1, eps: 0.01 })
-    const b = makeCandidateId('lr', { eps: 0.01, C: 1 })
-    assert.equal(a, b)
+  it('rejects nonportable values, missing IDs, and duplicate class IDs', () => {
+    assert.throws(() => createCandidate(
+      { displayName: 'x', classId: 'wlearn.test.x@1' }, { x: NaN }
+    ), /finite/)
+    assert.throws(() => createCandidate(
+      { displayName: 'x', classId: 'wlearn.test.x@1' }, { x: 2 ** 53 }
+    ), /safe-integer/)
+    assert.throws(() => normalizeModelSpecs([
+      { name: 'x', cls: { create() {} } }
+    ]), /classId/)
+    const cls = { classId: 'wlearn.test.same@1', create() {} }
+    assert.throws(() => normalizeModelSpecs([
+      { name: 'x', cls }, { name: 'y', cls }
+    ]), /duplicate/)
   })
 
-  it('different params produce different ids', () => {
-    const a = makeCandidateId('lr', { C: 1 })
-    const b = makeCandidateId('lr', { C: 2 })
-    assert.notEqual(a, b)
+  it('rejects ambiguous containers and non-object model params', () => {
+    const model = { displayName: 'x', classId: 'wlearn.test.x@1' }
+    const sparse = new Array(1)
+    const cyclic = {}
+    cyclic.self = cyclic
+    for (const params of [sparse, [], null, 1, 'x']) {
+      assert.throws(() => createCandidate(model, params), /plain object/)
+    }
+    assert.throws(() => createCandidate(model, { sparse }), /sparse/)
+    assert.throws(() => createCandidate(model, { missing: undefined }), /portable JSON/)
+    assert.throws(() => createCandidate(model, cyclic), /cyclic/)
+    assert.throws(() => normalizeModelSpecs([
+      { name: 'x', cls: { classId: model.classId, create() {} }, params: [] }
+    ]), /params.*plain object/)
+    assert.throws(() => normalizeModelSpecs([{
+      name: 'x', cls: { classId: model.classId, create() {} },
+      preprocessChoices: null,
+    }]), /preprocessChoices.*nonempty array/)
   })
 
-  it('different model labels produce different ids', () => {
-    const a = makeCandidateId('lr', { C: 1 })
-    const b = makeCandidateId('svm', { C: 1 })
-    assert.notEqual(a, b)
-  })
-
-  it('handles nested objects', () => {
-    const a = makeCandidateId('m', { a: { b: 1 } })
-    const b = makeCandidateId('m', { a: { b: 1 } })
-    assert.equal(a, b)
-  })
-
-  it('handles arrays in params', () => {
-    const a = makeCandidateId('m', { x: [1, 2, 3] })
-    const b = makeCandidateId('m', { x: [1, 2, 3] })
-    assert.equal(a, b)
-  })
-})
-
-describe('seedFor', () => {
-  it('is deterministic', () => {
-    const a = seedFor('lr:{"C":1}', 0, 42)
-    const b = seedFor('lr:{"C":1}', 0, 42)
-    assert.equal(a, b)
-  })
-
-  it('varies with fold index', () => {
-    const a = seedFor('lr:{"C":1}', 0, 42)
-    const b = seedFor('lr:{"C":1}', 1, 42)
-    assert.notEqual(a, b)
-  })
-
-  it('varies with candidate id', () => {
-    const a = seedFor('lr:{"C":1}', 0, 42)
-    const b = seedFor('lr:{"C":2}', 0, 42)
-    assert.notEqual(a, b)
-  })
-
-  it('varies with base seed', () => {
-    const a = seedFor('lr:{"C":1}', 0, 42)
-    const b = seedFor('lr:{"C":1}', 0, 99)
-    assert.notEqual(a, b)
-  })
-
-  it('returns positive integer', () => {
-    const s = seedFor('test', 5, 123)
-    assert(Number.isInteger(s))
-    assert(s >= 0)
+  it('preserves adversarial keys and resolves preprocessing before identity', () => {
+    const params = JSON.parse('{"__proto__":{"safe":true}}')
+    const model = { displayName: 'x', classId: 'wlearn.test.x@1' }
+    const partial = createCandidate(model, params, {
+      templateId: 'default',
+      typeId: 'wlearn.preprocess.tabular@1',
+      resolvedParams: {},
+    })
+    const explicit = createCandidate(model, params, {
+      templateId: 'default',
+      typeId: 'wlearn.preprocess.tabular@1',
+      resolvedParams: partial.preprocess.resolvedParams,
+    })
+    assert(Object.hasOwn(partial.model.params, '__proto__'))
+    assert.equal(makeCandidateId(partial), makeCandidateId(explicit))
   })
 })
 

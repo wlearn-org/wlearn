@@ -67,10 +67,12 @@ class StackingEnsemble:
         n = len(X)
         n_features = X.shape[1] if hasattr(X, 'shape') else len(X[0])
 
+        classes = None
+        n_classes = 0
         if self._task == 'classification':
             labels = sorted(set(int(v) for v in y))
-            self._classes = np.array(labels, dtype=np.int32)
-            self._n_classes = len(self._classes)
+            classes = np.array(labels, dtype=np.int32)
+            n_classes = len(classes)
 
         # Generate folds
         if self._task == 'classification':
@@ -98,7 +100,7 @@ class StackingEnsemble:
 
         # Step 1: Generate OOF predictions
         n_base = len(self._base_specs)
-        cols_per_model = self._n_classes if self._task == 'classification' else 1
+        cols_per_model = n_classes if self._task == 'classification' else 1
         oof_cols = n_base * cols_per_model
         oof_data = np.zeros(n * oof_cols, dtype=np.float64)
 
@@ -106,7 +108,7 @@ class StackingEnsemble:
         for b, name, model in bagged_bases:
             oof = model.oof_predictions
             if self._task == 'classification':
-                nc = self._n_classes
+                nc = n_classes
                 for i in range(n):
                     for c in range(nc):
                         oof_data[i * oof_cols + b * cols_per_model + c] = oof[i * nc + c]
@@ -121,51 +123,74 @@ class StackingEnsemble:
                 X_test = X[test]
 
                 model = est_cls.create(params or {})
+                operation_error = None
                 try:
                     model.fit(X_train, y_train)
                     if self._task == 'classification':
                         proba = model.predict_proba(X_test)
                         for i in range(len(test)):
                             row = test[i]
-                            for c in range(self._n_classes):
+                            for c in range(n_classes):
                                 oof_data[row * oof_cols + b * cols_per_model + c] = \
-                                    proba[i * self._n_classes + c]
+                                    proba[i * n_classes + c]
                     else:
                         preds = model.predict(X_test)
                         for i in range(len(test)):
                             oof_data[test[i] * oof_cols + b] = float(preds[i])
+                except Exception as exc:
+                    operation_error = exc
+                    raise
                 finally:
-                    model.dispose()
+                    _dispose_owned([model], operation_error)
 
         # Step 2: Build meta-feature matrix
         if self._passthrough:
-            self._n_meta_cols = oof_cols + n_features
-            meta_data = np.zeros(n * self._n_meta_cols, dtype=np.float64)
+            n_meta_cols = oof_cols + n_features
+            meta_data = np.zeros(n * n_meta_cols, dtype=np.float64)
             for i in range(n):
-                meta_data[i * self._n_meta_cols:i * self._n_meta_cols + oof_cols] = \
+                meta_data[i * n_meta_cols:i * n_meta_cols + oof_cols] = \
                     oof_data[i * oof_cols:(i + 1) * oof_cols]
-                meta_data[i * self._n_meta_cols + oof_cols:
-                          i * self._n_meta_cols + oof_cols + n_features] = X[i]
-            meta_X = meta_data.reshape(n, self._n_meta_cols)
+                meta_data[i * n_meta_cols + oof_cols:
+                          i * n_meta_cols + oof_cols + n_features] = X[i]
+            meta_X = meta_data.reshape(n, n_meta_cols)
         else:
-            self._n_meta_cols = oof_cols
+            n_meta_cols = oof_cols
             meta_X = oof_data.reshape(n, oof_cols)
 
-        # Step 3: Train base models on full data (or use pre-fitted BaggedEstimators)
-        self._base_models = [None] * n_base
+        # Steps 3-4 build replacement state transactionally. Pre-fitted bagged
+        # inputs transfer to the ensemble only when the complete fit commits.
+        base_models = [None] * n_base
         for b, name, model in bagged_bases:
-            self._base_models[b] = model
-        for b, name, est_cls, params in spec_bases:
-            model = est_cls.create(params or {})
-            model.fit(X, y)
-            self._base_models[b] = model
+            base_models[b] = model
+        created_models = []
+        meta_model = None
+        try:
+            for b, _name, est_cls, params in spec_bases:
+                model = est_cls.create(params or {})
+                created_models.append(model)
+                base_models[b] = model
+                model.fit(X, y)
 
-        # Step 4: Train meta-model on OOF features
-        _, meta_cls, meta_params = self._meta_spec
-        self._meta_model = meta_cls.create(meta_params or {})
-        self._meta_model.fit(meta_X, y)
+            _, meta_cls, meta_params = self._meta_spec
+            meta_model = meta_cls.create(meta_params or {})
+            meta_model.fit(meta_X, y)
+        except Exception as exc:
+            _dispose_owned([*created_models, meta_model], exc)
+            raise
 
+        previous = [*(self._base_models or []), self._meta_model]
+        self._base_models = base_models
+        self._meta_model = meta_model
+        self._classes = classes
+        self._n_classes = n_classes
+        self._n_meta_cols = n_meta_cols
         self._fitted = True
+        retained = {id(model) for model in [*base_models, meta_model]
+                    if model is not None}
+        _dispose_owned([
+            model for model in previous
+            if model is not None and id(model) not in retained
+        ])
         return self
 
     def predict(self, X):
@@ -201,7 +226,9 @@ class StackingEnsemble:
                 'seed': self._seed,
                 'estimatorNames': [s[0] for s in self._base_specs],
                 'metaName': self._meta_spec[0],
-                'classes': list(self._classes) if self._classes is not None else None,
+                'classes': (
+                    [int(value) for value in self._classes]
+                    if self._classes is not None else None),
                 'nMetaCols': self._n_meta_cols,
             },
         }
@@ -235,11 +262,7 @@ class StackingEnsemble:
         if self._disposed:
             return
         self._disposed = True
-        if self._base_models:
-            for m in self._base_models:
-                m.dispose()
-        if self._meta_model:
-            self._meta_model.dispose()
+        _dispose_owned([*(self._base_models or []), self._meta_model])
 
     def get_params(self):
         return {
@@ -381,10 +404,17 @@ class StackingEnsemble:
 
 
 def _dispose_loaded(models):
+    _dispose_owned(models, RuntimeError('preserve load error'))
+
+
+def _dispose_owned(models, operation_error=None):
+    first_error = None
     for model in reversed(models):
         try:
             if hasattr(model, 'dispose'):
                 model.dispose()
-        except Exception:
-            # Preserve the load error; cleanup is best effort for partial state.
-            pass
+        except Exception as exc:
+            if first_error is None:
+                first_error = exc
+    if operation_error is None and first_error is not None:
+        raise first_error

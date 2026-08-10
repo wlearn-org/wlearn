@@ -4,7 +4,9 @@ import math
 
 from ._rng import make_lcg
 from ._sampler import sample_config
-from ._common import make_candidate_id
+from ._candidate import (
+    create_candidate_task, normalize_model_specs, preprocess_choices,
+)
 
 
 class HalvingStrategy:
@@ -19,7 +21,8 @@ class HalvingStrategy:
         # Generate all candidate configs
         rng = make_lcg(seed)
         all_candidates = []
-        for model in models:
+        seen = {}
+        for model in normalize_model_specs(models):
             space = model.get('searchSpace') or {}
             if not space and hasattr(model['cls'], 'default_search_space'):
                 space = model['cls'].default_search_space()
@@ -33,12 +36,9 @@ class HalvingStrategy:
             for _ in range(n_iter):
                 config = sample_config(effective_space, config_rng)
                 params = {**config, **fixed_params}
-                candidate_id = make_candidate_id(model['name'], params)
-                all_candidates.append({
-                    'candidateId': candidate_id,
-                    'cls': model['cls'],
-                    'params': params,
-                })
+                for preprocess in preprocess_choices(model):
+                    all_candidates.append(create_candidate_task(
+                        model, params, preprocess, seen))
 
         self._candidates = all_candidates
         n_cand = len(all_candidates)

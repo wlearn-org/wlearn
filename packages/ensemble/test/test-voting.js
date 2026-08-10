@@ -222,4 +222,47 @@ describe('VotingEnsemble lifecycle', () => {
     assert.equal(reg.capabilities.classifier, false)
     assert.equal(reg.capabilities.regressor, true)
   })
+
+  it('releases a later failed child in reverse order and preserves the fit error', async () => {
+    const events = []
+    const live = { count: 0 }
+    const fitError = new Error('second fit failed')
+    function modelClass(label, { fail = false, cleanupThrows = false } = {}) {
+      return class {
+        #disposed = false
+        static async create() {
+          live.count++
+          events.push(`${label}:create`)
+          return new this()
+        }
+        fit() {
+          events.push(`${label}:fit`)
+          if (fail) throw fitError
+          return this
+        }
+        dispose() {
+          if (this.#disposed) return
+          this.#disposed = true
+          live.count--
+          events.push(`${label}:dispose`)
+          if (cleanupThrows) throw new Error(`${label} cleanup failed`)
+        }
+      }
+    }
+    const First = modelClass('first', { cleanupThrows: true })
+    const Second = modelClass('second', { fail: true })
+    const ensemble = await VotingEnsemble.create({
+      estimators: [['first', First, {}], ['second', Second, {}]],
+      task: 'classification',
+    })
+
+    await assert.rejects(() => ensemble.fit(X, yCls), error => error === fitError)
+    assert.equal(live.count, 0)
+    assert.deepEqual(events, [
+      'first:create', 'first:fit', 'second:create', 'second:fit',
+      'second:dispose', 'first:dispose',
+    ])
+    ensemble.dispose()
+    assert.equal(live.count, 0)
+  })
 })

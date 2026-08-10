@@ -1,11 +1,13 @@
 {
   "name": "@wlearn/automl",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "AutoML engine for wlearn: search space sampling, random search, successive halving, ensemble construction",
   "type": "commonjs",
   "main": "src/index.js",
+  "types": "index.d.ts",
   "exports": {
     ".": {
+      "types": "./index.d.ts",
       "require": "./src/index.js",
       "default": "./src/index.js"
     }
@@ -13,18 +15,23 @@
   "files": [
     "src/",
     "dist/",
+    "index.d.ts",
     "LICENSE",
     "NOTICE",
-    "README.md",
-    "CHANGELOG.md"
+    "README.md"
   ],
   "sideEffects": false,
   "dependencies": {
-    "@wlearn/core": "0.2.0",
-    "@wlearn/ensemble": "0.2.0"
+    "@wlearn/core": "^0.3.0",
+    "@wlearn/ensemble": "^0.3.0",
+    "@wlearn/bo": "^0.2.0",
+    "@wlearn/preprocess": "^0.1.0",
+    "@wlearn/types": "^0.2.0"
   },
   "scripts": {
-    "test": "node --test test/*.js",
+    "test": "node --test test/mock-model.js test/test-auto-fit.js test/test-candidate-pipeline.js test/test-common.js test/test-executor.js test/test-halving.js test/test-leaderboard.js test/test-portfolio.js test/test-regression.js test/test-sampler.js test/test-search.js test/test-strategy.js",
+    "test:browser": "npm run build:browser && node test/test-browser.js",
+    "test:types": "tsc --project test/tsconfig.json",
     "build:browser": "bash scripts/build-browser.sh",
     "prepack": "node scripts/prepack.js"
   },
@@ -46,15 +53,8 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "esbuild": "^0.27.3",
-    "playwright": "^1.58.2"
-  },
-  "peerDependencies": {
-    "@wlearn/bo": "0.1.0"
-  },
-  "peerDependenciesMeta": {
-    "@wlearn/bo": {
-      "optional": true
-    }
+    "playwright": "1.58.2",
+    "typescript": "^5.9.3"
   },
   "bugs": {
     "url": "https://github.com/wlearn-org/wlearn/issues"

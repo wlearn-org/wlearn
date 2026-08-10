@@ -44,6 +44,36 @@ function detectTask(y) {
 // WeakMap for internal state (allows dynamic prototype methods to access inner)
 const _state = new WeakMap()
 
+const VALID_TASKS = new Set(['classification', 'regression'])
+
+function _validateTask(task) {
+  if (task !== null && !VALID_TASKS.has(task)) {
+    throw new Error(`Unknown task: '${task}'. Use 'classification' or 'regression'.`)
+  }
+  return task
+}
+
+function _taskFromInner(inner, fallback) {
+  if (!inner) return fallback
+
+  const capabilities = inner.capabilities
+  if (capabilities) {
+    if (capabilities.classifier === true && capabilities.regressor !== true) {
+      return 'classification'
+    }
+    if (capabilities.regressor === true && capabilities.classifier !== true) {
+      return 'regression'
+    }
+  }
+
+  if (typeof inner.getParams === 'function') {
+    const params = inner.getParams()
+    if (params && VALID_TASKS.has(params.task)) return params.task
+  }
+
+  return fallback
+}
+
 function _get(self) {
   const s = _state.get(self)
   if (!s) throw new Error('Model: invalid instance')
@@ -53,7 +83,7 @@ function _get(self) {
 function _ensureInner(self, name) {
   const s = _get(self)
   if (s.disposed) throw new Error(`${name} has been disposed.`)
-  if (!s.inner) throw new Error(`${name}: not fitted`)
+  if (!s.inner || !s.fitted) throw new Error(`${name}: not fitted`)
   return s.inner
 }
 
@@ -76,15 +106,17 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
     constructor(task, params) {
       _state.set(this, {
         inner: null,
+        instances: new Map(),
         task: task,
         params: params,
+        fitted: false,
         disposed: false,
       })
     }
 
     static async create(params = {}) {
       const p = { ...params }
-      const task = p.task || null
+      const task = _validateTask(p.task ?? null)
       delete p.task
 
       // Pre-load WASM so fit() can create inner synchronously
@@ -93,13 +125,31 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
       const m = new UnifiedModel(task, p)
       const s = _get(m)
 
-      if (task) {
-        // Task known: create the right inner class
-        const cls = task === 'classification' ? ClassifierCls : RegressorCls
-        s.inner = await cls.create({ ...p, task })
-      } else if (sameClass) {
-        // Task-agnostic model: create inner, let it manage task via its own params
-        s.inner = await ClassifierCls.create(p)
+      if (sameClass) {
+        // Task-agnostic backend: one asynchronously prepared instance can be
+        // configured once labels reveal the task.
+        s.inner = await ClassifierCls.create(task ? { ...p, task } : p)
+        s.instances.set('shared', s.inner)
+      } else {
+        // Task-specific classes cannot be constructed synchronously from fit().
+        // An explicit task only needs its selected backend. When the task must be
+        // inferred later, prepare both while construction is still async.
+        if (task) {
+          const SelectedCls = task === 'classification' ? ClassifierCls : RegressorCls
+          const selected = await SelectedCls.create({ ...p, task })
+          s.instances.set(task, selected)
+          s.inner = selected
+        } else {
+          const classifier = await ClassifierCls.create({ ...p, task: 'classification' })
+          try {
+            const regressor = await RegressorCls.create({ ...p, task: 'regression' })
+            s.instances.set('classification', classifier)
+            s.instances.set('regression', regressor)
+          } catch (error) {
+            if (typeof classifier.dispose === 'function') classifier.dispose()
+            throw error
+          }
+        }
       }
 
       return m
@@ -113,10 +163,13 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
         const s = _get(m)
         s.inner = inner
         if (typeof inner.getParams === 'function') {
-          s.params = inner.getParams()
-          // Detect task from loaded model params (needed for task-agnostic models)
-          if (s.params.task) s.task = s.params.task
+          const params = inner.getParams()
+          s.params = { ...params }
+          delete s.params.task
         }
+        s.task = _taskFromInner(inner, s.task)
+        s.instances.set(sameClass ? 'shared' : s.task, inner)
+        s.fitted = true
         return m
       } catch (_) {
         const inner = await RegressorCls.load(bytes)
@@ -124,28 +177,41 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
         const s = _get(m)
         s.inner = inner
         if (typeof inner.getParams === 'function') {
-          s.params = inner.getParams()
-          if (s.params.task) s.task = s.params.task
+          const params = inner.getParams()
+          s.params = { ...params }
+          delete s.params.task
         }
+        s.task = _taskFromInner(inner, s.task)
+        s.instances.set(sameClass ? 'shared' : s.task, inner)
+        s.fitted = true
         return m
       }
     }
 
     fit(X, y, fitOpts) {
       const s = _get(this)
+      if (s.disposed) throw new Error(`${modelName} has been disposed.`)
 
       // Auto-detect task if not set
       if (!s.task) {
         s.task = detectTask(y)
       }
 
-      // Create inner if not yet created (sync -- WASM pre-loaded in create())
+      s.inner = s.instances.get(sameClass ? 'shared' : s.task) || null
       if (!s.inner) {
-        const cls = s.task === 'classification' ? ClassifierCls : RegressorCls
-        s.inner = new cls({ ...s.params, task: s.task })
+        throw new Error(`${modelName}: task cannot be changed on a loaded model; create a new model`)
       }
 
+      if (typeof s.inner.setParams === 'function') {
+        s.inner.setParams({ ...s.params, task: s.task })
+      }
+
+      s.fitted = false
       s.inner.fit(X, y, fitOpts)
+      // Explicit backend selectors (for example objective/solver/family) are
+      // authoritative. Keep the wrapper task aligned with the fitted backend.
+      s.task = _taskFromInner(s.inner, s.task)
+      s.fitted = true
       return this
     }
 
@@ -171,17 +237,23 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
 
     dispose() {
       const s = _get(this)
-      if (s.inner && typeof s.inner.dispose === 'function') {
-        s.inner.dispose()
+      if (s.disposed) return
+      const disposed = new Set()
+      for (const instance of s.instances.values()) {
+        if (!instance || disposed.has(instance)) continue
+        disposed.add(instance)
+        if (typeof instance.dispose === 'function') instance.dispose()
       }
+      s.instances.clear()
       s.inner = null
+      s.fitted = false
       s.disposed = true
     }
 
     getParams() {
       const s = _get(this)
       const p = s.inner && typeof s.inner.getParams === 'function'
-        ? s.inner.getParams()
+        ? { ...s.inner.getParams() }
         : { ...s.params }
       if (s.task) p.task = s.task
       return p
@@ -189,19 +261,34 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
 
     setParams(p) {
       const s = _get(this)
-      const params = { ...p }
-      if (params.task) {
-        const newTask = params.task
-        delete params.task
-        if (newTask !== s.task && s.inner) {
-          this.dispose()
+      if (s.disposed) throw new Error(`${modelName} has been disposed.`)
+      const updates = { ...p }
+      let taskChanged = false
+      let newTask = s.task
+
+      if (Object.prototype.hasOwnProperty.call(updates, 'task')) {
+        newTask = _validateTask(updates.task ?? null)
+        delete updates.task
+        taskChanged = newTask !== s.task
+        if (taskChanged && newTask && !sameClass && !s.instances.has(newTask)) {
+          throw new Error(`${modelName}: task cannot be changed on a loaded model; create a new model`)
         }
-        s.task = newTask
       }
-      s.params = params
-      if (s.inner && typeof s.inner.setParams === 'function') {
-        s.inner.setParams(params)
+
+      s.task = newTask
+      s.params = { ...s.params, ...updates }
+
+      for (const [key, instance] of s.instances) {
+        if (!instance || typeof instance.setParams !== 'function') continue
+        const instanceTask = sameClass ? s.task : key
+        instance.setParams(instanceTask
+          ? { ...s.params, task: instanceTask }
+          : { ...s.params })
       }
+      s.inner = sameClass
+        ? s.instances.get('shared') || null
+        : (s.task ? s.instances.get(s.task) || null : null)
+      if (taskChanged || Object.keys(updates).length > 0) s.fitted = false
       return this
     }
 
@@ -209,13 +296,13 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
 
     get isFitted() {
       const s = _get(this)
-      if (!s.inner) return false
+      if (!s.inner || !s.fitted) return false
       return s.inner.isFitted !== undefined ? s.inner.isFitted : true
     }
 
     get classes() {
       const s = _get(this)
-      if (!s.inner) return new Int32Array(0)
+      if (!s.inner || !s.fitted) return new Int32Array(0)
       if (typeof s.inner.classes === 'function') return s.inner.classes()
       if (s.inner.classes !== undefined) return s.inner.classes
       return new Int32Array(0)
@@ -264,8 +351,8 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
 
   // Static methods
   if (ClassifierCls.defaultSearchSpace || RegressorCls.defaultSearchSpace) {
-    UnifiedModel.defaultSearchSpace = () => {
-      return ClassifierCls.defaultSearchSpace?.() || RegressorCls.defaultSearchSpace?.() || {}
+    UnifiedModel.defaultSearchSpace = (...args) => {
+      return ClassifierCls.defaultSearchSpace?.(...args) || RegressorCls.defaultSearchSpace?.(...args) || {}
     }
   }
 

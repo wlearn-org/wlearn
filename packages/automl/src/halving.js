@@ -3,6 +3,9 @@ const { stratifiedKFold, kFold, normalizeX, normalizeY,
 const { Executor } = require('./executor.js')
 const { HalvingStrategy } = require('./strategy-halving.js')
 const { detectTask, scorerGreaterIsBetter } = require('./common.js')
+const { normalizeModelSpecs } = require('./candidate.js')
+const { fitCandidate } = require('./candidate-pipeline.js')
+const { cloneLeaderboardEntry } = require('./leaderboard.js')
 
 /**
  * Successive halving search: multi-round elimination tournament.
@@ -15,12 +18,13 @@ class SuccessiveHalvingSearch {
   #leaderboard = null
   #bestResult = null
   #rounds = null
+  #archive = null
 
   constructor(models, opts = {}) {
     if (!models || models.length === 0) {
       throw new ValidationError('SuccessiveHalvingSearch: at least one model is required')
     }
-    this.#models = models
+    this.#models = normalizeModelSpecs(models, 'SuccessiveHalvingSearch models')
     this.#opts = {
       scoring: null,
       cv: 5,
@@ -68,12 +72,18 @@ class SuccessiveHalvingSearch {
       cv,
     })
 
-    const { leaderboard } = await executor.runStrategy(strategy)
+    const { leaderboard, archive } = await executor.runStrategy(strategy)
+
+    if (leaderboard.length === 0) {
+      if (executor.firstError !== null) throw executor.firstError
+      throw new ValidationError('SuccessiveHalvingSearch: no candidates were evaluated')
+    }
 
     this.#leaderboard = leaderboard
+    this.#archive = archive
     this.#bestResult = leaderboard.best()
     this.#rounds = strategy.rounds
-    return { leaderboard, bestResult: this.#bestResult, rounds: this.#rounds }
+    return { leaderboard, archive, bestResult: leaderboard.best(), rounds: this.#rounds }
   }
 
   async refitBest(X, y) {
@@ -81,17 +91,14 @@ class SuccessiveHalvingSearch {
       throw new ValidationError('SuccessiveHalvingSearch: must call fit() first')
     }
     const best = this.#bestResult
-    const model = this.#models.find(m => m.name === best.modelName)
-    const instance = await model.cls.create(best.params)
-    const Xn = normalizeX(X)
-    const yn = normalizeY(y)
-    instance.fit(Xn, yn)
-    return instance
+    const model = this.#models.find(m => m.classId === best.candidate.model.classId)
+    return fitCandidate(model, best.candidate, X, y, best.candidateId)
   }
 
   get leaderboard() { return this.#leaderboard }
-  get bestResult() { return this.#bestResult }
+  get bestResult() { return cloneLeaderboardEntry(this.#bestResult) }
   get rounds() { return this.#rounds }
+  get archive() { return this.#archive }
 }
 
 module.exports = { SuccessiveHalvingSearch }

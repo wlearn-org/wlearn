@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from .errors import ValidationError, NotFittedError, DisposedError
 from .bundle import encode_bundle, validate_bundle, write_bundle_output
 from .registry import (
@@ -15,7 +17,7 @@ class Pipeline:
     as well as save/load from WLRN bundles.
     """
 
-    def __init__(self, steps):
+    def __init__(self, steps, *, provenance=None):
         """Create a pipeline from (name, estimator) pairs.
 
         Args:
@@ -24,6 +26,7 @@ class Pipeline:
         if not steps:
             raise ValidationError('Pipeline requires at least one step')
         self._steps = list(steps)
+        self._provenance = deepcopy(provenance)
         self._fitted = False
         self._disposed = False
 
@@ -122,7 +125,8 @@ class Pipeline:
                     blobs[entry['offset']:entry['offset'] + entry['length']])
                 estimator = _load_with_context(blob, context)
                 steps.append((name, estimator))
-            pipe = cls(steps)
+            provenance = (manifest.get('metadata') or {}).get('provenance')
+            pipe = cls(steps, provenance=provenance)
             pipe._fitted = True
             return pipe
         except Exception:
@@ -144,6 +148,10 @@ class Pipeline:
                 for name, est in self._steps
             ],
         }
+        if self._provenance is not None:
+            manifest['metadata'] = {
+                'provenance': deepcopy(self._provenance),
+            }
         artifacts = [
             {'id': name, 'data': est.save(), 'mediaType': 'application/x-wlearn-bundle'}
             for name, est in self._steps
@@ -154,9 +162,16 @@ class Pipeline:
         if self._disposed:
             return
         self._disposed = True
-        for _, est in self._steps:
+        first_error = None
+        for _, est in reversed(self._steps):
             if hasattr(est, 'dispose'):
-                est.dispose()
+                try:
+                    est.dispose()
+                except Exception as error:
+                    if first_error is None:
+                        first_error = error
+        if first_error is not None:
+            raise first_error
 
     def get_params(self):
         return {
@@ -167,6 +182,10 @@ class Pipeline:
     @property
     def is_fitted(self):
         return self._fitted and not self._disposed
+
+    @property
+    def provenance(self):
+        return deepcopy(self._provenance)
 
     def _ensure_alive(self):
         if self._disposed:

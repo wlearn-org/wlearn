@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Build browser-ready IIFE + ESM bundles using esbuild
-# Pure JS package (no WASM) -- bundles @wlearn/core and @wlearn/ensemble inline
+# Bundles core, ensemble, and the browser Tranfi prepared-transform backend.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -47,6 +47,8 @@ mkdir -p "$DIST_DIR"
 COMMON_FLAGS=(
   --bundle
   --platform=browser
+  --external:node:fs
+  --external:node:crypto
   --minify
 )
 

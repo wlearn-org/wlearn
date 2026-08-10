@@ -42,6 +42,7 @@ async function getOofPredictions(estimatorSpecs, X, y, {
       const Xtest = _subsetX(Xn, test)
 
       const model = await EstimatorClass.create(params || {})
+      let operationError = null
       try {
         model.fit(Xtrain, ytrain)
         if (task === 'classification') {
@@ -58,8 +59,15 @@ async function getOofPredictions(estimatorSpecs, X, y, {
             oof[test[i]] = preds[i]
           }
         }
+      } catch (error) {
+        operationError = error
+        throw error
       } finally {
-        model.dispose()
+        try {
+          model.dispose()
+        } catch (disposeError) {
+          if (operationError === null) throw disposeError
+        }
       }
     }
     oofPreds.push(oof)

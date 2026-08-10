@@ -1,9 +1,13 @@
 """Search wrappers matching JS automl/search.js and halving.js."""
 
+from copy import deepcopy
+
 import numpy as np
 
 from ..errors import ValidationError
 from ._common import detect_task, scorer_greater_is_better
+from ._candidate import normalize_model_specs
+from ._candidate_pipeline import fit_candidate
 from ._cv import stratified_k_fold, k_fold
 from ._executor import Executor
 from ._strategy_random import RandomStrategy
@@ -17,7 +21,7 @@ class RandomSearch:
                  n_iter=20, max_time_ms=0):
         if not models:
             raise ValidationError('RandomSearch: at least one model is required')
-        self._models = models
+        self._models = normalize_model_specs(models, 'RandomSearch models')
         self._scoring = scoring
         self._cv = cv
         self._seed = seed
@@ -26,6 +30,7 @@ class RandomSearch:
         self._max_time_ms = max_time_ms
         self._leaderboard = None
         self._best_result = None
+        self._archive = None
 
     def fit(self, X, y):
         """Run the search.
@@ -56,11 +61,15 @@ class RandomSearch:
 
         leaderboard = result['leaderboard']
         if leaderboard.length == 0:
+            if executor.first_error is not None:
+                raise executor.first_error
             raise ValidationError('RandomSearch: no candidates were evaluated')
 
         self._leaderboard = leaderboard
+        self._archive = result['archive']
         self._best_result = leaderboard.best()
-        return {'leaderboard': leaderboard, 'bestResult': self._best_result}
+        return {'leaderboard': leaderboard, 'archive': self._archive,
+                'bestResult': leaderboard.best()}
 
     def refit_best(self, X, y):
         """Refit the best candidate on full data."""
@@ -69,12 +78,11 @@ class RandomSearch:
         best = self._best_result
         model_spec = None
         for m in self._models:
-            if m['name'] == best['modelName']:
+            if m['classId'] == best['candidate']['model']['classId']:
                 model_spec = m
                 break
-        instance = model_spec['cls'].create(best['params'])
-        instance.fit(X, y)
-        return instance
+        return fit_candidate(
+            model_spec, best['candidate'], X, y, best['candidateId'])
 
     @property
     def leaderboard(self):
@@ -82,7 +90,11 @@ class RandomSearch:
 
     @property
     def best_result(self):
-        return self._best_result
+        return deepcopy(self._best_result)
+
+    @property
+    def archive(self):
+        return self._archive
 
 
 class SuccessiveHalvingSearch:
@@ -92,7 +104,8 @@ class SuccessiveHalvingSearch:
                  n_iter=20, max_time_ms=0, factor=3):
         if not models:
             raise ValidationError('SuccessiveHalvingSearch: at least one model is required')
-        self._models = models
+        self._models = normalize_model_specs(
+            models, 'SuccessiveHalvingSearch models')
         self._scoring = scoring
         self._cv = cv
         self._seed = seed
@@ -103,6 +116,7 @@ class SuccessiveHalvingSearch:
         self._leaderboard = None
         self._best_result = None
         self._rounds = None
+        self._archive = None
 
     def fit(self, X, y):
         """Run the search.
@@ -141,12 +155,20 @@ class SuccessiveHalvingSearch:
 
         result = executor.run_strategy(strategy)
 
+        if result['leaderboard'].length == 0:
+            if executor.first_error is not None:
+                raise executor.first_error
+            raise ValidationError(
+                'SuccessiveHalvingSearch: no candidates were evaluated.')
+
         self._leaderboard = result['leaderboard']
+        self._archive = result['archive']
         self._best_result = self._leaderboard.best()
         self._rounds = strategy.rounds
         return {
             'leaderboard': self._leaderboard,
-            'bestResult': self._best_result,
+            'archive': self._archive,
+            'bestResult': self._leaderboard.best(),
             'rounds': self._rounds,
         }
 
@@ -157,12 +179,11 @@ class SuccessiveHalvingSearch:
         best = self._best_result
         model_spec = None
         for m in self._models:
-            if m['name'] == best['modelName']:
+            if m['classId'] == best['candidate']['model']['classId']:
                 model_spec = m
                 break
-        instance = model_spec['cls'].create(best['params'])
-        instance.fit(X, y)
-        return instance
+        return fit_candidate(
+            model_spec, best['candidate'], X, y, best['candidateId'])
 
     @property
     def leaderboard(self):
@@ -170,8 +191,12 @@ class SuccessiveHalvingSearch:
 
     @property
     def best_result(self):
-        return self._best_result
+        return deepcopy(self._best_result)
 
     @property
     def rounds(self):
         return self._rounds
+
+    @property
+    def archive(self):
+        return self._archive

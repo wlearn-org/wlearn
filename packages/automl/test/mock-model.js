@@ -5,6 +5,8 @@ const { MockModel } = require('../../ensemble/test/mock-model.js')
  * Wraps MockModel from ensemble tests.
  */
 class SearchableMock {
+  static get classId() { return 'wlearn.test.searchable-classifier@1' }
+
   static defaultSearchSpace() {
     return {
       bias: { type: 'uniform', low: -1, high: 1 },
@@ -21,6 +23,8 @@ class SearchableMock {
  * Regression variant.
  */
 class SearchableMockReg {
+  static get classId() { return 'wlearn.test.searchable-regressor@1' }
+
   static defaultSearchSpace() {
     return {
       bias: { type: 'uniform', low: -2, high: 2 },

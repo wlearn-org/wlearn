@@ -76,7 +76,7 @@ describe('kFold', () => {
 describe('stratifiedKFold', () => {
   it('preserves class proportions', () => {
     // 60% class 0, 40% class 1
-    const y = new Int32Array([0, 0, 0, 0, 0, 0, 1, 1, 1, 1])
+    const y = new Int32Array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
     const folds = stratifiedKFold(y, 5)
 
     for (const { test } of folds) {
@@ -113,8 +113,18 @@ describe('stratifiedKFold', () => {
     }
   })
 
+  it('preserves first-seen class order for deterministic parity', () => {
+    const y = new Int32Array([2, 1, 2, 1, 2, 1])
+    const folds = stratifiedKFold(y, 3, { shuffle: false })
+    assert.deepEqual(folds.map(fold => [...fold.test]), [[0, 1], [2, 3], [4, 5]])
+  })
+
   it('throws if n < k', () => {
     assert.throws(() => stratifiedKFold(new Int32Array([0, 1]), 5), ValidationError)
+  })
+
+  it('throws if any class has fewer samples than k', () => {
+    assert.throws(() => stratifiedKFold(new Int32Array([0, 0, 1, 1]), 3), ValidationError)
   })
 })
 
@@ -146,6 +156,11 @@ describe('trainTestSplit', () => {
 
   it('throws if n < 2', () => {
     assert.throws(() => trainTestSplit(1), ValidationError)
+  })
+
+  it('throws on invalid test size', () => {
+    assert.throws(() => trainTestSplit(10, { testSize: 0 }), ValidationError)
+    assert.throws(() => trainTestSplit(10, { testSize: 1 }), ValidationError)
   })
 })
 
@@ -215,8 +230,8 @@ describe('crossValScore', () => {
   })
 
   it('accepts custom scoring function', async () => {
-    const X = { data: new Float64Array(12), rows: 6, cols: 2 }
-    const y = new Float64Array([1, 2, 3, 4, 5, 6])
+    const X = { data: new Float64Array(18), rows: 9, cols: 2 }
+    const y = new Float64Array([1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9])
     const scores = await crossValScore(MockClassifier, X, y, {
       cv: 3,
       scoring: () => 0.42,

@@ -265,6 +265,21 @@ class Preprocessor {
     return pp
   }
 
+  getParams() {
+    return { ...this.#config }
+  }
+
+  setParams(params) {
+    this.#config = { ...this.#config, ...params }
+    this.#fitted = false
+    this.#colTypes = null
+    this.#imputeValues = null
+    this.#encodings = null
+    this.#scaleParams = null
+    this.#outputCols = 0
+    return this
+  }
+
   get isFitted() { return this.#fitted }
   get outputCols() { return this.#outputCols }
 
@@ -272,7 +287,14 @@ class Preprocessor {
     return { transformer: true }
   }
 
-  dispose() {}
+  dispose() {
+    this.#fitted = false
+    this.#colTypes = null
+    this.#imputeValues = null
+    this.#encodings = null
+    this.#scaleParams = null
+    this.#outputCols = 0
+  }
 }
 
 module.exports = { Preprocessor }

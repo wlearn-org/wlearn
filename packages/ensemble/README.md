@@ -31,8 +31,6 @@ const ens = await VotingEnsemble.create({
 ens.fit(X, y)
 const preds = ens.predict(X_test)
 const acc = ens.score(X_test, y_test)
-
-ens.dispose()
 ```
 
 ## Stacking
@@ -56,8 +54,6 @@ const stack = await StackingEnsemble.create({
 
 stack.fit(X, y)
 const preds = stack.predict(X_test)
-
-stack.dispose()
 ```
 
 ## Bagging
@@ -76,9 +72,15 @@ const bag = await BaggedEstimator.create({
 
 bag.fit(X, y)
 const preds = bag.predict(X_test)
-
-bag.dispose()
 ```
+
+## API
+
+- `VotingEnsemble.create(opts)` supports soft/hard voting over fitted submodels.
+- `StackingEnsemble.create(opts)` trains base models and a final estimator on out-of-fold predictions.
+- `BaggedEstimator.create(opts)` trains bootstrap copies of one estimator spec.
+- Ensemble instances implement `fit(X, y)`, `predict(X)`, `predictProba(X)`, `score(X, y)`, `save()`, and `dispose()` for deterministic cleanup in long-running loops.
+- Estimator specs use `[name, ModelClass, params]`.
 
 ## Utilities
 
@@ -86,6 +88,13 @@ bag.dispose()
 - `getOofPredictions(estimatorSpecs, X, y, opts?)` -- compute out-of-fold predictions
 - `optimizeWeights(oofPredictions, yTrue, opts?)` -- optimize ensemble weights
 - `projectSimplex(weights)` -- project weights onto probability simplex
+
+## Testing
+
+```bash
+npm test             # ensemble unit tests, no browser dependency
+npm run test:browser # builds IIFE/ESM bundles and checks exports in Chromium
+```
 
 ## License
 

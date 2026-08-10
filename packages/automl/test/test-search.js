@@ -26,8 +26,8 @@ describe('RandomSearch classification', () => {
   it('has correct number of entries (nModels * nIter)', async () => {
     const search = new RandomSearch(
       [
-        { name: 'm1', cls: SearchableMock },
-        { name: 'm2', cls: SearchableMock },
+        { name: 'm1', classId: 'wlearn.test.m1@1', cls: SearchableMock },
+        { name: 'm2', classId: 'wlearn.test.m2@1', cls: SearchableMock },
       ],
       { nIter: 3, cv: 2, task: 'classification' }
     )

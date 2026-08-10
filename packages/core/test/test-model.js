@@ -58,7 +58,11 @@ class MockTaskAgnostic {
   constructor(params) { this.#params = { ...params } }
   static async create(params) { return new MockTaskAgnostic(params) }
   fit(X, y) { this.#fitted = true; return this }
-  predict(X) { return new Float64Array(3) }
+  predict(X) {
+    return this.#params.task === 'classification'
+      ? new Int32Array(3)
+      : new Float64Array(3)
+  }
   score(X, y) { return 0.88 }
   save() { return new Uint8Array([7, 8, 9]) }
   dispose() { this.#fitted = false }
@@ -146,13 +150,42 @@ describe('createModelClass with classifier/regressor pair', () => {
     m.dispose()
   })
 
-  it('setParams changes task and disposes inner', async () => {
-    const m = await MLPModel.create({ task: 'classification' })
+  it('setParams changes task, invalidates fit, and preserves params', async () => {
+    // Creating without an explicit task prepares both async factories and permits
+    // later synchronous task switching.
+    const m = await MLPModel.create({ hidden_sizes: [64] })
     await m.fit([[1, 2]], new Int32Array([0]))
     assert.equal(m.isFitted, true)
-    m.setParams({ task: 'regression' })
+    m.setParams({ task: 'regression', learning_rate: 0.1 })
     assert.equal(m.task, 'regression')
-    assert.equal(m.isFitted, false) // inner disposed
+    assert.equal(m.isFitted, false)
+    assert.throws(() => m.predict([[1, 2]]), /not fitted/)
+    assert.deepEqual(m.getParams(), {
+      hidden_sizes: [64],
+      learning_rate: 0.1,
+      task: 'regression',
+    })
+    m.fit([[1, 2]], new Float64Array([1.5]))
+    assert.equal(m.isFitted, true)
+    assert.ok(m.predict([[1, 2]]) instanceof Float64Array)
+    m.dispose()
+  })
+
+  it('setParams merges updates without erasing existing params', async () => {
+    const m = await MLPModel.create({ hidden_sizes: [64], task: 'classification' })
+    m.setParams({ learning_rate: 0.1 })
+    assert.deepEqual(m.getParams(), {
+      hidden_sizes: [64],
+      learning_rate: 0.1,
+      task: 'classification',
+    })
+    m.dispose()
+  })
+
+  it('rejects invalid task values during create and setParams', async () => {
+    await assert.rejects(() => MLPModel.create({ task: 'clustering' }), /Unknown task/)
+    const m = await MLPModel.create({ task: 'classification' })
+    assert.throws(() => m.setParams({ task: 'clustering' }), /Unknown task/)
     m.dispose()
   })
 
@@ -246,6 +279,30 @@ describe('createModelClass with single task-agnostic class', () => {
     m.dispose()
   })
 
+  it('passes an inferred classification task to the prepared inner model', async () => {
+    const m = await XGB.create({ max_depth: 6 })
+    m.fit([[1, 2], [3, 4]], new Int32Array([0, 1]))
+    assert.equal(m.task, 'classification')
+    assert.equal(m.getParams().task, 'classification')
+    assert.ok(m.predict([[1, 2]]) instanceof Int32Array)
+    m.dispose()
+  })
+
+  it('can switch task, refit, and remain usable', async () => {
+    const m = await XGB.create({ max_depth: 6, task: 'classification' })
+    m.fit([[1, 2], [3, 4]], new Int32Array([0, 1]))
+    m.setParams({ task: 'regression', eta: 0.1 })
+    assert.equal(m.isFitted, false)
+    assert.deepEqual(m.getParams(), {
+      max_depth: 6,
+      eta: 0.1,
+      task: 'regression',
+    })
+    m.fit([[1, 2], [3, 4]], new Float64Array([1.5, 2.5]))
+    assert.ok(m.predict([[1, 2]]) instanceof Float64Array)
+    m.dispose()
+  })
+
   it('extra method (featureImportances) proxied', async () => {
     const m = await XGB.create({ task: 'classification' })
     await m.fit([[1, 2]], new Int32Array([0]))
@@ -290,6 +347,74 @@ describe('createModelClass edge cases', () => {
     const p = m.getParams()
     assert.equal(p.lr, 0.01)
     assert.equal(p.task, 'classification')
+    m.dispose()
+  })
+
+  it('prepares task-specific factory instances instead of calling constructors from fit', async () => {
+    const token = Symbol('factory')
+    class FactoryClassifier {
+      #params
+      #fitted = false
+      constructor(factoryToken, params) {
+        assert.equal(factoryToken, token)
+        this.#params = { ...params }
+      }
+      static async create(params) { return new FactoryClassifier(token, params) }
+      fit() { this.#fitted = true; return this }
+      predict() { return new Int32Array([1]) }
+      save() { return new Uint8Array([1]) }
+      dispose() { this.#fitted = false }
+      getParams() { return { ...this.#params } }
+      setParams(params) { this.#params = { ...params }; return this }
+      get isFitted() { return this.#fitted }
+      get capabilities() { return { classifier: true, regressor: false } }
+    }
+    class FactoryRegressor extends FactoryClassifier {
+      static async create(params) { return new FactoryRegressor(token, params) }
+      predict() { return new Float64Array([1.5]) }
+      get capabilities() { return { classifier: false, regressor: true } }
+    }
+
+    const M = createModelClass(FactoryClassifier, FactoryRegressor)
+    const m = await M.create({ alpha: 0.5 })
+    m.fit([[1]], new Float64Array([1.5]))
+    assert.equal(m.task, 'regression')
+    assert.ok(m.predict([[1]]) instanceof Float64Array)
+    m.dispose()
+  })
+
+  it('constructs only the selected factory for an explicit task', async () => {
+    let classifierCreates = 0
+    let regressorCreates = 0
+    class AvailableClassifier extends MockClassifier {
+      static async create(params) {
+        classifierCreates++
+        return new AvailableClassifier(params)
+      }
+    }
+    class UnavailableRegressor extends MockRegressor {
+      static async create() {
+        regressorCreates++
+        throw new Error('regressor backend unavailable')
+      }
+    }
+
+    const M = createModelClass(AvailableClassifier, UnavailableRegressor)
+    const m = await M.create({ task: 'classification' })
+    assert.equal(classifierCreates, 1)
+    assert.equal(regressorCreates, 0)
+    m.fit([[1]], new Int32Array([0]))
+    assert.ok(m.predict([[1]]) instanceof Int32Array)
+    m.dispose()
+  })
+
+  it('requires a new explicit model to switch to an unprepared task', async () => {
+    const M = createModelClass(MockClassifier, MockRegressor)
+    const m = await M.create({ task: 'classification' })
+    assert.throws(
+      () => m.setParams({ task: 'regression' }),
+      /task cannot be changed/
+    )
     m.dispose()
   })
 })

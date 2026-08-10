@@ -23,6 +23,7 @@ let registered = false
  */
 class Pipeline {
   #steps
+  #provenance
   #fitted = false
   #disposed = false
 
@@ -31,11 +32,14 @@ class Pipeline {
    *   Each estimator must implement the wlearn estimator contract (`fit`, `predict`, `save`, `dispose`).
    * @throws {ValidationError} If steps is empty.
    */
-  constructor(steps) {
+  constructor(steps, { provenance = null } = {}) {
     this.#steps = steps.map(([name, estimator]) => new Step(name, estimator))
     if (this.#steps.length === 0) {
       throw new ValidationError('Pipeline requires at least one step')
     }
+    this.#provenance = provenance === null
+      ? null
+      : _freezeJSON(_cloneJSON(provenance))
   }
 
   #ensureAlive() {
@@ -134,6 +138,9 @@ class Pipeline {
         params: s.estimator.getParams()
       }))
     }
+    if (this.#provenance !== null) {
+      manifest.metadata = { provenance: _cloneJSON(this.#provenance) }
+    }
     const artifacts = this.#steps.map(s => ({
       id: s.name,
       data: s.estimator.save(),
@@ -162,9 +169,15 @@ class Pipeline {
   dispose() {
     if (this.#disposed) return
     this.#disposed = true
-    for (const step of this.#steps) {
-      step.estimator.dispose()
+    let firstError = null
+    for (let i = this.#steps.length - 1; i >= 0; i--) {
+      try {
+        this.#steps[i].estimator.dispose()
+      } catch (error) {
+        if (firstError === null) firstError = error
+      }
     }
+    if (firstError !== null) throw firstError
   }
 
   getParams() {
@@ -190,6 +203,7 @@ class Pipeline {
   }
 
   get isFitted() { return this.#fitted }
+  get provenance() { return _cloneJSON(this.#provenance) }
 
   static registerLoader() {
     if (registered) return
@@ -220,7 +234,8 @@ class Pipeline {
         const estimator = await registryLoad(blob, context)
         steps.push([stepInfo.name, estimator])
       }
-      const pipeline = new Pipeline(steps)
+      const provenance = manifest.metadata?.provenance ?? null
+      const pipeline = new Pipeline(steps, { provenance })
       pipeline.#fitted = true
       return pipeline
     } catch (error) {
@@ -228,6 +243,27 @@ class Pipeline {
       throw error
     }
   }
+}
+
+function _cloneJSON(value) {
+  if (value === null || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map(_cloneJSON)
+  const result = {}
+  for (const [key, child] of Object.entries(value)) {
+    Object.defineProperty(result, key, {
+      value: _cloneJSON(child),
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    })
+  }
+  return result
+}
+
+function _freezeJSON(value) {
+  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value
+  for (const child of Object.values(value)) _freezeJSON(child)
+  return Object.freeze(value)
 }
 
 function _disposeLoaded(estimators) {

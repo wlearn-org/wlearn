@@ -1,6 +1,8 @@
 const { makeLCG } = require('@wlearn/core')
 const { sampleConfig } = require('./sampler.js')
-const { makeCandidateId } = require('./common.js')
+const {
+  createCandidateTask, normalizeModelSpecs, preprocessChoices
+} = require('./candidate.js')
 
 const { max, ceil } = Math
 
@@ -42,7 +44,8 @@ class ProgressiveStrategy {
     this.#probeFraction = probeFraction
 
     const rng = makeLCG(seed)
-    for (const model of models) {
+    const seen = new Map()
+    for (const model of normalizeModelSpecs(models)) {
       const space = model.searchSpace || model.cls.defaultSearchSpace?.() || {}
       const effectiveSpace = { ...space }
       if (model.params) {
@@ -54,8 +57,11 @@ class ProgressiveStrategy {
       for (let i = 0; i < nIter; i++) {
         const config = sampleConfig(effectiveSpace, configRng)
         const params = { ...config, ...(model.params || {}) }
-        const candidateId = makeCandidateId(model.name, params)
-        this.#allCandidates.push({ candidateId, cls: model.cls, params })
+        for (const preprocess of preprocessChoices(model)) {
+          this.#allCandidates.push(createCandidateTask(
+            model, params, preprocess, seen
+          ))
+        }
       }
     }
   }

@@ -9,7 +9,8 @@ const {
   Preprocessor,
   StandardScaler,
   TYPE_ID,
-  registerPreprocess
+  registerPreprocess,
+  resolvePreprocessConfig
 } = require('../src/index.js')
 
 let tranfi = null
@@ -65,6 +66,21 @@ before(async () => {
 test('re-exports core numeric scalers by exact identity', () => {
   assert.equal(StandardScaler, core.StandardScaler)
   assert.equal(MinMaxScaler, core.MinMaxScaler)
+})
+
+test('resolves configs without initializing the Tranfi backend', () => {
+  const resolved = resolvePreprocessConfig({
+    encode: 'label', scale: 'standard'
+  })
+  assert.equal(resolved.encode, 'label')
+  assert.equal(resolved.scale, 'standard')
+  assert.equal(resolved.policyVersion, 1)
+  assert(Object.isFrozen(resolved))
+  assert(Object.isFrozen(resolved.impute))
+  assert.throws(
+    () => resolvePreprocessConfig({ maxCategories: 1 }),
+    /maxCategories/
+  )
 })
 
 test('mixed inference, defaults, fit-transform, and zero-row apply', {

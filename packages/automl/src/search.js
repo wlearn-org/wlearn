@@ -3,6 +3,9 @@ const { stratifiedKFold, kFold, normalizeX, normalizeY,
 const { Executor } = require('./executor.js')
 const { RandomStrategy } = require('./strategy-random.js')
 const { detectTask, scorerGreaterIsBetter } = require('./common.js')
+const { normalizeModelSpecs } = require('./candidate.js')
+const { fitCandidate } = require('./candidate-pipeline.js')
+const { cloneLeaderboardEntry } = require('./leaderboard.js')
 
 /**
  * Random hyperparameter search with cross-validation.
@@ -12,6 +15,7 @@ class RandomSearch {
   #opts
   #leaderboard = null
   #bestResult = null
+  #archive = null
 
   /**
    * @param {Array<{ name: string, cls: object, searchSpace?: object, params?: object }>} models
@@ -21,7 +25,7 @@ class RandomSearch {
     if (!models || models.length === 0) {
       throw new ValidationError('RandomSearch: at least one model is required')
     }
-    this.#models = models
+    this.#models = normalizeModelSpecs(models, 'RandomSearch models')
     this.#opts = {
       scoring: null, // auto-detect
       cv: 5,
@@ -61,15 +65,17 @@ class RandomSearch {
 
     const strategy = new RandomStrategy(this.#models, { nIter, seed })
 
-    const { leaderboard } = await executor.runStrategy(strategy)
+    const { leaderboard, archive } = await executor.runStrategy(strategy)
 
     if (leaderboard.length === 0) {
+      if (executor.firstError !== null) throw executor.firstError
       throw new ValidationError('RandomSearch: no candidates were evaluated')
     }
 
     this.#leaderboard = leaderboard
+    this.#archive = archive
     this.#bestResult = leaderboard.best()
-    return { leaderboard, bestResult: this.#bestResult }
+    return { leaderboard, archive, bestResult: leaderboard.best() }
   }
 
   /**
@@ -80,16 +86,13 @@ class RandomSearch {
       throw new ValidationError('RandomSearch: must call fit() first')
     }
     const best = this.#bestResult
-    const model = this.#models.find(m => m.name === best.modelName)
-    const instance = await model.cls.create(best.params)
-    const Xn = normalizeX(X)
-    const yn = normalizeY(y)
-    instance.fit(Xn, yn)
-    return instance
+    const model = this.#models.find(m => m.classId === best.candidate.model.classId)
+    return fitCandidate(model, best.candidate, X, y, best.candidateId)
   }
 
   get leaderboard() { return this.#leaderboard }
-  get bestResult() { return this.#bestResult }
+  get bestResult() { return cloneLeaderboardEntry(this.#bestResult) }
+  get archive() { return this.#archive }
 }
 
 module.exports = { RandomSearch }

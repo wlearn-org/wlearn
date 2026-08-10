@@ -4,10 +4,17 @@ import {
   Preprocessor,
   StandardScaler,
   TYPE_ID,
-  registerPreprocess
+  registerPreprocess,
+  resolvePreprocessConfig
 } from '@wlearn/preprocess'
 
 async function compileContract(): Promise<void> {
+  const resolved = resolvePreprocessConfig({
+    impute: 'auto',
+    encode: 'onehot',
+    scale: 'standard'
+  })
+  const resolvedMaxCategories: number = resolved.maxCategories
   const standard = new StandardScaler()
   const minmax = new MinMaxScaler()
   standard.fit([[1], [2]]).transform([[3]])
@@ -39,6 +46,7 @@ async function compileContract(): Promise<void> {
   const mediaType: 'application/x-tranfi-transform-plan' = PLAN_MEDIA_TYPE
   void typeId
   void mediaType
+  void resolvedMaxCategories
 }
 
 void compileContract

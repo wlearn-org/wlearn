@@ -48,26 +48,37 @@ class VotingEnsemble {
     const Xn = normalizeX(X)
     const yn = normalizeY(y)
 
+    let classes = this.#classes
     if (this.#task === 'classification') {
       const labelSet = new Set()
       for (let i = 0; i < yn.length; i++) labelSet.add(yn[i])
-      this.#classes = new Int32Array([...labelSet].sort((a, b) => a - b))
+      classes = new Int32Array([...labelSet].sort((a, b) => a - b))
     }
 
     // Default equal weights
-    if (!this.#weights) {
-      this.#weights = new Float64Array(this.#specs.length).fill(1 / this.#specs.length)
+    const weights = this.#weights ||
+      new Float64Array(this.#specs.length).fill(1 / this.#specs.length)
+
+    // Build replacement state transactionally. A model becomes owned as soon
+    // as create() succeeds, before fit() can fail.
+    const models = []
+    try {
+      for (const [, EstClass, params] of this.#specs) {
+        const model = await EstClass.create(params || {})
+        models.push(model)
+        model.fit(Xn, yn)
+      }
+    } catch (error) {
+      _disposeOwned(models, error)
+      throw error
     }
 
-    // Instantiate and fit all models
-    this.#models = []
-    for (const [name, EstClass, params] of this.#specs) {
-      const model = await EstClass.create(params || {})
-      model.fit(Xn, yn)
-      this.#models.push(model)
-    }
-
+    const previous = this.#models || []
+    this.#models = models
+    this.#classes = classes
+    this.#weights = weights
     this.#fitted = true
+    _disposeOwned(previous)
     return this
   }
 
@@ -180,9 +191,7 @@ class VotingEnsemble {
   dispose() {
     if (this.#disposed) return
     this.#disposed = true
-    if (this.#models) {
-      for (const m of this.#models) m.dispose()
-    }
+    _disposeOwned(this.#models || [])
   }
 
   getParams() {
@@ -314,13 +323,19 @@ class VotingEnsemble {
 }
 
 function _disposeLoaded(models) {
+  _disposeOwned(models, new Error('preserve load error'))
+}
+
+function _disposeOwned(models, operationError = null) {
+  let firstError = null
   for (let i = models.length - 1; i >= 0; i--) {
     try {
       if (typeof models[i]?.dispose === 'function') models[i].dispose()
-    } catch {
-      // Preserve the load error; cleanup is best effort for partial state.
+    } catch (error) {
+      if (firstError === null) firstError = error
     }
   }
+  if (operationError === null && firstError !== null) throw firstError
 }
 
 module.exports = { VotingEnsemble }

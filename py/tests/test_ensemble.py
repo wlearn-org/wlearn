@@ -294,6 +294,56 @@ class TestVotingEnsembleLifecycle:
         ens.set_params({'voting': 'hard'})
         assert ens.get_params()['voting'] == 'hard'
 
+    def test_later_child_failure_releases_reverse_and_preserves_error(self):
+        events = []
+        live = {'count': 0}
+        fit_error = RuntimeError('second fit failed')
+
+        def model_class(label, fail=False, cleanup_throws=False):
+            class Model:
+                def __init__(self):
+                    self.disposed = False
+
+                @classmethod
+                def create(cls, _params=None):
+                    live['count'] += 1
+                    events.append(f'{label}:create')
+                    return cls()
+
+                def fit(self, _X, _y):
+                    events.append(f'{label}:fit')
+                    if fail:
+                        raise fit_error
+                    return self
+
+                def dispose(self):
+                    if self.disposed:
+                        return
+                    self.disposed = True
+                    live['count'] -= 1
+                    events.append(f'{label}:dispose')
+                    if cleanup_throws:
+                        raise RuntimeError(f'{label} cleanup failed')
+
+            return Model
+
+        first = model_class('first', cleanup_throws=True)
+        second = model_class('second', fail=True)
+        X, y = make_cls_data(n=20)
+        ensemble = VotingEnsemble.create(
+            estimators=[('first', first, {}), ('second', second, {})],
+            task='classification')
+        with pytest.raises(RuntimeError) as exc:
+            ensemble.fit(X, y)
+        assert exc.value is fit_error
+        assert live['count'] == 0
+        assert events == [
+            'first:create', 'first:fit', 'second:create', 'second:fit',
+            'second:dispose', 'first:dispose',
+        ]
+        ensemble.dispose()
+        assert live['count'] == 0
+
 
 # ===========================================================================
 # StackingEnsemble
@@ -365,6 +415,71 @@ class TestStackingEnsemble:
         ens.dispose()
         with pytest.raises(DisposedError):
             ens.predict(X)
+
+    @pytest.mark.parametrize('failure', ['later-base', 'meta'])
+    def test_transactional_full_data_failure_cleanup(self, failure):
+        events = []
+        live = {'count': 0}
+        fit_error = RuntimeError(f'{failure} fit failed')
+
+        def model_class(label, fail_full=False, cleanup_throws=False):
+            class Model:
+                def __init__(self):
+                    self.disposed = False
+                    self.full = False
+
+                @classmethod
+                def create(cls, _params=None):
+                    live['count'] += 1
+                    return cls()
+
+                def fit(self, X, _y):
+                    self.full = len(X) == 20
+                    if self.full and fail_full:
+                        raise fit_error
+                    return self
+
+                def predict(self, X):
+                    return np.zeros(len(X), dtype=np.int32)
+
+                def predict_proba(self, X):
+                    return np.full(len(X) * 2, 0.5, dtype=np.float64)
+
+                def dispose(self):
+                    if self.disposed:
+                        return
+                    self.disposed = True
+                    live['count'] -= 1
+                    phase = 'full' if self.full else 'oof'
+                    events.append(f'{label}:dispose:{phase}')
+                    if self.full and cleanup_throws:
+                        raise RuntimeError(f'{label} cleanup failed')
+
+            return Model
+
+        base1 = model_class('base1', cleanup_throws=True)
+        base2 = model_class(
+            'base2', fail_full=failure == 'later-base')
+        meta = model_class('meta', fail_full=failure == 'meta')
+        X, y = make_cls_data(n=20, n_classes=2)
+        ensemble = StackingEnsemble.create(
+            estimators=[('base1', base1, {}), ('base2', base2, {})],
+            final_estimator=('meta', meta, {}),
+            cv=2,
+            task='classification')
+        with pytest.raises(RuntimeError) as exc:
+            ensemble.fit(X, y)
+        assert exc.value is fit_error
+        assert live['count'] == 0
+        full_disposals = [
+            event for event in events if event.endswith(':full')]
+        assert full_disposals == (
+            ['base2:dispose:full', 'base1:dispose:full']
+            if failure == 'later-base' else
+            ['meta:dispose:full', 'base2:dispose:full',
+             'base1:dispose:full'])
+        ensemble.dispose()
+        assert live['count'] == 0
 
 
 # ===========================================================================

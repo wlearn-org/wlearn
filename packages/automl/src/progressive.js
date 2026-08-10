@@ -3,6 +3,9 @@ const { stratifiedKFold, kFold, normalizeX, normalizeY,
 const { Executor } = require('./executor.js')
 const { ProgressiveStrategy } = require('./strategy-progressive.js')
 const { detectTask, scorerGreaterIsBetter } = require('./common.js')
+const { normalizeModelSpecs } = require('./candidate.js')
+const { fitCandidate } = require('./candidate-pipeline.js')
+const { cloneLeaderboardEntry } = require('./leaderboard.js')
 
 /**
  * Progressive search: probe all candidates cheaply (1 fold + subsample),
@@ -17,12 +20,13 @@ class ProgressiveSearch {
   #opts
   #leaderboard = null
   #bestResult = null
+  #archive = null
 
   constructor(models, opts = {}) {
     if (!models || models.length === 0) {
       throw new ValidationError('ProgressiveSearch: at least one model is required')
     }
-    this.#models = models
+    this.#models = normalizeModelSpecs(models, 'ProgressiveSearch models')
     this.#opts = {
       scoring: null,
       cv: 5,
@@ -80,10 +84,13 @@ class ProgressiveSearch {
       try {
         const result = await probeExecutor.evaluateCandidate(cand)
         strategy.report(result)
-      } catch {
+      } catch (error) {
+        probeExecutor.recordFailure(cand, error)
         // Report a failing result so the strategy can count it
         strategy.report({
           candidateId: cand.candidateId,
+          candidate: cand.candidate,
+          params: cand.candidate.model.params,
           meanScore: -Infinity,
           foldScores: new Float64Array(1),
           stdScore: 0,
@@ -117,7 +124,8 @@ class ProgressiveSearch {
       if (cand === null) break
       try {
         await fullExecutor.evaluateCandidate(cand)
-      } catch {
+      } catch (error) {
+        fullExecutor.recordFailure(cand, error)
         // Skip failed candidates
       }
     }
@@ -127,15 +135,19 @@ class ProgressiveSearch {
       // Fall back to probe results if no full evals completed
       const probeLeaderboard = probeExecutor.leaderboard
       if (probeLeaderboard.length === 0) {
+        const firstError = probeExecutor.firstError ?? fullExecutor.firstError
+        if (firstError !== null) throw firstError
         throw new ValidationError('ProgressiveSearch: no candidates were evaluated')
       }
       this.#leaderboard = probeLeaderboard
+      this.#archive = probeExecutor.archive
     } else {
       this.#leaderboard = leaderboard
+      this.#archive = fullExecutor.archive
     }
 
     this.#bestResult = this.#leaderboard.best()
-    return { leaderboard: this.#leaderboard, bestResult: this.#bestResult }
+    return { leaderboard: this.#leaderboard, archive: this.#archive, bestResult: this.#leaderboard.best() }
   }
 
   async refitBest(X, y) {
@@ -143,16 +155,13 @@ class ProgressiveSearch {
       throw new ValidationError('ProgressiveSearch: must call fit() first')
     }
     const best = this.#bestResult
-    const model = this.#models.find(m => m.name === best.modelName)
-    const instance = await model.cls.create(best.params)
-    const Xn = normalizeX(X)
-    const yn = normalizeY(y)
-    instance.fit(Xn, yn)
-    return instance
+    const model = this.#models.find(m => m.classId === best.candidate.model.classId)
+    return fitCandidate(model, best.candidate, X, y, best.candidateId)
   }
 
   get leaderboard() { return this.#leaderboard }
-  get bestResult() { return this.#bestResult }
+  get bestResult() { return cloneLeaderboardEntry(this.#bestResult) }
+  get archive() { return this.#archive }
 }
 
 module.exports = { ProgressiveSearch }

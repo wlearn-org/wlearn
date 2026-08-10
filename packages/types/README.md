@@ -10,7 +10,9 @@ Part of [wlearn](https://wlearn.org) ([GitHub](https://github.com/wlearn-org), [
 npm install @wlearn/types
 ```
 
-## Constants
+## API
+
+### Constants
 
 ```js
 const { BUNDLE_MAGIC, BUNDLE_VERSION, HEADER_SIZE, DTYPE } = require('@wlearn/types')
@@ -21,7 +23,7 @@ HEADER_SIZE     // 16 bytes
 DTYPE           // { FLOAT32: 'float32', FLOAT64: 'float64', INT32: 'int32' }
 ```
 
-## Types
+### Types
 
 Data types:
 
@@ -33,9 +35,9 @@ Data types:
 
 Estimator contract:
 
-- `Estimator` -- `fit()`, `predict()`, `score()`, `save()`, `dispose()`, `getParams()`, `setParams()`
+- `Estimator` -- `fit()`, `predict()`, `score()`, `save()`, `getParams()`, `setParams()`, plus `dispose()` for deterministic cleanup
 - `Classifier` -- extends Estimator with `predictProba()` and `classes`
-- `Transformer` -- `fit()`, `transform()`, `fitTransform()`, `save()`, `dispose()`
+- `Transformer` -- `fit()`, `transform()`, `fitTransform()`, `save()`, plus `dispose()` for deterministic cleanup
 - `Capabilities` -- runtime feature flags (`classifier`, `predictProba`, `csr`, etc.)
 
 AutoML:

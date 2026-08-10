@@ -12,6 +12,17 @@ const SCORERS = {
   neg_mae: (yTrue, yPred) => -meanAbsoluteError(yTrue, yPred),
 }
 
+function _detectTask(y) {
+  if (y instanceof Int32Array) return 'classification'
+  const seen = new Set()
+  for (let i = 0; i < y.length; i++) {
+    if (!Number.isInteger(y[i])) return 'regression'
+    seen.add(y[i])
+    if (seen.size > 20) return 'regression'
+  }
+  return seen.size > 1 ? 'classification' : 'regression'
+}
+
 function getScorer(scoring) {
   if (typeof scoring === 'function') return scoring
   const fn = SCORERS[scoring]
@@ -24,8 +35,9 @@ function getScorer(scoring) {
 // --- Fold generators ---
 
 function kFold(n, k = 5, { shuffle: doShuffle = true, seed = 42 } = {}) {
+  if (!Number.isInteger(n) || n < 2) throw new ValidationError('kFold: n must be an integer >= 2')
+  if (!Number.isInteger(k) || k < 2) throw new ValidationError('kFold: k must be an integer >= 2')
   if (n < k) throw new ValidationError(`kFold: n (${n}) must be >= k (${k})`)
-  if (k < 2) throw new ValidationError('kFold: k must be >= 2')
 
   const indices = Int32Array.from({ length: n }, (_, i) => i)
   if (doShuffle) {
@@ -53,8 +65,8 @@ function kFold(n, k = 5, { shuffle: doShuffle = true, seed = 42 } = {}) {
 
 function stratifiedKFold(y, k = 5, { shuffle: doShuffle = true, seed = 42 } = {}) {
   const n = y.length
+  if (!Number.isInteger(k) || k < 2) throw new ValidationError('stratifiedKFold: k must be an integer >= 2')
   if (n < k) throw new ValidationError(`stratifiedKFold: n (${n}) must be >= k (${k})`)
-  if (k < 2) throw new ValidationError('stratifiedKFold: k must be >= 2')
 
   // Group indices by class
   const classMap = new Map()
@@ -62,6 +74,11 @@ function stratifiedKFold(y, k = 5, { shuffle: doShuffle = true, seed = 42 } = {}
     const label = y[i]
     if (!classMap.has(label)) classMap.set(label, [])
     classMap.get(label).push(i)
+  }
+  for (const [label, indices] of classMap.entries()) {
+    if (indices.length < k) {
+      throw new ValidationError(`stratifiedKFold: class "${label}" has only ${indices.length} samples, less than k (${k})`)
+    }
   }
 
   if (doShuffle) {
@@ -91,6 +108,10 @@ function stratifiedKFold(y, k = 5, { shuffle: doShuffle = true, seed = 42 } = {}
 }
 
 function trainTestSplit(n, { testSize = 0.2, shuffle: doShuffle = true, seed = 42 } = {}) {
+  if (!Number.isInteger(n) || n < 2) throw new ValidationError('trainTestSplit: n must be an integer >= 2')
+  if (typeof testSize !== 'number' || testSize <= 0 || testSize >= 1) {
+    throw new ValidationError('trainTestSplit: testSize must be in (0, 1)')
+  }
   if (n < 2) throw new ValidationError('trainTestSplit: n must be >= 2')
   const nTest = Math.max(1, Math.round(n * testSize))
   const nTrain = n - nTest
@@ -124,7 +145,9 @@ async function crossValScore(EstimatorClass, X, y, {
   if (Array.isArray(cv)) {
     folds = cv
   } else {
-    folds = stratifiedKFold(yn, cv, { shuffle: true, seed })
+    folds = _detectTask(yn) === 'classification'
+      ? stratifiedKFold(yn, cv, { shuffle: true, seed })
+      : kFold(yn.length, cv, { shuffle: true, seed })
   }
 
   const scores = new Float64Array(folds.length)

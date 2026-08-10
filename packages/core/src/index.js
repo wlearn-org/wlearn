@@ -54,6 +54,30 @@ const { isPromiseLike, lift } = require('./lift.js')
 // model wrapper
 const { createModelClass, detectTask } = require('./model.js')
 
+// ecosystem primitives
+const {
+  TASK_KINDS, inferTaskKind, createFeatureSchema, validateFeatureSchema,
+  validateRowRoles, createTask, validateTask, taskRows
+} = require('./task.js')
+const {
+  PREDICTION_FIELDS, createPrediction, validatePrediction,
+  predictionRows, predictionField
+} = require('./prediction.js')
+const {
+  MEASURE_DIRECTIONS, MEASURE_RESPONSES, defineMeasure, registerMeasure,
+  getMeasureDef, listMeasures, evaluateMeasure, aggregateMeasure,
+  evaluateMetricSet, meanAggregator, registerBuiltinMeasures
+} = require('./measure.js')
+const {
+  RESAMPLING_STRATEGIES, createResamplingPlan, validateResamplingPlan,
+  serializeResamplingPlan, deserializeResamplingPlan, groupKFold, timeSeriesSplit,
+  slidingWindowSplit, slidingIndexSplit, slidingPeriodSplit
+} = require('./resampling.js')
+const {
+  TRIAL_STATUSES, Archive, createTrialRecord, validateTrialRecord,
+  normalizeTrialError
+} = require('./archive.js')
+
 module.exports = {
   // errors
   WlearnError, BundleError, RegistryError, ValidationError, NotFittedError, DisposedError,
@@ -81,5 +105,20 @@ module.exports = {
   // lift
   isPromiseLike, lift,
   // model
-  createModelClass, detectTask
+  createModelClass, detectTask,
+  // task
+  TASK_KINDS, inferTaskKind, createFeatureSchema, validateFeatureSchema,
+  validateRowRoles, createTask, validateTask, taskRows,
+  // prediction
+  PREDICTION_FIELDS, createPrediction, validatePrediction, predictionRows, predictionField,
+  // measure
+  MEASURE_DIRECTIONS, MEASURE_RESPONSES, defineMeasure, registerMeasure,
+  getMeasureDef, listMeasures, evaluateMeasure, aggregateMeasure,
+  evaluateMetricSet, meanAggregator, registerBuiltinMeasures,
+  // resampling
+  RESAMPLING_STRATEGIES, createResamplingPlan, validateResamplingPlan,
+  serializeResamplingPlan, deserializeResamplingPlan, groupKFold, timeSeriesSplit,
+  slidingWindowSplit, slidingIndexSplit, slidingPeriodSplit,
+  // archive
+  TRIAL_STATUSES, Archive, createTrialRecord, validateTrialRecord, normalizeTrialError
 }

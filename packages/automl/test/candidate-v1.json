@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "utf8-controls-signed-zero",
+      "model": {
+        "displayName": "Display α",
+        "classId": "wlearn.test.model@1"
+      },
+      "params": {
+        "z": -0.0,
+        "é": "line\n\u0001",
+        "中": [true, null, 1.5]
+      },
+      "preprocess": null,
+      "canonicalUtf8": "[\"object\",[[\"model\",[\"object\",[[\"classId\",[\"string\",\"wlearn.test.model@1\"]],[\"params\",[\"object\",[[\"z\",[\"number\",\"0000000000000000\"]],[\"é\",[\"string\",\"line\\u000a\\u0001\"]],[\"中\",[\"array\",[[\"boolean\",true],[\"null\"],[\"number\",\"3ff8000000000000\"]]]]]]]]]],[\"preprocess\",[\"null\"]],[\"version\",[\"number\",\"3ff0000000000000\"]]]]",
+      "sha256": "3236b190d3dab0eb8c9df3e1efa3ead3629e3a60589c80b8eeeed202a67109af",
+      "candidateId": "wlc1_3236b190d3dab0eb8c9df3e1efa3ead3629e3a60589c80b8eeeed202a67109af",
+      "seeds": [
+        { "baseSeed": 0, "foldId": 0, "value": 243683211 },
+        { "baseSeed": 42, "foldId": 3, "value": 3899445500 }
+      ]
+    },
+    {
+      "name": "resolved-preprocess-safe-boundaries",
+      "model": {
+        "displayName": "Renamed model",
+        "classId": "wlearn.test.model@1"
+      },
+      "params": {
+        "a": 9007199254740991,
+        "b": 5e-324
+      },
+      "preprocess": {
+        "templateId": "wlearn.preprocess.default.v1",
+        "typeId": "wlearn.preprocess.tabular@1",
+        "resolvedParams": {
+          "impute": { "numeric": "mean", "categorical": "mode" },
+          "encode": "label",
+          "scale": "standard",
+          "maxCategories": 20,
+          "unknownCategory": "sentinel",
+          "allMissing": "zero",
+          "maxOutputColumns": 65536,
+          "maxOutputElements": 100000000,
+          "policyVersion": 1
+        }
+      },
+      "canonicalUtf8": "[\"object\",[[\"model\",[\"object\",[[\"classId\",[\"string\",\"wlearn.test.model@1\"]],[\"params\",[\"object\",[[\"a\",[\"number\",\"433fffffffffffff\"]],[\"b\",[\"number\",\"0000000000000001\"]]]]]]]],[\"preprocess\",[\"object\",[[\"resolvedParams\",[\"object\",[[\"allMissing\",[\"string\",\"zero\"]],[\"encode\",[\"string\",\"label\"]],[\"impute\",[\"object\",[[\"categorical\",[\"string\",\"mode\"]],[\"numeric\",[\"string\",\"mean\"]]]]],[\"maxCategories\",[\"number\",\"4034000000000000\"]],[\"maxOutputColumns\",[\"number\",\"40f0000000000000\"]],[\"maxOutputElements\",[\"number\",\"4197d78400000000\"]],[\"policyVersion\",[\"number\",\"3ff0000000000000\"]],[\"scale\",[\"string\",\"standard\"]],[\"unknownCategory\",[\"string\",\"sentinel\"]]]]],[\"templateId\",[\"string\",\"wlearn.preprocess.default.v1\"]],[\"typeId\",[\"string\",\"wlearn.preprocess.tabular@1\"]]]]],[\"version\",[\"number\",\"3ff0000000000000\"]]]]",
+      "sha256": "4227aa4a5f912ac142d697155d01229c5f21489b828dc0c1e5671c0cffba4cd0",
+      "candidateId": "wlc1_4227aa4a5f912ac142d697155d01229c5f21489b828dc0c1e5671c0cffba4cd0",
+      "seeds": [
+        { "baseSeed": 0, "foldId": 0, "value": 3567083259 },
+        { "baseSeed": 4294967295, "foldId": 7, "value": 1156453749 }
+      ]
+    }
+  ]
+}

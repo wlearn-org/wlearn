@@ -48,6 +48,7 @@ def get_oof_predictions(estimator_specs, X, y, cv=5, seed=42, task='classificati
             X_test = X[test]
 
             model = est_cls.create(params or {})
+            operation_error = None
             try:
                 model.fit(X_train, y_train)
                 if task == 'classification':
@@ -60,8 +61,15 @@ def get_oof_predictions(estimator_specs, X, y, cv=5, seed=42, task='classificati
                     preds = model.predict(X_test)
                     for i in range(len(test)):
                         oof[test[i]] = float(preds[i])
+            except Exception as error:
+                operation_error = error
+                raise
             finally:
-                model.dispose()
+                try:
+                    model.dispose()
+                except Exception:
+                    if operation_error is None:
+                        raise
 
         oof_preds.append(oof)
 

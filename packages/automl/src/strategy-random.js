@@ -1,6 +1,8 @@
 const { makeLCG } = require('@wlearn/core')
 const { sampleConfig } = require('./sampler.js')
-const { makeCandidateId } = require('./common.js')
+const {
+  createCandidateTask, normalizeModelSpecs, preprocessChoices
+} = require('./candidate.js')
 
 /**
  * Random search strategy: generates nIter random configs per model,
@@ -19,8 +21,9 @@ class RandomStrategy {
    */
   constructor(models, { nIter = 20, seed = 42 } = {}) {
     const rng = makeLCG(seed)
+    const seen = new Map()
 
-    for (const model of models) {
+    for (const model of normalizeModelSpecs(models)) {
       const space = model.searchSpace || model.cls.defaultSearchSpace?.() || {}
       // Remove fixed params from search space
       const effectiveSpace = { ...space }
@@ -34,12 +37,11 @@ class RandomStrategy {
       for (let i = 0; i < nIter; i++) {
         const config = sampleConfig(effectiveSpace, configRng)
         const params = { ...config, ...(model.params || {}) }
-        const candidateId = makeCandidateId(model.name, params)
-        this.#queue.push({
-          candidateId,
-          cls: model.cls,
-          params,
-        })
+        for (const preprocess of preprocessChoices(model)) {
+          this.#queue.push(createCandidateTask(
+            model, params, preprocess, seen
+          ))
+        }
       }
     }
     this.#total = this.#queue.length
