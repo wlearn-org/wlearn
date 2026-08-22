@@ -1,6 +1,8 @@
 # @wlearn/types
 
-TypeScript interfaces and constants for wlearn. Zero runtime code. This is the contract that all wlearn packages implement against.
+TypeScript interfaces plus a small CommonJS constants module for wlearn. This is
+the shared contract that wlearn packages implement against; it has no runtime
+dependencies or model logic.
 
 Part of [wlearn](https://wlearn.org) ([GitHub](https://github.com/wlearn-org), [all packages](https://github.com/wlearn-org/wlearn#repository-structure)).
 
@@ -22,6 +24,9 @@ BUNDLE_VERSION  // 1
 HEADER_SIZE     // 16 bytes
 DTYPE           // { FLOAT32: 'float32', FLOAT64: 'float64', INT32: 'int32' }
 ```
+
+Only constants are runtime values in this package. Import implementations such
+as `Pipeline`, registry functions, metrics, and error classes from `@wlearn/core`.
 
 ### Types
 

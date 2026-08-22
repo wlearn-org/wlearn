@@ -7,8 +7,11 @@ Part of [wlearn](https://wlearn.org) ([GitHub](https://github.com/wlearn-org), [
 ## Install
 
 ```bash
-npm install @wlearn/ensemble
+npm install @wlearn/ensemble @wlearn/liblinear
 ```
+
+Ensemble constructors receive model classes; install every model package named by
+your estimator specs. The command above includes the backend used below.
 
 ## Voting
 
@@ -17,25 +20,37 @@ Combine multiple models by averaging predictions (soft) or majority vote (hard).
 ```js
 const { VotingEnsemble } = require('@wlearn/ensemble')
 const { LinearModel } = require('@wlearn/liblinear')
-const { XGBModel } = require('@wlearn/xgboost')
 
-const ens = await VotingEnsemble.create({
-  estimators: [
-    ['linear', LinearModel, { task: 'classification' }],
-    ['xgb', XGBModel, { task: 'classification' }]
-  ],
-  voting: 'soft',
-  task: 'classification'
+async function main() {
+  const X = [[-4], [-3], [-2], [-1], [1], [2], [3], [4]]
+  const y = new Int32Array([0, 0, 0, 0, 1, 1, 1, 1])
+
+  const ensemble = await VotingEnsemble.create({
+    estimators: [
+      ['linear-c1', LinearModel, { task: 'classification', C: 1 }],
+      ['linear-c2', LinearModel, { task: 'classification', C: 2 }]
+    ],
+    voting: 'hard',
+    task: 'classification'
+  })
+
+  await ensemble.fit(X, y)
+  // Inference stays synchronous because both fitted children are synchronous.
+  console.log(Array.from(ensemble.predict([[-2], [2]]))) // [0, 1]
+}
+
+main().catch(error => {
+  console.error(error)
+  process.exitCode = 1
 })
-
-await ens.fit(X, y)
-const preds = ens.predict(X_test)
-const acc = ens.score(X_test, y_test)
 ```
 
 ## Stacking
 
 Train base models, collect out-of-fold predictions, then train a meta-learner on those predictions.
+
+The following focused snippets assume `X`, `y`, and `XTest` are defined inside an
+async function and that both model packages are installed.
 
 ```js
 const { StackingEnsemble } = require('@wlearn/ensemble')
@@ -53,7 +68,7 @@ const stack = await StackingEnsemble.create({
 })
 
 await stack.fit(X, y)
-const preds = stack.predict(X_test)
+const preds = stack.predict(XTest)
 ```
 
 ## K-fold bagging
@@ -74,7 +89,7 @@ const bag = await BaggedEstimator.create({
 })
 
 await bag.fit(X, y)
-const preds = bag.predict(X_test)
+const preds = bag.predict(XTest)
 const oof = bag.oofPredictions
 ```
 

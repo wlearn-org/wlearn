@@ -4,47 +4,64 @@ Automated model selection for wlearn. Searches over model families and hyperpara
 
 Part of [wlearn](https://wlearn.org) ([GitHub](https://github.com/wlearn-org), [all packages](https://github.com/wlearn-org/wlearn#repository-structure)).
 
+> **Unreleased main:** This README targets AutoML 0.3. The current npm 0.2.x
+> release does not include the preprocessing integration described below, and
+> `@wlearn/preprocess` is not yet published. Use the coordinated source trees for
+> that workflow until the next release.
+
 ## Install
 
 ```bash
-npm install @wlearn/automl
+npm install @wlearn/automl @wlearn/liblinear
 ```
 
-Requires at least one model package (e.g. `@wlearn/xgboost`) to do anything useful.
+AutoML orchestrates model packages; it does not contain a model backend itself.
+The command above includes the backend used by this example.
 
 ## Quick start
 
 ```js
 const { autoFit } = require('@wlearn/automl')
 const { LinearModel } = require('@wlearn/liblinear')
-const { XGBModel } = require('@wlearn/xgboost')
 
 const models = [
   { name: 'linear', classId: 'wlearn.liblinear.classifier@1',
-    portfolioKey: 'linear', cls: LinearModel, params: { task: 'classification' } },
-  { name: 'xgb', classId: 'wlearn.xgboost.classifier@1',
-    portfolioKey: 'xgb', cls: XGBModel, params: { task: 'classification' } }
+    portfolioKey: 'linear', cls: LinearModel, params: { task: 'classification' } }
 ]
 
-const result = await autoFit(models, X, y, {
-  scoring: 'accuracy',
-  cv: 5,
-  nIter: 20,
-  ensemble: true,
-  ensembleSize: 10,
-  refit: true
-})
+async function main() {
+  const X = [[-4], [-3], [-2], [-1], [1], [2], [3], [4]]
+  const y = new Int32Array([0, 0, 0, 0, 1, 1, 1, 1])
 
-result.model         // best fitted estimator (or ensemble)
-result.leaderboard   // ranked candidate results
-result.archive       // structured Archive of ok/failed trials
-result.bestScore     // best CV score
-result.bestModelName // e.g. 'xgb'
-result.bestParams    // { model, preprocess }
-result.bestCandidate // structured model + preprocessing identity
+  const result = await autoFit(models, X, y, {
+    scoring: 'accuracy',
+    cv: 2,
+    nIter: 2,
+    ensemble: false,
+    refit: true,
+    seed: 42
+  })
+
+  console.log(result.bestScore) // 1
+  console.log(Array.from(result.model.predict([[-2], [2]]))) // [0, 1]
+  console.log(result.leaderboard.length) // 2
+}
+
+main().catch(error => {
+  console.error(error)
+  process.exitCode = 1
+})
 ```
 
-For the simple path, this is the whole API: use `result.model` for prediction and `result.leaderboard` for ranked candidates. `result.archive` is optional metadata for provenance, failed candidates, and agent/API workflows.
+For the simple path, this is the whole API: use `result.model` for prediction and
+`result.leaderboard` for ranked candidates. The LinearModel winner above predicts
+synchronously; a winner backed by an asynchronous runtime returns a Promise from
+prediction. `result.archive` is optional metadata for provenance, failed
+candidates, and agent/API workflows.
+
+Add more model packages and model specs to compare families. In long-running
+search services, call `result.model.dispose()` after the selected model is no
+longer needed; AutoML disposes rejected fold candidates itself.
 
 ## API
 
@@ -120,9 +137,10 @@ successive-halving subsample budget. They do not replace the model's explicit
 candidate `seed` parameter and do not describe how the already-supplied CV folds
 were generated.
 
-Refitted candidates are returned as Pipelines. Their WLRN artifacts retain the
-structured candidate provenance, including when those Pipelines are nested in an
-ensemble.
+When preprocessing is active, refitted candidates are returned as Pipelines.
+Those Pipeline WLRN artifacts retain the structured candidate provenance,
+including when they are nested in an ensemble. Without preprocessing, refit
+returns the fitted base model directly.
 
 ## Portfolio
 

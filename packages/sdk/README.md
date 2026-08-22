@@ -13,12 +13,23 @@ npm install @wlearn/sdk
 ## Usage
 
 ```js
-const { XGBModel, LinearModel, autoFit, Pipeline, accuracy } = require('@wlearn/sdk')
+const { LinearModel, accuracy } = require('@wlearn/sdk')
 
-const model = await XGBModel.create({ task: 'classification' })
-model.fit(X, y)
-console.log('accuracy:', accuracy(y_test, model.predict(X_test)))
-model.dispose()
+async function main() {
+  const X = [[-2, -2], [-1, -1], [1, 1], [2, 2]]
+  const y = new Int32Array([0, 0, 1, 1])
+  const XTest = [[-1.5, -1.5], [1.5, 1.5]]
+  const yTest = new Int32Array([0, 1])
+
+  const model = await LinearModel.create({ task: 'classification' })
+  model.fit(X, y)
+  console.log('accuracy:', accuracy(yTest, model.predict(XTest))) // 1
+}
+
+main().catch(error => {
+  console.error(error)
+  process.exitCode = 1
+})
 ```
 
 ## What is included
@@ -60,9 +71,9 @@ Core utilities:
 
 ## Caveats
 
-- **Node/scripting only.** Browser users should import individual packages so bundlers can tree-shake unused WASM binaries. The SDK pulls in all WASM modules (~30 MB total).
+- **Node/scripting only.** Browser users should import individual packages so bundlers can tree-shake unused WASM binaries. The SDK pulls in its complete model dependency set.
 - `@wlearn/mitra` is an optional peer dependency (requires `onnxruntime-node` or `onnxruntime-web`). If installed, its exports are available; otherwise they are `undefined`.
-- May lag behind individual model package releases.
+- The SDK is released only after its exact model/core dependency set is aligned; it may lag behind individual package releases.
 
 ## License
 

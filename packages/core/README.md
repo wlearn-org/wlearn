@@ -7,27 +7,42 @@ Part of [wlearn](https://wlearn.org) ([GitHub](https://github.com/wlearn-org), [
 ## Install
 
 ```bash
-npm install @wlearn/core
+npm install @wlearn/core @wlearn/liblinear
 ```
+
+`@wlearn/core` contains no model backend. `@wlearn/liblinear` is included above
+because the runnable example uses it.
 
 ## Quick start
 
 ```js
 const { readFileSync, writeFileSync } = require('fs')
-const { Pipeline, load, accuracy, crossValScore } = require('@wlearn/core')
+const { Pipeline, load, accuracy } = require('@wlearn/core')
 const { LinearModel } = require('@wlearn/liblinear')
 
-// Build a pipeline
-const model = await LinearModel.create({ task: 'classification' })
-const pipe = new Pipeline([['clf', model]])
+async function main() {
+  const X = [[-2, -2], [-1, -1], [1, 1], [2, 2]]
+  const y = new Int32Array([0, 0, 1, 1])
+  const XTest = [[-1.5, -1.5], [1.5, 1.5]]
+  const yTest = new Int32Array([0, 1])
 
-pipe.fit(X, y)
-const preds = pipe.predict(X_test)
-console.log('accuracy:', accuracy(y_test, preds))
+  const model = await LinearModel.create({ task: 'classification' })
+  const pipe = new Pipeline([['clf', model]])
+  pipe.fit(X, y)
 
-// Save / load
-writeFileSync('pipeline.wlrn', pipe.save())
-const restored = await load(readFileSync('pipeline.wlrn'))
+  const preds = pipe.predict(XTest)
+  console.log('accuracy:', accuracy(yTest, preds)) // 1
+
+  writeFileSync('pipeline.wlrn', pipe.save())
+  // Importing @wlearn/liblinear above registered its bundle loaders.
+  const restored = await load(readFileSync('pipeline.wlrn'))
+  console.log(Array.from(restored.predict(XTest))) // [0, 1]
+}
+
+main().catch(error => {
+  console.error(error)
+  process.exitCode = 1
+})
 ```
 
 ## API
@@ -37,7 +52,7 @@ const restored = await load(readFileSync('pipeline.wlrn'))
 Convert user input to typed arrays for WASM consumption.
 
 - `normalizeX(X)` -- `number[][] | DenseMatrix` to contiguous `DenseMatrix`
-- `normalizeY(y)` -- `number[] | TypedArray` to `Float64Array`
+- `normalizeY(y)` -- preserves `Int32Array`, `Float32Array`, and `Float64Array`; converts `number[]` to `Float64Array`
 - `makeDense(data, rows, cols)` -- create `DenseMatrix` from typed array
 - `validateMatrix(m)` -- validate matrix structure and dimensions
 
@@ -70,11 +85,13 @@ a migration tool, and advance deprecation notice.
 
 ### Registry
 
-Global loader dispatcher. Model packages register themselves on import.
+Global loader dispatcher. Model packages register themselves on import. A fresh
+process must import the matching package before calling generic `load()`; core
+does not eagerly import optional backends.
 
-- `register(typeId, loaderFn)` -- register a deserializer
+- `register(typeId, loaderFn, { acceptsContext?, sync? })` -- register a deserializer; both flags default to `false`
 - `load(bytes)` -- async: decode bundle, dispatch to registered loader
-- `loadSync(bytes)` -- sync variant (limited to sync loaders)
+- `loadSync(bytes)` -- sync variant, only for loaders explicitly registered with `sync: true`
 - `getRegistry()` -- inspect registered loaders
 - `assertRequiredLoaders(manifest)` -- preflight all declared nested loaders
 
@@ -118,7 +135,13 @@ usage.
 
 - `StandardScaler` -- zero mean and population variance (`ddof=0`)
 - `MinMaxScaler` -- scale the fitted range to [0, 1]
-- `Preprocessor` -- base transformer class
+- `Preprocessor` -- legacy state-only dense preprocessing helper
+
+For new fitted tabular preprocessing over dense numeric matrices, use `Preprocessor` from
+`@wlearn/preprocess`. It wraps Tranfi prepared transforms and implements WLRN
+`save()`/load registration. The core class with the same name predates that
+adapter, exposes `getState()`/`fromState()`, and must not be used as a serializable
+Pipeline step.
 
 New scaler artifacts use the corrected `standard_scaler@2` and
 `minmax_scaler@2` contracts. Both runtimes retain `@1` loaders so existing

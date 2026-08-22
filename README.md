@@ -2,23 +2,41 @@
 
 Classical machine learning that runs entirely in the browser and Node.js. No server, no Python runtime, no data leaving your machine.
 
-wlearn compiles battle-tested C/C++ ML libraries to WebAssembly and wraps them in a unified, sklearn-style JavaScript API. Train a model, serialize it to a portable binary bundle, load it anywhere -- same predictions, same format, JS or Python.
+wlearn packages C/C++ and ONNX-backed models behind a unified, sklearn-style
+JavaScript API. Train locally, serialize to a portable WLRN bundle, and use the
+same artifact in JavaScript or Python when the corresponding loader is available.
+
+> **Unreleased main:** This branch documents the next coordinated 0.x release.
+> Public registries do not yet provide `@wlearn/preprocess`, the
+> `wlearn[preprocess]` extra, or Tranfi's prepared-transform API. Build those
+> components from source until Tranfi 0.2 and the dependent wlearn packages are
+> published in dependency order.
 
 ## Why
 
 Most ML libraries require Python and a server. That means network round-trips, data privacy concerns, and infrastructure to manage. For many use cases -- on-device inference, privacy-sensitive data, offline apps, rapid prototyping -- you just want the model to run where the data already is.
 
-WebAssembly makes this possible. The same optimized C code that powers scikit-learn's SVM and linear classifiers can compile to WASM and run at near-native speed in any modern browser or Node.js process. wlearn packages these compilers into npm modules with a clean JS API, so you can `npm install` a classifier the same way you `pip install` one.
+WebAssembly makes this possible. The LIBSVM and LIBLINEAR sources used by native
+Python tooling can also compile to WASM and run locally in supported browsers and
+Node.js. wlearn packages the resulting modules behind a JavaScript API, so model
+backends can be installed independently from npm.
 
 ## How it works
 
-**WASM ports, not reimplementations.** Each model package compiles the original upstream C/C++ source to WebAssembly via Emscripten. The numerical results match the native libraries.
+**Small backend boundaries.** Port packages compile pinned upstream C/C++ source
+to WebAssembly through Emscripten; original wlearn packages keep their C11 source
+in their own repositories, and Mitra uses ONNX Runtime. Cross-runtime numerical
+equivalence is checked per backend with explicit tolerances rather than assumed
+from the shared wrapper.
 
-**Unified API.** Base models use async construction (WASM must load), then synchronous `fit` and `save`; prediction may be sync or async by backend. Orchestration composites Promise-lift fit only when they must create asynchronous children.
+**Unified API.** Base models use async construction (WASM must load), then synchronous `fit` and `save`; prediction may be sync or async by backend. Pipelines preserve synchronous fit for synchronous children and Promise-lift asynchronous children; ensemble fit is asynchronous because ensembles construct and train owned children.
 
-**Portable bundles.** `save()` produces a self-describing binary bundle (format: WLRN v1) containing the model weights, hyperparameters, and a type identifier. `load()` reads the bundle and dispatches to the right loader automatically. Bundles are language-agnostic -- the Python `wlearn` package reads the same files.
+**Portable bundles.** `save()` produces a self-describing binary bundle (format:
+WLRN v1) containing model artifacts, parameters, and a type identifier. `load()`
+reads the bundle and dispatches to a registered loader. WLRN is language-neutral;
+the Python package implements loaders for the backends listed in its documentation.
 
-**Mandatory resource management.** WASM models allocate linear memory that the JavaScript garbage collector cannot see. Every model has a `dispose()` method. Call it when you are done.
+**Deterministic cleanup when needed.** WASM models expose `dispose()` for long-running apps, workers, cross-validation, and AutoML loops that create many models.
 
 ## Quick start
 
@@ -27,34 +45,63 @@ npm install @wlearn/liblinear
 ```
 
 ```js
+const { readFileSync, writeFileSync } = require('fs')
 const { LinearModel } = require('@wlearn/liblinear')
 
-// 1. Create (async -- loads WASM)
-const model = await LinearModel.create({
-  solver: 'L2R_LR',
-  C: 1.0
+async function main() {
+  // Construction is async because it loads WASM; base-model fit is synchronous.
+  const model = await LinearModel.create({
+    task: 'classification',
+    solver: 'L2R_LR',
+    C: 1.0
+  })
+
+  const X = [[-2, -2], [-1, -1], [1, 1], [2, 2]]
+  const y = new Int32Array([0, 0, 1, 1])
+  model.fit(X, y)
+
+  const XTest = [[-1.5, -1.5], [1.5, 1.5]]
+  console.log(Array.from(model.predict(XTest))) // [0, 1]
+
+  writeFileSync('linear.wlrn', model.save())
+  const restored = await LinearModel.load(readFileSync('linear.wlrn'))
+  console.log(Array.from(restored.predict(XTest))) // [0, 1]
+}
+
+main().catch(error => {
+  console.error(error)
+  process.exitCode = 1
 })
-
-// 2. Train (sync)
-const X = [[1, 2], [3, 4], [5, 6], [7, 8]]
-const y = [0, 0, 1, 1]
-model.fit(X, y)
-
-// 3. Predict (sync)
-const predictions = model.predict([[2, 3], [6, 7]])
-console.log(predictions)  // Float64Array [0, 1]
-
-// 4. Save to portable bundle
-const bundle = model.save()  // Uint8Array (WLRN format)
-
-// 5. Load anywhere
-const restored = await LinearModel.load(bundle)
-restored.predict([[6, 7]])  // same result
-
-// 6. Clean up
-model.dispose()
-restored.dispose()
 ```
+
+### If you know scikit-learn
+
+The estimator lifecycle is deliberately familiar: create, `fit`, `predict` or
+`transform`, `score`, and compose fitted steps in a `Pipeline`. The important
+differences are:
+
+| scikit-learn expectation | wlearn contract |
+|--------------------------|-----------------|
+| Constructors are synchronous | JavaScript WASM models use `await Model.create(params)`; Python construction is synchronous. |
+| pandas and NumPy inputs | JavaScript core accepts `number[][]` or a row-major dense typed matrix; individual models may declare sparse CSR support. Python accepts NumPy-compatible arrays. DataFrames are not the core interchange type. |
+| `predict_proba()` returns a 2-D array | JavaScript `predictProba()` and Python `predict_proba()` return a flat row-major buffer of `rows * nClasses`; use the fitted `classes` order. |
+| pickle/joblib persistence | `save()` writes portable WLRN bytes; import/register the relevant model package before generic `load()`. |
+| Python owns native objects through GC | Call `dispose()` in long-running JavaScript loops that create many WASM models. |
+
+Pass `task: 'classification'` or `task: 'regression'` when it is known instead
+of relying on label-based inference. Parameters are plain objects and Pipeline
+steps receive created estimator instances; wlearn does not implement sklearn's
+`step__parameter` convention.
+
+### Preprocessing and Tranfi
+
+wlearn owns estimators, Pipelines, AutoML, and WLRN artifacts. Tranfi is an
+independent streaming/data-processing engine. Use `Preprocessor` from
+`@wlearn/preprocess` (or `wlearn.preprocess` in Python) for sklearn-style fitted
+imputation, encoding, and scaling inside wlearn Pipelines. It stores Tranfi's
+immutable learned plan inside a WLRN bundle. Use Tranfi directly for lower-level
+byte-stream ETL or typed-batch integrations; it processes streams and batches
+rather than exposing a pandas-style in-memory DataFrame.
 
 ## Packages
 
@@ -62,8 +109,9 @@ restored.dispose()
 
 | Package | Description |
 |---------|-------------|
-| `@wlearn/types` | TypeScript interfaces and constants. Zero runtime. |
+| `@wlearn/types` | TypeScript interfaces plus a minimal runtime constants module. |
 | `@wlearn/core` | Matrix helpers, bundle encode/decode, loader registry, pipeline, error classes. Small, no WASM. |
+| `@wlearn/preprocess` | Fitted tabular preprocessing adapter over Tranfi, with WLRN persistence. |
 | `@wlearn/ensemble` | Stacking, voting, and bagging ensembles. |
 | `@wlearn/automl` | Automated model selection with `autoFit()`. Requires model packages. |
 | `@wlearn/sdk` | Convenience barrel for Node.js. Re-exports all model classes + core + automl + ensemble. |
@@ -95,6 +143,9 @@ Built from scratch (not WASM ports of existing libraries):
 ## API overview
 
 Every model package exports a model class that implements the same contract.
+The blocks in this reference section are focused fragments: they assume the
+shown model classes plus `X`/`y` are already defined inside an async function.
+Use the Quick start above for a complete executable CommonJS program.
 
 ### Construction
 
@@ -104,17 +155,19 @@ WASM modules load asynchronously. Use the static `create()` factory:
 const model = await LinearModel.create({ solver: 'L2R_LR', C: 1.0 })
 ```
 
-After construction, base-model `fit` and `save` are synchronous. `predict`, `predictProba`, and `score` are synchronous for WASM-backed models but return Promises for async backends (for example, `@wlearn/mitra` uses ONNX Runtime). Ensembles and Pipelines that contain them Promise-lift `fit`; use `await composite.fit(X, y)` when accepting orchestration composites.
+After construction, base-model `fit` and `save` are synchronous. `predict`, `predictProba`, and `score` are synchronous for WASM-backed models but return Promises for async backends (for example, `@wlearn/mitra` uses ONNX Runtime). Pipeline fit remains synchronous with synchronous children and Promise-lifts an asynchronous child. Ensemble fit is asynchronous because ensembles construct and train owned children; use `await composite.fit(X, y)` in code that accepts either kind of composite.
 
 ### fit / predict / score
 
+For a WASM-backed base model, these calls are synchronous:
+
 ```js
 // X: number[][] or { data: Float64Array, rows, cols }
-// y: number[] or Float64Array
+// y: number[] or Int32Array/Float32Array/Float64Array
 model.fit(X, y)
 
-const preds = model.predict(X)       // Float64Array
-const accuracy = model.score(X, y)   // number (accuracy or R-squared)
+const preds = model.predict(X)      // Labels typed array (model-specific)
+const accuracy = model.score(X, y)  // accuracy or R-squared
 ```
 
 ### Probability estimates
@@ -123,12 +176,12 @@ const accuracy = model.score(X, y)   // number (accuracy or R-squared)
 // liblinear: automatic for logistic regression solvers
 const model = await LinearModel.create({ solver: 'L2R_LR' })
 model.fit(X, y)
-const probs = model.predictProba(X)  // Float64Array, shape: rows * nClasses
+const linearProbs = model.predictProba(X)  // Float64Array, rows * nClasses
 
 // libsvm: set probability: 1
 const svm = await SVMModel.create({ svmType: 'C_SVC', kernel: 'RBF', probability: 1 })
 svm.fit(X, y)
-const probs = svm.predictProba(X)
+const svmProbs = svm.predictProba(X)
 ```
 
 ### Save and load
@@ -136,23 +189,34 @@ const probs = svm.predictProba(X)
 Every model serializes to a WLRN bundle -- a compact binary format with embedded metadata:
 
 ```js
-const bytes = model.save()  // Uint8Array
+const { readFileSync, writeFileSync } = require('fs')
+
+writeFileSync('model.wlrn', model.save())
 
 // Load directly
-const restored = await LinearModel.load(bytes)
+const directRestored = await LinearModel.load(readFileSync('model.wlrn'))
 
 // Or use the universal loader (auto-dispatches by typeId)
+// Importing the model package above registered its loaders.
 const { load } = require('@wlearn/core')
-const restored = await load(bytes)  // works for any registered model type
+const genericRestored = await load(readFileSync('model.wlrn'))
+
+// Bytes are the API representation when you need to store the bundle yourself.
+const bytes = model.save()  // Uint8Array
 ```
 
-The universal `load()` reads the bundle header, finds the registered loader for that model type, and returns a fitted estimator. This means you can load any wlearn model without knowing its type in advance -- useful for pipelines, ensemble systems, and model serving.
+The universal `load()` reads the bundle header, finds the registered loader for
+that type, and returns a fitted estimator. In a fresh process, first import the
+matching model package (or call its explicit registration function); the core
+does not eagerly load every optional backend. Nested bundles declare their
+required loaders and fail with an actionable error when one is missing.
 
 ### Pipeline
 
 Compose multiple steps into a single estimator. Steps are `[name, estimator]` tuples.
 
 ```js
+const { readFileSync, writeFileSync } = require('fs')
 const { Pipeline, load } = require('@wlearn/core')
 const { LinearModel } = require('@wlearn/liblinear')
 
@@ -163,12 +227,9 @@ pipe.fit(X, y)
 const preds = pipe.predict(X)
 
 // Save/load works the same as individual models
-const bytes = pipe.save()
-const restored = await load(bytes)
+writeFileSync('pipeline.wlrn', pipe.save())
+const restored = await load(readFileSync('pipeline.wlrn'))
 restored.predict(X)
-
-pipe.dispose()
-restored.dispose()
 ```
 
 ### Parameters
@@ -182,13 +243,13 @@ const space = LinearModel.defaultSearchSpace()
 // { solver: { type: 'categorical', values: [...] }, C: { type: 'log_uniform', ... }, ... }
 ```
 
-### Dispose
+### Resource lifecycle
 
 ```js
-model.dispose()  // frees WASM memory -- required
+model.dispose()
 ```
 
-Models allocate memory on the WebAssembly linear heap. The JS garbage collector does not track this memory. Failing to call `dispose()` leaks memory. A `FinalizationRegistry` safety net will warn you in development, but do not rely on it.
+`dispose()` releases native/WASM memory immediately. Use it in long-running browser or Node apps, workers, cross-validation, AutoML, and benchmarks where many models are created and discarded. It is not part of the ordinary fit/predict/save path for small scripts.
 
 ## Model-specific features
 
@@ -445,18 +506,24 @@ model.predict(X)
 
 ### @wlearn/mitra
 
-Pretrained Mitra Tab2D models for tabular data. ONNX-based inference via ONNX Runtime.
+Pretrained Mitra Tab2D models for tabular data. Unlike the generic
+`Model.create(params)` form, Mitra construction requires ONNX model bytes or a
+pre-created ONNX Runtime session as its first argument. `fit()` synchronously
+stores support rows used as in-context examples; prediction is asynchronous.
 
 ```js
 const { MitraClassifier, MitraRegressor } = require('@wlearn/mitra')
+const ort = require('onnxruntime-node')
 
 // Classification
-const clf = await MitraClassifier.create({ nFeatures: 10 })
+const clfSession = await ort.InferenceSession.create('mitra-classifier.onnx')
+const clf = await MitraClassifier.create(clfSession, { maxSupport: 512 }, { ort })
 clf.fit(X, y)
 const preds = await clf.predict(Xtest)  // async (ONNX inference)
 
 // Regression
-const reg = await MitraRegressor.create({ nFeatures: 10 })
+const regSession = await ort.InferenceSession.create('mitra-regressor.onnx')
+const reg = await MitraRegressor.create(regSession, { maxSupport: 512 }, { ort })
 reg.fit(X, y)
 const rPreds = await reg.predict(Xtest)
 ```
@@ -512,7 +579,7 @@ Ensemble methods that combine multiple models for better predictions.
 const { StackingEnsemble, VotingEnsemble, BaggedEstimator } = require('@wlearn/ensemble')
 ```
 
-`StackingEnsemble` trains base models with out-of-fold predictions and feeds them to a meta-learner. `VotingEnsemble` averages predictions (soft vote) or takes majority class (hard vote). `BaggedEstimator` trains multiple copies of a single model on bootstrap samples.
+`StackingEnsemble` trains base models with out-of-fold predictions and feeds them to a meta-learner. `VotingEnsemble` averages predictions (soft vote) or takes majority class (hard vote). `BaggedEstimator` trains multiple copies of a single model over repeated K-fold splits.
 
 ### @wlearn/automl
 
@@ -547,28 +614,35 @@ result.bestParams      // winning hyperparameters
 
 ## Python
 
-The Python `wlearn` package reads and writes the same WLRN bundles as the JS packages. Models trained in JS can be loaded in Python and vice versa.
+The WLRN container is shared by JavaScript and Python. For backend pairs that
+have corresponding loaders in both runtimes, a bundle written in one can be
+loaded in the other and checked within that backend's declared tolerance.
 
 ```python
 import wlearn.xgboost  # registers loader
 
 # Load a bundle (produced by JS or Python)
-model = wlearn.load(open('model.wlrn', 'rb').read())
+model = wlearn.load('model.wlrn')
 preds = model.predict(X)
 model.score(X, y)
 
 # Save back to WLRN (loadable from JS)
-bundle = model.save()
+model.save('model-resaved.wlrn')
 ```
 
-Python wrappers exist for: xgboost, liblinear, libsvm, nanoflann, lightgbm, ebm, stochtree, tsetlin, nn. Classical ML wrappers use native upstream packages. Neural models (nn) use polygrad via ctypes.
+The Python package depends on NumPy. Wrappers exist for: xgboost, liblinear, libsvm, nanoflann, lightgbm, ebm, xlearn, stochtree, tsetlin, nn. Classical ML wrappers use native upstream packages where training needs them; xlearn and EBM bundle inference are NumPy-only. Neural models (nn) use polygrad via ctypes.
 
 ```
-pip install wlearn               # bundle/registry/pipeline only
+pip install wlearn               # core, metrics, resampling, AutoML/ensemble primitives; no optional training backend
 pip install wlearn[xgboost]      # + xgboost support
 pip install wlearn[liblinear]    # + liblinear support
 pip install wlearn[libsvm]       # + libsvm support
 pip install wlearn[nanoflann]    # + k-nearest neighbors support
+pip install wlearn[lightgbm]     # + LightGBM support
+pip install wlearn[stochtree]    # + BART support
+pip install wlearn[nn]           # + polygrad neural models
+pip install wlearn[preprocess]   # + Tranfi-backed fitted preprocessing (next release)
+pip install wlearn[bo]           # + Bayesian AutoML strategy support
 pip install wlearn[all]          # everything
 ```
 
@@ -576,10 +650,11 @@ Requires Python 3.9+.
 
 ## Cross-language interop
 
-Bundles are portable between JS and Python. The WLRN format guarantees:
+For model/backend pairs covered by the golden fixtures, the interoperability
+tests require:
 
 - **Identical blob bytes**: upstream serialization produces the same bytes regardless of host language
-- **Identical predictions**: models loaded from the same bundle produce identical predictions in both languages (within floating-point tolerance)
+- **Equivalent predictions**: models loaded from the same bundle agree within the fixture's declared floating-point tolerance
 - **Round-trip safe**: JS -> Python -> JS preserves model bytes exactly
 
 Golden fixture tests verify all three directions:
@@ -635,9 +710,10 @@ const X = {
 model.fit(X, y)
 ```
 
-**Batch predictions are fast.** The predict loop runs entirely in C/WASM. One JS-to-WASM call predicts all rows -- no per-row overhead.
+**Prefer batch prediction.** Model wrappers accept all rows in one matrix, avoiding
+a separate public JavaScript call for each row.
 
-**Dispose promptly in loops.** If you are training many models (grid search, cross-validation), dispose each one before creating the next. WASM heap memory is not garbage collected.
+**Dispose promptly in loops.** If you are training many models (grid search, cross-validation), dispose each one before creating the next to release WASM heap memory promptly.
 
 ## Install
 
@@ -658,24 +734,31 @@ npm install @wlearn/mitra onnxruntime-web    # pretrained tabular models (ONNX, 
 npm install @wlearn/nn            # neural tabular models (MLP, TabM, NAM)
 npm install @wlearn/ensemble     # stacking, voting, bagging
 npm install @wlearn/automl       # automated model selection (needs model packages)
+npm install @wlearn/preprocess   # fitted tabular preprocessing (Tranfi-backed)
 npm install @wlearn/core         # just the core (bundle format, registry, pipeline)
 ```
 
-Install everything at once (Node.js scripting):
+Install the Node convenience barrel for its listed model/core package set:
 
 ```
 npm install @wlearn/sdk
 ```
 
-`@wlearn/sdk` re-exports all model classes, `autoFit`, `Pipeline`, `load`, metrics, and cross-validation utilities. It does not include `@wlearn/mitra` (requires ONNX Runtime peer dep); install that separately if needed. Browser users should import individual packages to avoid bundling unused WASM binaries.
+`@wlearn/sdk` re-exports its listed model classes, `autoFit`, `Pipeline`, `load`,
+metrics, and cross-validation utilities. It does not include the canonical
+Tranfi-backed `@wlearn/preprocess`; install and import that package separately. It
+also treats `@wlearn/mitra` as optional because ONNX Runtime is a peer dependency.
+The SDK is Node/scripting-only; browser users should import individual packages.
 
 Or install packages individually:
 
 ```
-npm install @wlearn/core @wlearn/automl @wlearn/ensemble @wlearn/liblinear @wlearn/libsvm @wlearn/xgboost @wlearn/lightgbm @wlearn/nanoflann @wlearn/ebm @wlearn/xlearn @wlearn/stochtree @wlearn/tsetlin @wlearn/mitra onnxruntime-node
+npm install @wlearn/core @wlearn/preprocess @wlearn/automl @wlearn/ensemble @wlearn/liblinear @wlearn/libsvm @wlearn/xgboost @wlearn/lightgbm @wlearn/nanoflann @wlearn/ebm @wlearn/xlearn @wlearn/stochtree @wlearn/tsetlin @wlearn/mitra onnxruntime-node
 ```
 
-All packages are CommonJS (`"type": "commonjs"`). They work in Node.js 18+ and modern browsers.
+The JavaScript runtime/model packages use CommonJS entry points. Browser-capable
+packages provide their documented browser builds; the SDK is the Node-only
+exception.
 
 ```js
 const { LinearModel } = require('@wlearn/liblinear')
@@ -685,7 +768,7 @@ const { LinearModel } = require('@wlearn/liblinear')
 
 | Repo | Package | Description |
 |------|---------|-------------|
-| [wlearn](https://github.com/wlearn-org/wlearn) | `@wlearn/types`, `@wlearn/core`, `@wlearn/sdk`, `@wlearn/automl`, `@wlearn/ensemble` | Core monorepo + Python `wlearn` |
+| [wlearn](https://github.com/wlearn-org/wlearn) | `@wlearn/types`, `@wlearn/core`, `@wlearn/preprocess`, `@wlearn/sdk`, `@wlearn/automl`, `@wlearn/ensemble` | Core monorepo + Python `wlearn` |
 | [liblinear-wasm](https://github.com/wlearn-org/liblinear-wasm) | `@wlearn/liblinear` | Linear SVM, logistic regression |
 | [libsvm-wasm](https://github.com/wlearn-org/libsvm-wasm) | `@wlearn/libsvm` | Kernel SVM (RBF, poly, sigmoid) |
 | [xgboost-wasm](https://github.com/wlearn-org/xgboost-wasm) | `@wlearn/xgboost` | Gradient boosting + RF mode |

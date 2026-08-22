@@ -4,11 +4,20 @@ Portable ML computation primitives for Python. Train models with native backends
 
 Part of [wlearn](https://wlearn.org) ([GitHub](https://github.com/wlearn-org), [all packages](https://github.com/wlearn-org/wlearn#repository-structure)).
 
+> **Unreleased main:** This README targets the source-tree/next 0.2 release. The
+> current PyPI 0.1.0 release does not provide the `lightgbm`, `stochtree`, `nn`,
+> `preprocess`, or `bo` extras listed below. The preprocessing adapter also
+> requires Tranfi 0.2. Use the source tree until the coordinated releases are
+> published.
+
 ## Install
 
 ```bash
-pip install wlearn
+pip install 'wlearn[xgboost]'
 ```
+
+That command installs the backend used by the runnable quick start. Use
+`pip install wlearn` for bundle/core utilities without a training backend.
 
 Install with model backends as needed:
 
@@ -22,6 +31,7 @@ pip install wlearn[lightgbm]     # LightGBM
 pip install wlearn[stochtree]    # BART training (stochtree)
 pip install wlearn[tsetlin-fit]  # Tsetlin machine training (tmu)
 pip install wlearn[nn]           # Neural tabular models (polygrad)
+pip install wlearn[preprocess]   # Tranfi-backed fitted preprocessing
 pip install wlearn[bo]           # Bayesian AutoML strategy (wlearn-bo)
 pip install wlearn[all]          # All backends
 ```
@@ -34,24 +44,55 @@ import wlearn
 from wlearn.xgboost import XGBModel
 
 # Train
-model = XGBModel.create({'objective': 'binary:logistic', 'max_depth': 3, 'numRound': 50})
-model.fit(X_train, y_train)
-preds = model.predict(X_test)
-print('accuracy:', model.score(X_test, y_test))
+X = np.array([[-4.0], [-3.0], [-2.0], [-1.0], [1.0], [2.0], [3.0], [4.0]])
+y = np.array([0, 0, 0, 0, 1, 1, 1, 1], dtype=np.int32)
+X_test = np.array([[-2.5], [2.5]])
+
+model = XGBModel.create({
+    'objective': 'binary:logistic',
+    'max_depth': 2,
+    'eta': 1.0,
+    'numRound': 8,
+    'seed': 0,
+    'nthread': 1,
+})
+model.fit(X, y)
+print(model.predict(X_test).tolist())  # [0.0, 1.0]
 
 # Save to .wlrn file (loadable from JS @wlearn/xgboost too)
 model.save('model.wlrn')
 
 # Load from bundle
 restored = wlearn.load('model.wlrn')
-restored.predict(X_test)
+print(restored.predict(X_test).tolist())  # [0.0, 1.0]
 ```
+
+Importing `wlearn.xgboost` registers its WLRN loaders. In a fresh process, import
+the relevant model module before calling generic `wlearn.load()`.
+
+## If you know scikit-learn
+
+The common lifecycle is familiar, but wlearn is artifact-first rather than a
+drop-in sklearn clone:
+
+- construct with `Model.create(params)`, then call `fit`, `predict`, and `score`;
+- pass NumPy-compatible dense arrays rather than relying on pandas metadata;
+- use `save()`/`load()` with portable WLRN bundles instead of pickle or joblib;
+- pass model parameters as a mapping; wrappers retain some backend-native names;
+- inspect `capabilities` before using optional methods such as `predict_proba`;
+- reshape probability output to `(n_rows, len(model.classes))` because the
+  cross-language representation is a flat row-major array.
+
+For fitted tabular transformations, `wlearn.preprocess.Preprocessor` provides
+sklearn-style `fit`, `transform`, and `fit_transform` over Tranfi prepared plans.
 
 ## API
 
 ### Model wrappers
 
-Each wrapper trains with a native Python backend and produces `.wlrn` bundles compatible with the corresponding JS `@wlearn/*` package.
+Training-capable wrappers use native Python backends and produce `.wlrn` bundles
+compatible with the corresponding JS `@wlearn/*` package. XLearn is currently a
+load/inference adapter for bundles trained by `@wlearn/xlearn` in JavaScript.
 
 | Module | Class | Backend | Tasks |
 |--------|-------|---------|-------|
@@ -61,24 +102,30 @@ Each wrapper trains with a native Python backend and produces `.wlrn` bundles co
 | `wlearn.nanoflann` | `KNNModel` | pynanoflann | classification, regression |
 | `wlearn.lightgbm` | `LGBModel` | lightgbm | classification, regression |
 | `wlearn.ebm` | `EBMModel` | numpy (inference), interpret (fit) | classification, regression |
-| `wlearn.xlearn` | `XLearnModel` | numpy inference for xLearn bundles | classification, regression |
+| `wlearn.xlearn` | `XLearnModel` | numpy load/inference for JS-trained xLearn bundles; no Python `fit()` | classification, regression |
 | `wlearn.stochtree` | `BARTModel` | stochtree | classification, regression |
 | `wlearn.tsetlin` | `TsetlinModel` | tmu | classification, regression |
 | `wlearn.nn` | `MLPClassifier`, `MLPRegressor`, `TabMClassifier`, `TabMRegressor`, `NAMClassifier`, `NAMRegressor` | polygrad (ctypes) | classification, regression |
 
-All models share a common API:
+Training-capable model wrappers share the API below. Optional methods depend on
+the fitted model's `capabilities`:
 
 ```python
 model = Model.create(params)     # create unfitted
 model.fit(X, y)                  # train
 model.predict(X)                 # predict labels
-model.predict_proba(X)           # predict probabilities (classifiers)
+model.predict_proba(X)           # optional; flat rows * n_classes probabilities
 model.score(X, y)                # accuracy (clf) or R^2 (reg)
 bundle = model.save()            # return .wlrn bytes
 model.save('model.wlrn')         # write .wlrn file and return bytes
 ```
 
 Models that wrap native handles also expose `dispose()` for deterministic cleanup in long-running processes; ordinary scripts can usually rely on Python object cleanup.
+
+`XLearnModel` is the exception: import `wlearn.xlearn` to register its loaders,
+then use `wlearn.load(...)` on a JavaScript-trained bundle before calling
+`predict()`, `predict_proba()`, `score()`, or `save()`. Its `create()` method only
+creates an unfitted placeholder and it does not implement `fit()`.
 
 ### Bundle format
 
