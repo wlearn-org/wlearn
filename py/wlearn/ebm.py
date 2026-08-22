@@ -21,6 +21,7 @@ import json
 import numpy as np
 
 from .errors import NotFittedError, DisposedError
+from ._capabilities import estimator_capabilities
 from .bundle import encode_bundle, write_bundle_output
 from .registry import register
 
@@ -487,6 +488,23 @@ class EBMModel:
     def set_params(self, p):
         self._params.update(p)
         return self
+
+    @property
+    def classes(self):
+        self._ensure_fitted()
+        return None if self._classes is None else self._classes.copy()
+
+    @property
+    def capabilities(self):
+        task = self._task or self._params.get('objective')
+        classifier = task == 'classification'
+        regressor = task == 'regression'
+        return estimator_capabilities(
+            classifier=classifier,
+            regressor=regressor,
+            predict_proba=classifier,
+            featureImportances=True,
+        )
 
     @property
     def is_fitted(self):

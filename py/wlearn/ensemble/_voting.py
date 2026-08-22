@@ -1,5 +1,6 @@
 """VotingEnsemble matching JS @wlearn/ensemble/voting.js."""
 
+import math
 import numpy as np
 
 from ..errors import ValidationError, NotFittedError, DisposedError
@@ -9,6 +10,11 @@ from ..registry import (
     assert_required_loaders,
 )
 from ..automl._cv import accuracy, r2_score
+from ._manifest import validate_voting_manifest
+from ._class_order import (
+    class_column_map, require_probability_model, validate_label_output,
+    validate_probability_output, validate_regression_output,
+)
 
 TYPE_ID_CLS = 'wlearn.ensemble.voting.classifier@1'
 TYPE_ID_REG = 'wlearn.ensemble.voting.regressor@1'
@@ -26,7 +32,7 @@ class VotingEnsemble:
             task: 'classification' or 'regression'
         """
         self._specs = estimators or []
-        self._weights = np.array(weights, dtype=np.float64) if weights is not None else None
+        self._weights = weights
         self._voting = voting
         self._task = task
         self._models = None
@@ -51,23 +57,25 @@ class VotingEnsemble:
 
     def fit(self, X, y):
         self._ensure_alive()
+        weights = _validate_voting_config(
+            self._specs, self._weights, self._voting, self._task)
 
         classes = self._classes
         if self._task == 'classification':
             labels = sorted(set(int(v) for v in y))
             classes = np.array(labels, dtype=np.int32)
 
-        weights = self._weights
-        if weights is None:
-            n = len(self._specs)
-            weights = np.full(n, 1.0 / n, dtype=np.float64)
-
         models = []
         try:
-            for _name, est_cls, params in self._specs:
+            for name, est_cls, params in self._specs:
                 model = est_cls.create(params or {})
                 models.append(model)
                 model.fit(X, y)
+                if (self._task == 'classification' and
+                        self._voting == 'soft'):
+                    _validate_soft_voting_model(
+                        model, classes,
+                        f'VotingEnsemble estimator "{name}"')
         except Exception as exc:
             _dispose_owned(models, exc)
             raise
@@ -77,7 +85,7 @@ class VotingEnsemble:
         self._classes = classes
         self._weights = weights
         self._fitted = True
-        _dispose_owned(previous)
+        _dispose_replaced(previous)
         return self
 
     def predict(self, X):
@@ -90,7 +98,7 @@ class VotingEnsemble:
         if self._voting == 'soft':
             proba = self.predict_proba(X)
             nc = len(self._classes)
-            out = np.zeros(n, dtype=np.float64)
+            out = np.zeros(n, dtype=np.int32)
             for i in range(n):
                 best_c = 0
                 best_v = -float('inf')
@@ -115,10 +123,16 @@ class VotingEnsemble:
         out = np.zeros(n * nc, dtype=np.float64)
 
         for m in range(len(self._models)):
-            proba = self._models[m].predict_proba(X)
+            label = f'VotingEnsemble estimator "{self._specs[m][0]}"'
+            proba = validate_probability_output(
+                self._models[m].predict_proba(X), n, nc, label)
+            columns = class_column_map(
+                self._models[m], self._classes, label)
             w = self._weights[m]
-            for i in range(n * nc):
-                out[i] += w * proba[i]
+            for row in range(n):
+                for column in range(nc):
+                    out[row * nc + column] += (
+                        w * proba[row * nc + columns[column]])
 
         return out
 
@@ -169,7 +183,11 @@ class VotingEnsemble:
         if self._disposed:
             return
         self._disposed = True
-        _dispose_owned(self._models or [])
+        try:
+            _dispose_owned(self._models or [])
+        finally:
+            self._models = None
+            self._fitted = False
 
     def get_params(self):
         return {
@@ -181,10 +199,25 @@ class VotingEnsemble:
 
     def set_params(self, p):
         self._ensure_alive()
-        if 'voting' in p:
-            self._voting = p['voting']
-        if 'weights' in p:
-            self._weights = np.array(p['weights'], dtype=np.float64)
+        if not isinstance(p, dict):
+            raise ValidationError('VotingEnsemble params must be a dict')
+        unknown = set(p).difference(('voting', 'weights'))
+        if unknown:
+            raise ValidationError(
+                f'Unknown VotingEnsemble parameter "{next(iter(unknown))}"')
+        voting = p.get('voting', self._voting)
+        requested_weights = p.get('weights', self._weights)
+        weights = _validate_voting_config(
+            self._specs, requested_weights, voting, self._task,
+            require_constructors=False)
+        if (self._fitted and self._task == 'classification' and
+                voting == 'soft'):
+            for index, model in enumerate(self._models):
+                _validate_soft_voting_model(
+                    model, self._classes,
+                    f'VotingEnsemble estimator "{self._specs[index][0]}"')
+        self._voting = voting
+        self._weights = weights
         return self
 
     @property
@@ -201,7 +234,7 @@ class VotingEnsemble:
 
     @property
     def is_fitted(self):
-        return self._fitted
+        return self._fitted and not self._disposed
 
     @property
     def classes(self):
@@ -210,19 +243,27 @@ class VotingEnsemble:
     def _weighted_average(self, X, n):
         out = np.zeros(n, dtype=np.float64)
         for m in range(len(self._models)):
-            preds = self._models[m].predict(X)
+            preds = validate_regression_output(
+                self._models[m].predict(X), n,
+                f'VotingEnsemble estimator "{self._specs[m][0]}"')
             w = self._weights[m]
             for i in range(n):
                 out[i] += w * float(preds[i])
         return out
 
     def _majority_vote(self, X, n):
-        out = np.zeros(n, dtype=np.float64)
+        out = np.zeros(n, dtype=np.int32)
         nc = len(self._classes)
+        predictions = [
+            validate_label_output(
+                model.predict(X), n, self._classes,
+                f'VotingEnsemble estimator "{self._specs[index][0]}"')
+            for index, model in enumerate(self._models)
+        ]
         for i in range(n):
             votes = np.zeros(nc, dtype=np.float64)
-            for m in range(len(self._models)):
-                pred = float(self._models[m].predict(X)[i])
+            for m in range(len(predictions)):
+                pred = int(predictions[m][i])
                 for c in range(nc):
                     if self._classes[c] == pred:
                         votes[c] += self._weights[m]
@@ -247,24 +288,20 @@ class VotingEnsemble:
 
     @staticmethod
     def _load_from_parts(manifest, toc, blobs, context):
-        p = manifest['params']
-        expected_type_id = TYPE_ID_REG if p.get('task') == 'regression' \
-            else TYPE_ID_CLS
-        if manifest.get('typeId') != expected_type_id:
-            raise ValidationError(
-                f'VotingEnsemble.load expected typeId "{expected_type_id}", '
-                f'got "{manifest.get("typeId")}"')
-        if not isinstance(p.get('estimatorNames'), list):
-            raise ValidationError(
-                'VotingEnsemble manifest must declare estimatorNames')
+        p = validate_voting_manifest(
+            manifest, toc, TYPE_ID_CLS, TYPE_ID_REG)
         assert_required_loaders(manifest)
+        specs = [(name, None, None) for name in p['estimatorNames']]
+        weights = _validate_voting_config(
+            specs, p['weights'], p['voting'], p['task'],
+            require_constructors=False)
         ens = VotingEnsemble(
             task=p['task'],
             voting=p['voting'],
-            weights=p['weights'],
+            weights=weights,
         )
         ens._classes = np.array(p['classes'], dtype=np.int32) if p.get('classes') else None
-        ens._specs = [(name, None, None) for name in p['estimatorNames']]
+        ens._specs = specs
         ens._models = []
         try:
             for name in p['estimatorNames']:
@@ -276,6 +313,11 @@ class VotingEnsemble:
                     blobs[entry['offset']:entry['offset'] + entry['length']])
                 model = _load_with_context(blob, context)
                 ens._models.append(model)
+                if (ens._task == 'classification' and
+                        ens._voting == 'soft'):
+                    _validate_soft_voting_model(
+                        model, ens._classes,
+                        f'VotingEnsemble estimator "{name}"')
             ens._fitted = True
             return ens
         except Exception:
@@ -283,8 +325,67 @@ class VotingEnsemble:
             raise
 
 
+def _validate_soft_voting_model(model, classes, label):
+    require_probability_model(model, label)
+    return class_column_map(model, classes, label)
+
+
+def _validate_voting_config(
+        specs, weights, voting, task, *, require_constructors=True):
+    if task not in ('classification', 'regression'):
+        raise ValidationError(
+            'VotingEnsemble task must be "classification" or "regression"')
+    if voting not in ('soft', 'hard'):
+        raise ValidationError(
+            'VotingEnsemble voting must be "soft" or "hard"')
+    if not isinstance(specs, (list, tuple)) or not specs:
+        raise ValidationError(
+            'VotingEnsemble estimators must be a nonempty sequence')
+    names = set()
+    for index, spec in enumerate(specs):
+        if (not isinstance(spec, (list, tuple)) or len(spec) < 2 or
+                not isinstance(spec[0], str) or not spec[0] or
+                (require_constructors and
+                 not callable(getattr(spec[1], 'create', None)))):
+            raise ValidationError(
+                f'VotingEnsemble estimator {index} has an invalid '
+                'specification')
+        if spec[0] in names:
+            raise ValidationError(
+                'VotingEnsemble estimator names must be unique')
+        names.add(spec[0])
+    if weights is None:
+        return np.full(len(specs), 1.0 / len(specs), dtype=np.float64)
+    try:
+        raw = np.asarray(weights, dtype=object)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValidationError(
+            'VotingEnsemble weights must be finite numbers') from exc
+    if raw.ndim != 1 or len(raw) != len(specs):
+        raise ValidationError(
+            'VotingEnsemble weights must match the estimator count')
+    if any(
+            isinstance(value, (bool, np.bool_)) or
+            not isinstance(value, (int, float, np.integer, np.floating)) or
+            not math.isfinite(float(value)) or float(value) < 0
+            for value in raw):
+        raise ValidationError(
+            'VotingEnsemble weights must contain only nonnegative finite '
+            'numbers')
+    resolved = np.asarray(raw, dtype=np.float64)
+    total = float(np.sum(resolved))
+    if not math.isfinite(total) or total <= 0:
+        raise ValidationError(
+            'VotingEnsemble weights must have a positive finite sum')
+    return resolved / total
+
+
 def _dispose_loaded(models):
     _dispose_owned(models, RuntimeError('preserve load error'))
+
+
+def _dispose_replaced(models):
+    _dispose_owned(models, RuntimeError('replacement already committed'))
 
 
 def _dispose_owned(models, operation_error=None):

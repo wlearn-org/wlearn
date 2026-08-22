@@ -33,6 +33,7 @@ import struct
 import numpy as np
 
 from .errors import NotFittedError, DisposedError
+from ._capabilities import estimator_capabilities
 from .bundle import encode_bundle, write_bundle_output
 from .registry import register
 
@@ -633,6 +634,20 @@ class TsetlinModel:
     def set_params(self, p):
         self._params.update(p)
         return self
+
+    @property
+    def classes(self):
+        self._ensure_fitted()
+        return None if self._classes is None else self._classes.copy()
+
+    @property
+    def capabilities(self):
+        classifier = self._task == 0
+        return estimator_capabilities(
+            classifier=classifier,
+            regressor=not classifier,
+            predict_proba=classifier,
+        )
 
     @property
     def is_fitted(self):

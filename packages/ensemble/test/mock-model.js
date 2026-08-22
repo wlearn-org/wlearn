@@ -41,7 +41,13 @@ class MockModel {
         if (v > bestC) { best = k; bestC = v }
       }
       this.#label = best + (this.#params.bias || 0)
-      this.#classes = new Int32Array([...counts.keys()].sort((a, b) => a - b))
+      const classes = [...counts.keys()]
+      if (this.#params.classOrder === 'descending') {
+        classes.sort((a, b) => b - a)
+      } else if (this.#params.classOrder !== 'firstSeen') {
+        classes.sort((a, b) => a - b)
+      }
+      this.#classes = new Int32Array(classes)
       this.#nClasses = this.#classes.length
     } else {
       let sum = 0

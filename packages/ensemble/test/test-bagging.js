@@ -1,6 +1,7 @@
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
 const { BaggedEstimator } = require('../src/bagging.js')
+const { getOofPredictions } = require('../src/oof.js')
 const { MockModel } = require('./mock-model.js')
 const { ValidationError, NotFittedError, DisposedError } = require('@wlearn/core')
 
@@ -21,6 +22,7 @@ describe('BaggedEstimator classification', () => {
     await bag.fit(X, yCls)
     assert(bag.isFitted)
     const preds = bag.predict(X)
+    assert(preds instanceof Int32Array)
     assert.equal(preds.length, 10)
     bag.dispose()
   })
@@ -77,9 +79,152 @@ describe('BaggedEstimator classification', () => {
     assert.deepEqual([...bag.classes], [0, 1])
     bag.dispose()
   })
+
+  it('aligns probability columns from fold-model class order', async () => {
+    const labels = new Int32Array([2, 2, 2, 2, 2, 2, 1, 1, 1, 1])
+    const bag = await BaggedEstimator.create({
+      estimator: [
+        'reversed', MockModel,
+        { task: 'classification', classOrder: 'descending' },
+      ],
+      kFold: 2,
+      task: 'classification',
+    })
+    await bag.fit(X, labels)
+    assert.deepEqual([...bag.classes], [1, 2])
+    assert.deepEqual([...bag.predict(X)], new Array(10).fill(2))
+    const proba = bag.predictProba(X)
+    assert(Math.abs(proba[0] - 0.1) < 1e-12)
+    assert(Math.abs(proba[1] - 0.9) < 1e-12)
+    bag.dispose()
+  })
+
+  it('rejects a child without an explicit probability capability', async () => {
+    class NoProbabilityCapabilityMock extends MockModel {
+      static async create(params = {}) {
+        return new NoProbabilityCapabilityMock(params)
+      }
+      get capabilities() {
+        return { ...super.capabilities, predictProba: false }
+      }
+    }
+    const bag = await BaggedEstimator.create({
+      estimator: [
+        'no-probability', NoProbabilityCapabilityMock,
+        { task: 'classification' },
+      ],
+      kFold: 2,
+      task: 'classification',
+    })
+    await assert.rejects(
+      () => bag.fit(X, yCls),
+      error => error instanceof ValidationError && /capability/.test(error.message)
+    )
+    assert.equal(bag.isFitted, false)
+    bag.dispose()
+  })
+})
+
+describe('OOF classification contracts', () => {
+  it('waits for asynchronous child fit before probability prediction', async () => {
+    class DeferredFitMock extends MockModel {
+      static async create(params = {}) { return new DeferredFitMock(params) }
+      async fit(input, labels) {
+        await Promise.resolve()
+        return super.fit(input, labels)
+      }
+      predictProba(input) {
+        assert.equal(this.isFitted, true)
+        return super.predictProba(input)
+      }
+    }
+
+    const result = await getOofPredictions([
+      ['deferred', DeferredFitMock, { task: 'classification' }],
+    ], X, yCls, { cv: 2, task: 'classification' })
+    assert.equal(result.oofPreds[0].length, X.rows * 2)
+  })
+
+  it('aligns probability columns and requires the capability descriptor', async () => {
+    const labels = new Int32Array([2, 2, 2, 2, 2, 2, 1, 1, 1, 1])
+    class ReversedProbabilityMock extends MockModel {
+      static async create(params = {}) {
+        return new ReversedProbabilityMock(params)
+      }
+      predictProba(input) {
+        const output = new Float64Array(input.rows * 2)
+        for (let row = 0; row < input.rows; row++) {
+          output[row * 2] = 0.9
+          output[row * 2 + 1] = 0.1
+        }
+        return output
+      }
+    }
+    const aligned = await getOofPredictions([
+      ['reversed', ReversedProbabilityMock, {
+        task: 'classification', classOrder: 'descending',
+      }],
+    ], X, labels, { cv: 2, task: 'classification' })
+    assert.deepEqual([...aligned.classes], [1, 2])
+    assert(Math.abs(aligned.oofPreds[0][0] - 0.1) < 1e-12)
+    assert(Math.abs(aligned.oofPreds[0][1] - 0.9) < 1e-12)
+
+    class NoProbabilityCapabilityMock extends MockModel {
+      static async create(params = {}) {
+        return new NoProbabilityCapabilityMock(params)
+      }
+      get capabilities() {
+        return { ...super.capabilities, predictProba: false }
+      }
+    }
+    await assert.rejects(
+      () => getOofPredictions([
+        ['no-probability', NoProbabilityCapabilityMock, {
+          task: 'classification',
+        }],
+      ], X, yCls, { cv: 2, task: 'classification' }),
+      error => error instanceof ValidationError && /capability/.test(error.message)
+    )
+  })
+})
+
+describe('OOF regression contracts', () => {
+  it('rejects malformed regression predictions', async () => {
+    class ShortRegressionMock extends MockModel {
+      static async create(params = {}) {
+        return new ShortRegressionMock({ task: 'regression', ...params })
+      }
+      predict(input) {
+        return new Float64Array(Math.max(0, input.rows - 1))
+      }
+    }
+    await assert.rejects(
+      () => getOofPredictions([
+        ['short', ShortRegressionMock, { task: 'regression' }],
+      ], X, yReg, { cv: 2, task: 'regression' }),
+      /wrong shape/
+    )
+  })
 })
 
 describe('BaggedEstimator regression', () => {
+  it('rejects malformed fold predictions', async () => {
+    class NonfiniteRegressionMock extends MockModel {
+      static async create(params = {}) {
+        return new NonfiniteRegressionMock({ task: 'regression', ...params })
+      }
+      predict(input) { return new Float64Array(input.rows).fill(Infinity) }
+    }
+    const bag = await BaggedEstimator.create({
+      estimator: ['nonfinite', NonfiniteRegressionMock, {}],
+      kFold: 2,
+      task: 'regression',
+    })
+    await assert.rejects(() => bag.fit(X, yReg), /finite numbers/)
+    assert.equal(bag.isFitted, false)
+    bag.dispose()
+  })
+
   it('fit and predict', async () => {
     const bag = await BaggedEstimator.create({
       estimator: ['mock', MockModel, { task: 'regression' }],
@@ -89,6 +234,7 @@ describe('BaggedEstimator regression', () => {
     await bag.fit(X, yReg)
     assert(bag.isFitted)
     const preds = bag.predict(X)
+    assert(preds instanceof Float64Array)
     assert.equal(preds.length, 10)
     bag.dispose()
   })
@@ -169,6 +315,45 @@ describe('BaggedEstimator save/load', () => {
 })
 
 describe('BaggedEstimator lifecycle', () => {
+  it('rejects lifecycle races while child creation is pending', async () => {
+    class DeferredCreateModel extends MockModel {
+      static first = true
+      static release = null
+      static disposed = 0
+      static create(params = {}) {
+        if (!DeferredCreateModel.first) {
+          return Promise.resolve(new DeferredCreateModel(params))
+        }
+        DeferredCreateModel.first = false
+        return new Promise(resolve => {
+          DeferredCreateModel.release = () => resolve(
+            new DeferredCreateModel(params)
+          )
+        })
+      }
+      dispose() {
+        super.dispose()
+        DeferredCreateModel.disposed++
+      }
+    }
+    const bag = await BaggedEstimator.create({
+      estimator: [
+        'deferred', DeferredCreateModel, { task: 'classification' },
+      ],
+      kFold: 2,
+      task: 'classification',
+    })
+    const pending = bag.fit(X, yCls)
+    await assert.rejects(() => bag.fit(X, yCls), /already in progress/)
+    assert.throws(() => bag.setParams({ seed: 9 }), /in progress/)
+    assert.throws(() => bag.dispose(), /in progress/)
+    DeferredCreateModel.release()
+    await pending
+    assert.equal(bag.isFitted, true)
+    bag.dispose()
+    assert.equal(DeferredCreateModel.disposed, 2)
+  })
+
   it('throws NotFittedError before fit', async () => {
     const bag = await BaggedEstimator.create({
       estimator: ['mock', MockModel, { task: 'classification' }],
@@ -205,6 +390,42 @@ describe('BaggedEstimator lifecycle', () => {
     bag.dispose()
   })
 
+  it('invalidates fitted state when training parameters change', async () => {
+    const bag = await BaggedEstimator.create({
+      estimator: ['mock', MockModel, { task: 'classification' }],
+      kFold: 2,
+      task: 'classification',
+    })
+    await bag.fit(X, yCls)
+    assert.equal(bag.isFitted, true)
+    bag.setParams({ nRepeats: 2 })
+    assert.equal(bag.isFitted, false)
+    assert.throws(() => bag.save(), NotFittedError)
+    bag.dispose()
+  })
+
+  it('rejects invalid training config transactionally', async () => {
+    const bag = await BaggedEstimator.create({
+      estimator: ['mock', MockModel, { task: 'classification' }],
+      kFold: 2,
+      task: 'classification',
+    })
+    await bag.fit(X, yCls)
+    assert.throws(() => bag.setParams({ nRepeats: 0 }), ValidationError)
+    assert.throws(() => bag.setParams({ estimator: null }), /Unknown.*estimator/)
+    assert.equal(bag.getParams().nRepeats, 1)
+    assert.equal(bag.isFitted, true)
+    const invalid = await BaggedEstimator.create({
+      estimator: ['mock', MockModel, {}],
+      kFold: 2,
+      nRepeats: -1,
+      task: 'classification',
+    })
+    await assert.rejects(() => invalid.fit(X, yCls), ValidationError)
+    bag.dispose()
+    invalid.dispose()
+  })
+
   it('capabilities reflect task', async () => {
     const clsBag = await BaggedEstimator.create({
       estimator: ['mock', MockModel, {}],
@@ -223,5 +444,86 @@ describe('BaggedEstimator lifecycle', () => {
     assert(regBag.capabilities.regressor)
     assert(!regBag.capabilities.predictProba)
     regBag.dispose()
+  })
+
+  it('preserves the previous fitted state when a refit fails', async () => {
+    class TrackingModel {
+      static fail = false
+      static live = 0
+      #disposed = false
+      static async create() {
+        TrackingModel.live++
+        return new TrackingModel()
+      }
+      fit() {
+        if (TrackingModel.fail) throw new Error('refit failed')
+        return this
+      }
+      get classes() { return new Int32Array([0, 1]) }
+      get capabilities() { return { predictProba: true } }
+      predictProba(X) {
+        const output = new Float64Array(X.rows * 2)
+        for (let row = 0; row < X.rows; row++) {
+          output[row * 2] = 0.75
+          output[row * 2 + 1] = 0.25
+        }
+        return output
+      }
+      dispose() {
+        if (this.#disposed) return
+        this.#disposed = true
+        TrackingModel.live--
+      }
+    }
+    const bag = await BaggedEstimator.create({
+      estimator: ['tracking', TrackingModel, {}],
+      kFold: 2,
+      task: 'classification',
+    })
+    await bag.fit(X, yCls)
+    assert.equal(TrackingModel.live, 2)
+    const before = [...bag.predict(X)]
+    TrackingModel.fail = true
+    await assert.rejects(() => bag.fit(X, yCls), /refit failed/)
+    assert.equal(bag.isFitted, true)
+    assert.deepEqual([...bag.predict(X)], before)
+    assert.equal(TrackingModel.live, 2)
+    bag.dispose()
+    assert.equal(TrackingModel.live, 0)
+  })
+
+  it('does not reject a committed refit when old-model cleanup throws', async () => {
+    class CleanupModel {
+      static generation = 1
+      static live = 0
+      #generation = CleanupModel.generation
+      #disposed = false
+      static async create() {
+        CleanupModel.live++
+        return new CleanupModel()
+      }
+      fit() { return this }
+      get classes() { return new Int32Array([0, 1]) }
+      get capabilities() { return { predictProba: true } }
+      predictProba(X) { return new Float64Array(X.rows * 2).fill(0.5) }
+      dispose() {
+        if (this.#disposed) return
+        this.#disposed = true
+        CleanupModel.live--
+        if (this.#generation === 1) throw new Error('old cleanup failed')
+      }
+    }
+    const bag = await BaggedEstimator.create({
+      estimator: ['cleanup', CleanupModel, {}],
+      kFold: 2,
+      task: 'classification',
+    })
+    await bag.fit(X, yCls)
+    CleanupModel.generation = 2
+    await bag.fit(X, yCls)
+    assert.equal(bag.isFitted, true)
+    assert.equal(CleanupModel.live, 2)
+    bag.dispose()
+    assert.equal(CleanupModel.live, 0)
   })
 })

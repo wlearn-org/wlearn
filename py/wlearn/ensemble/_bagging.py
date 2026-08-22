@@ -20,6 +20,11 @@ from ..registry import (
     assert_required_loaders,
 )
 from ..automl._cv import accuracy, r2_score, stratified_k_fold, k_fold
+from ._manifest import validate_bagging_manifest
+from ._class_order import (
+    class_column_map, require_probability_model,
+    validate_probability_output, validate_regression_output,
+)
 
 TYPE_ID_CLS = 'wlearn.ensemble.bagged.classifier@1'
 TYPE_ID_REG = 'wlearn.ensemble.bagged.regressor@1'
@@ -54,7 +59,8 @@ class BaggedEstimator:
         self._n_classes = 0
         self._n_samples = 0
         self._oof_accum = None   # accumulated OOF predictions (sum)
-        self._oof_counts = None  # per-sample prediction count (uint8)
+        self._oof_counts = None  # per-sample prediction count (uint32)
+        self._has_oof = False
         self._fitted = False
         self._disposed = False
         BaggedEstimator._register()
@@ -76,60 +82,82 @@ class BaggedEstimator:
 
     def fit(self, X, y):
         self._ensure_alive()
+        _validate_bagging_config(
+            self._spec, self._k_fold, self._n_repeats,
+            self._seed, self._task)
         n = len(X)
-        self._n_samples = n
 
+        classes = None
+        n_classes = 0
         if self._task == 'classification':
             labels = sorted(set(int(v) for v in y))
-            self._classes = np.array(labels, dtype=np.int32)
-            self._n_classes = len(self._classes)
+            classes = np.array(labels, dtype=np.int32)
+            n_classes = len(classes)
 
-        # Initialize OOF accumulation arrays
-        if self._task == 'classification':
-            self._oof_accum = np.zeros(n * self._n_classes, dtype=np.float64)
-        else:
-            self._oof_accum = np.zeros(n, dtype=np.float64)
-        self._oof_counts = np.zeros(n, dtype=np.uint8)
+        oof_accum = np.zeros(
+            n * n_classes if self._task == 'classification' else n,
+            dtype=np.float64)
+        oof_counts = np.zeros(n, dtype=np.uint32)
 
-        name, est_cls, params = self._spec
-        self._fold_models = []
+        name, est_cls = self._spec[:2]
+        params = self._spec[2] if len(self._spec) > 2 else None
+        fold_models = []
+        try:
+            for repeat in range(self._n_repeats):
+                repeat_seed = self._seed + repeat
 
-        for repeat in range(self._n_repeats):
-            repeat_seed = self._seed + repeat
-
-            if self._task == 'classification':
-                folds = stratified_k_fold(y, self._k_fold,
-                                          do_shuffle=True, seed=repeat_seed)
-            else:
-                folds = k_fold(n, self._k_fold,
-                               do_shuffle=True, seed=repeat_seed)
-
-            for train_idx, val_idx in folds:
-                X_train, y_train = X[train_idx], y[train_idx]
-                X_val = X[val_idx]
-
-                model = est_cls.create(params or {})
-                model.fit(X_train, y_train)
-
-                # Accumulate OOF predictions
                 if self._task == 'classification':
-                    proba = model.predict_proba(X_val)
-                    for i in range(len(val_idx)):
-                        row = val_idx[i]
-                        for c in range(self._n_classes):
-                            self._oof_accum[row * self._n_classes + c] += \
-                                proba[i * self._n_classes + c]
+                    folds = stratified_k_fold(
+                        y, self._k_fold,
+                        do_shuffle=True, seed=repeat_seed)
                 else:
-                    preds = model.predict(X_val)
+                    folds = k_fold(
+                        n, self._k_fold,
+                        do_shuffle=True, seed=repeat_seed)
+
+                for train_idx, val_idx in folds:
+                    X_train, y_train = X[train_idx], y[train_idx]
+                    X_val = X[val_idx]
+
+                    model = est_cls.create(params or {})
+                    fold_models.append(model)
+                    model.fit(X_train, y_train)
+
+                    if self._task == 'classification':
+                        label = f'BaggedEstimator child "{name}"'
+                        require_probability_model(model, label)
+                        columns = class_column_map(model, classes, label)
+                        proba = validate_probability_output(
+                            model.predict_proba(X_val), len(val_idx),
+                            n_classes, label)
+                        for i in range(len(val_idx)):
+                            row = val_idx[i]
+                            for c in range(n_classes):
+                                oof_accum[row * n_classes + c] += \
+                                    proba[i * n_classes + columns[c]]
+                    else:
+                        preds = validate_regression_output(
+                            model.predict(X_val), len(val_idx),
+                            f'BaggedEstimator child "{name}"')
+                        for i in range(len(val_idx)):
+                            oof_accum[val_idx[i]] += float(preds[i])
+
                     for i in range(len(val_idx)):
-                        self._oof_accum[val_idx[i]] += float(preds[i])
+                        oof_counts[val_idx[i]] += 1
+        except Exception as exc:
+            _dispose_owned(fold_models, exc)
+            raise
 
-                for i in range(len(val_idx)):
-                    self._oof_counts[val_idx[i]] += 1
-
-                self._fold_models.append(model)
-
+        previous = self._fold_models or []
+        self._n_samples = n
+        self._classes = classes
+        self._n_classes = n_classes
+        self._oof_accum = oof_accum
+        self._oof_counts = oof_counts
+        self._has_oof = True
+        self._fold_models = fold_models
         self._fitted = True
+        _dispose_replaced(previous)
         return self
 
     def predict(self, X):
@@ -138,8 +166,10 @@ class BaggedEstimator:
 
         if self._task == 'regression':
             out = np.zeros(n, dtype=np.float64)
-            for model in self._fold_models:
-                preds = model.predict(X)
+            for index, model in enumerate(self._fold_models):
+                preds = validate_regression_output(
+                    model.predict(X), n,
+                    f'BaggedEstimator child {index}')
                 for i in range(n):
                     out[i] += float(preds[i])
             n_models = len(self._fold_models)
@@ -150,7 +180,7 @@ class BaggedEstimator:
         # Classification: average probabilities, then argmax
         proba = self.predict_proba(X)
         nc = self._n_classes
-        out = np.zeros(n, dtype=np.float64)
+        out = np.zeros(n, dtype=np.int32)
         for i in range(n):
             best_c = 0
             best_v = -float('inf')
@@ -171,10 +201,15 @@ class BaggedEstimator:
         out = np.zeros(n * nc, dtype=np.float64)
         n_models = len(self._fold_models)
 
-        for model in self._fold_models:
-            proba = model.predict_proba(X)
-            for i in range(n * nc):
-                out[i] += proba[i]
+        for model_index, model in enumerate(self._fold_models):
+            label = f'BaggedEstimator child {model_index}'
+            proba = validate_probability_output(
+                model.predict_proba(X), n, nc, label)
+            columns = class_column_map(model, self._classes, label)
+            for row in range(n):
+                for column in range(nc):
+                    out[row * nc + column] += \
+                        proba[row * nc + columns[column]]
 
         for i in range(n * nc):
             out[i] /= n_models
@@ -196,6 +231,10 @@ class BaggedEstimator:
         Regression: flat (n,) predictions.
         """
         self._ensure_fitted()
+        if not self._has_oof:
+            raise ValidationError(
+                'BaggedEstimator artifact does not include stored OOF '
+                'predictions')
         counts = self._oof_counts.copy()
         counts[counts == 0] = 1  # avoid div-by-zero
 
@@ -262,12 +301,14 @@ class BaggedEstimator:
         if self._disposed:
             return
         self._disposed = True
-        if self._fold_models:
-            for m in self._fold_models:
-                m.dispose()
-        self._fold_models = None
-        self._oof_accum = None
-        self._oof_counts = None
+        try:
+            _dispose_owned(self._fold_models or [])
+        finally:
+            self._fold_models = None
+            self._oof_accum = None
+            self._oof_counts = None
+            self._has_oof = False
+            self._fitted = False
 
     def get_params(self):
         return {
@@ -280,12 +321,23 @@ class BaggedEstimator:
 
     def set_params(self, p):
         self._ensure_alive()
-        if 'kFold' in p:
-            self._k_fold = p['kFold']
-        if 'nRepeats' in p:
-            self._n_repeats = p['nRepeats']
-        if 'seed' in p:
-            self._seed = p['seed']
+        if not isinstance(p, dict):
+            raise ValidationError('BaggedEstimator params must be a dict')
+        unknown = set(p).difference(('kFold', 'nRepeats', 'seed'))
+        if unknown:
+            raise ValidationError(
+                f'Unknown BaggedEstimator parameter "{next(iter(unknown))}"')
+        k_fold = p.get('kFold', self._k_fold)
+        n_repeats = p.get('nRepeats', self._n_repeats)
+        seed = p.get('seed', self._seed)
+        _validate_bagging_config(
+            self._spec, k_fold, n_repeats, seed, self._task,
+            require_constructor=False)
+        if any(name in p for name in ('kFold', 'nRepeats', 'seed')):
+            self._fitted = False
+        self._k_fold = k_fold
+        self._n_repeats = n_repeats
+        self._seed = seed
         return self
 
     @property
@@ -324,13 +376,8 @@ class BaggedEstimator:
 
     @staticmethod
     def _load_from_parts(manifest, toc, blobs, context):
-        p = manifest['params']
-        expected_type_id = TYPE_ID_REG if p.get('task') == 'regression' \
-            else TYPE_ID_CLS
-        if manifest.get('typeId') != expected_type_id:
-            raise ValidationError(
-                f'BaggedEstimator.load expected typeId "{expected_type_id}", '
-                f'got "{manifest.get("typeId")}"')
+        p = validate_bagging_manifest(
+            manifest, toc, TYPE_ID_CLS, TYPE_ID_REG)
         assert_required_loaders(manifest)
         bag = BaggedEstimator(
             task=p['task'],
@@ -354,7 +401,12 @@ class BaggedEstimator:
                     raise ValidationError(f'No artifact for "{fold_id}"')
                 blob = bytes(
                     blobs[entry['offset']:entry['offset'] + entry['length']])
-                bag._fold_models.append(_load_with_context(blob, context))
+                model = _load_with_context(blob, context)
+                bag._fold_models.append(model)
+                if bag._task == 'classification':
+                    label = f'BaggedEstimator child {i}'
+                    require_probability_model(model, label)
+                    class_column_map(model, bag._classes, label)
 
             # Load OOF data
             oof_entry = next((t for t in toc if t['id'] == 'oof'), None)
@@ -366,7 +418,8 @@ class BaggedEstimator:
                 # Store as accum with counts=1 so oof_predictions works.
                 bag._oof_accum = oof
                 bag._oof_counts = np.ones(
-                    bag._n_samples, dtype=np.uint8)
+                    bag._n_samples, dtype=np.uint32)
+                bag._has_oof = True
             else:
                 # No OOF stored (loaded from older format)
                 if bag._task == 'classification':
@@ -376,7 +429,8 @@ class BaggedEstimator:
                     bag._oof_accum = np.zeros(
                         bag._n_samples, dtype=np.float64)
                 bag._oof_counts = np.zeros(
-                    bag._n_samples, dtype=np.uint8)
+                    bag._n_samples, dtype=np.uint32)
+                bag._has_oof = False
 
             bag._fitted = True
             return bag
@@ -385,11 +439,52 @@ class BaggedEstimator:
             raise
 
 
+def _validate_bagging_config(
+        spec, k_fold, n_repeats, seed, task, *,
+        require_constructor=True):
+    if task not in ('classification', 'regression'):
+        raise ValidationError(
+            'BaggedEstimator task must be "classification" or "regression"')
+    if (isinstance(k_fold, bool) or not isinstance(k_fold, int) or
+            k_fold < 2 or k_fold > (1 << 53) - 1):
+        raise ValidationError(
+            'BaggedEstimator kFold must be a safe integer >= 2')
+    if (isinstance(n_repeats, bool) or not isinstance(n_repeats, int) or
+            n_repeats < 1 or n_repeats > (1 << 53) - 1):
+        raise ValidationError(
+            'BaggedEstimator nRepeats must be a safe integer >= 1')
+    if k_fold * n_repeats > (1 << 53) - 1:
+        raise ValidationError(
+            'BaggedEstimator fold model count exceeds the safe integer range')
+    if (isinstance(seed, bool) or not isinstance(seed, int) or
+            abs(seed) > (1 << 53) - 1 or
+            abs(seed + n_repeats - 1) > (1 << 53) - 1):
+        raise ValidationError(
+            'BaggedEstimator seed range must contain only safe integers')
+    if (not isinstance(spec, (list, tuple)) or len(spec) < 2 or
+            not isinstance(spec[0], str) or not spec[0] or
+            (require_constructor and
+             not callable(getattr(spec[1], 'create', None)))):
+        raise ValidationError(
+            'BaggedEstimator requires a valid estimator specification')
+
+
 def _dispose_loaded(models):
+    _dispose_owned(models, RuntimeError('preserve load error'))
+
+
+def _dispose_replaced(models):
+    _dispose_owned(models, RuntimeError('replacement already committed'))
+
+
+def _dispose_owned(models, operation_error=None):
+    first_error = None
     for model in reversed(models):
         try:
             if hasattr(model, 'dispose'):
                 model.dispose()
-        except Exception:
-            # Preserve the load error; cleanup is best effort for partial state.
-            pass
+        except Exception as exc:
+            if first_error is None:
+                first_error = exc
+    if operation_error is None and first_error is not None:
+        raise first_error

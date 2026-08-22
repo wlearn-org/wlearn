@@ -20,6 +20,38 @@ function makeTask(name, cls, params, classId = `wlearn.test.${name}@1`) {
 }
 
 describe('Executor evaluateCandidate', () => {
+  it('waits for asynchronous fit before prediction and disposal', async () => {
+    let disposals = 0
+    class DeferredFitModel {
+      #fitted = false
+
+      static async create() { return new DeferredFitModel() }
+      async fit() {
+        await Promise.resolve()
+        this.#fitted = true
+        return this
+      }
+      predict(input) {
+        assert.equal(this.#fitted, true)
+        return new Int32Array(input.rows)
+      }
+      dispose() {
+        assert.equal(this.#fitted, true)
+        disposals++
+      }
+    }
+
+    const folds = stratifiedKFold(yCls, 2, { shuffle: true, seed: 42 })
+    const exec = new Executor({
+      folds, scoring: 'accuracy', X, y: yCls, seed: 42,
+    })
+    const result = await exec.evaluateCandidate(
+      makeTask('deferred-fit', DeferredFitModel, {})
+    )
+    assert.equal(result.foldScores.length, 2)
+    assert.equal(disposals, 2)
+  })
+
   it('returns CandidateResult with correct shape', async () => {
     const folds = stratifiedKFold(yCls, 3, { shuffle: true, seed: 42 })
     const exec = new Executor({

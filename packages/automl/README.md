@@ -113,6 +113,13 @@ opaque `wlc1_<sha256>` values derived from the class ID, exact model parameters,
 and resolved preprocessing parameters. Display-name changes do not alter identity
 or fold seeds. Use `candidate.model` and `candidate.preprocess`; do not parse the ID.
 
+`baseSeed` is the run seed. `foldSeeds` are deterministic values derived from the
+structured candidate identity, fold index, and `baseSeed`; the executor records
+them for provenance and uses them for executor-owned random operations such as a
+successive-halving subsample budget. They do not replace the model's explicit
+candidate `seed` parameter and do not describe how the already-supplied CV folds
+were generated.
+
 Refitted candidates are returned as Pipelines. Their WLRN artifacts retain the
 structured candidate provenance, including when those Pipelines are nested in an
 ensemble.
@@ -170,6 +177,8 @@ Classification and regression have separate config sets with task-appropriate pa
   modelName: 'xgb',
   params: { max_depth: 6, eta: 0.1, ... },
   scores: Float64Array([0.92, 0.94, 0.91, 0.93, 0.90]),
+  baseSeed: 42,
+  foldSeeds: Uint32Array([/* one derived seed per fold */]),
   meanScore: 0.92,
   stdScore: 0.014,
   fitTimeMs: 42,

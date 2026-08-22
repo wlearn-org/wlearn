@@ -4,6 +4,7 @@ const { encodeBundle, validateBundle } = require('./bundle.js')
 const {
   register, load: registryLoad, assertRequiredLoaders
 } = require('./registry.js')
+const { isPromiseLike } = require('./lift.js')
 
 const PIPELINE_TYPE_ID = 'wlearn.pipeline@1'
 let registered = false
@@ -26,6 +27,7 @@ class Pipeline {
   #provenance
   #fitted = false
   #disposed = false
+  #fitInProgress = false
 
   /**
    * @param {Array<[string, Object]>} steps - Array of `[name, estimator]` tuples.
@@ -60,29 +62,70 @@ class Pipeline {
     return current
   }
 
+  #fitIntermediate(estimator, X, y) {
+    if (typeof estimator.fitTransform === 'function') {
+      return estimator.fitTransform(X, y)
+    }
+    const fitted = estimator.fit(X, y)
+    return isPromiseLike(fitted)
+      ? Promise.resolve(fitted).then(() => estimator.transform(X))
+      : estimator.transform(X)
+  }
+
+  #commitFit() {
+    this.#fitInProgress = false
+    this.#ensureAlive()
+    this.#fitted = true
+    return this
+  }
+
+  #failFit(error) {
+    this.#fitInProgress = false
+    throw error
+  }
+
   /**
    * Fit all steps. Intermediate steps are fit-transformed; the last step is fit only.
    * @param {Object} X - Feature matrix (`{ data, rows, cols }` or `number[][]`).
    * @param {Float64Array|Int32Array|number[]} y - Target labels/values.
-   * @returns {this}
+   * Returns synchronously for synchronous children and lifts to a Promise when a
+   * composite child has asynchronous fit semantics.
+   * @returns {this|Promise<this>}
    */
   fit(X, y) {
     this.#ensureAlive()
-    let current = X
-    for (let i = 0; i < this.#steps.length - 1; i++) {
-      const est = this.#steps[i].estimator
-      if (typeof est.fitTransform === 'function') {
-        current = est.fitTransform(current, y)
-      } else {
-        est.fit(current, y)
-        current = est.transform(current)
-      }
+    if (this.#fitInProgress) {
+      throw new ValidationError('Pipeline fit is already in progress')
     }
-    // Last step: fit only
-    const last = this.#steps[this.#steps.length - 1].estimator
-    last.fit(current, y)
-    this.#fitted = true
-    return this
+    this.#fitInProgress = true
+    this.#fitted = false
+    try {
+      let current = X
+      for (let i = 0; i < this.#steps.length - 1; i++) {
+        const estimator = this.#steps[i].estimator
+        current = isPromiseLike(current)
+          ? Promise.resolve(current).then(
+            value => this.#fitIntermediate(estimator, value, y)
+          )
+          : this.#fitIntermediate(estimator, current, y)
+      }
+
+      const last = this.#steps[this.#steps.length - 1].estimator
+      const finish = value => {
+        const fitted = last.fit(value, y)
+        return isPromiseLike(fitted)
+          ? Promise.resolve(fitted).then(() => this.#commitFit())
+          : this.#commitFit()
+      }
+      const result = isPromiseLike(current)
+        ? Promise.resolve(current).then(finish)
+        : finish(current)
+      return isPromiseLike(result)
+        ? Promise.resolve(result).catch(error => this.#failFit(error))
+        : result
+    } catch (error) {
+      return this.#failFit(error)
+    }
   }
 
   /**
@@ -168,7 +211,11 @@ class Pipeline {
   /** Dispose all step estimators and mark the pipeline as disposed. */
   dispose() {
     if (this.#disposed) return
+    if (this.#fitInProgress) {
+      throw new ValidationError('Cannot dispose Pipeline while fit is in progress')
+    }
     this.#disposed = true
+    this.#fitInProgress = false
     let firstError = null
     for (let i = this.#steps.length - 1; i >= 0; i--) {
       try {
@@ -190,19 +237,49 @@ class Pipeline {
 
   setParams(p) {
     this.#ensureAlive()
-    for (const step of this.#steps) {
-      if (p[step.name]) {
-        step.estimator.setParams(p[step.name])
+    if (this.#fitInProgress) {
+      throw new ValidationError('Cannot set Pipeline params while fit is in progress')
+    }
+    if (!p || typeof p !== 'object' || Array.isArray(p)) {
+      throw new ValidationError('Pipeline params must be an object keyed by step name')
+    }
+    const stepNames = new Set(this.#steps.map(step => step.name))
+    for (const name of Object.keys(p)) {
+      if (!stepNames.has(name)) {
+        throw new ValidationError(`Unknown Pipeline step parameter "${name}"`)
       }
+    }
+    const selected = this.#steps.filter(step =>
+      Object.prototype.hasOwnProperty.call(p, step.name)
+    )
+    for (const step of selected) {
+      if (typeof step.estimator.setParams !== 'function') {
+        throw new ValidationError(
+          `Pipeline step "${step.name}" does not support setParams`
+        )
+      }
+    }
+    if (selected.length > 0) this.#fitted = false
+    for (const step of selected) {
+      step.estimator.setParams(p[step.name])
     }
     return this
   }
 
   get capabilities() {
-    return this.#steps[this.#steps.length - 1].estimator.capabilities
+    const capabilities = this.#steps[this.#steps.length - 1].estimator.capabilities
+    return capabilities == null ? capabilities : { ...capabilities }
   }
 
-  get isFitted() { return this.#fitted }
+  get classes() {
+    this.#ensureFitted()
+    const estimator = this.#steps[this.#steps.length - 1].estimator
+    const classes = estimator.classes
+    const resolved = typeof classes === 'function' ? classes.call(estimator) : classes
+    return resolved ?? null
+  }
+
+  get isFitted() { return this.#fitted && !this.#disposed }
   get provenance() { return _cloneJSON(this.#provenance) }
 
   static registerLoader() {

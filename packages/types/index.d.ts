@@ -75,7 +75,7 @@ export interface Capabilities {
 export type MaybePromise<T> = T | Promise<T>
 
 export interface Estimator {
-  fit(X: Matrix | number[][], y: Labels | number[]): this
+  fit(X: Matrix | number[][], y: Labels | number[]): MaybePromise<this>
   predict(X: Matrix | number[][]): MaybePromise<Labels>
   score(X: Matrix | number[][], y: Labels | number[]): MaybePromise<number>
   save(): Uint8Array
@@ -116,7 +116,7 @@ export declare class Pipeline implements Estimator {
     steps: PipelineStep[],
     options?: { provenance?: Record<string, unknown> | null }
   )
-  fit(X: Matrix | number[][], y: Labels | number[]): this
+  fit(X: Matrix | number[][], y: Labels | number[]): MaybePromise<this>
   predict(X: Matrix | number[][]): MaybePromise<Labels>
   predictProba(X: Matrix | number[][]): MaybePromise<Float64Array>
   score(X: Matrix | number[][], y: Labels | number[]): MaybePromise<number>
@@ -125,6 +125,7 @@ export declare class Pipeline implements Estimator {
   getParams(): Record<string, unknown>
   setParams(p: Record<string, unknown>): this
   readonly capabilities: Capabilities
+  readonly classes: Int32Array | null
   readonly isFitted: boolean
   readonly provenance: Record<string, unknown> | null
   static load(
@@ -675,6 +676,22 @@ export type VotingMethod = 'soft' | 'hard'
 
 export type EstimatorSpec = [name: string, cls: EstimatorClass, params?: Record<string, unknown>]
 
+export interface BaggedEstimatorLike {
+  predict(X: Matrix | number[][]): MaybePromise<Labels>
+  predictProba?(X: Matrix | number[][]): MaybePromise<Float64Array>
+  score(X: Matrix | number[][], y: Labels | number[]): MaybePromise<number>
+  save(): Uint8Array
+  dispose(): void
+  getParams(): Record<string, unknown>
+  setParams(p: Record<string, unknown>): unknown
+  readonly capabilities: Capabilities
+  readonly isFitted: boolean
+  readonly classes: Int32Array | null
+  readonly oofPredictions: Float64Array
+}
+
+export type PrefittedBaggedSpec = [name: string, estimator: BaggedEstimatorLike]
+
 export interface AutoMLEstimatorClass extends EstimatorClass {
   readonly classId: string
 }
@@ -692,14 +709,22 @@ export interface VotingEnsembleParams {
   task?: TaskType
 }
 
+export type VotingEnsembleMutableParams = Partial<
+  Pick<VotingEnsembleParams, 'voting' | 'weights'>
+>
+
 export interface StackingEnsembleParams {
-  estimators?: EstimatorSpec[]
+  estimators?: Array<EstimatorSpec | PrefittedBaggedSpec>
   finalEstimator?: EstimatorSpec
   cv?: number
   task?: TaskType
   passthrough?: boolean
   seed?: number
 }
+
+export type StackingEnsembleMutableParams = Partial<
+  Pick<StackingEnsembleParams, 'cv' | 'passthrough' | 'seed'>
+>
 
 export interface CaruanaResult {
   indices: Int32Array
@@ -712,7 +737,34 @@ export interface CaruanaOpts {
   scoring?: ScoringName | ScoringFn
   task?: TaskType
   nClasses?: number
+  refineWeights?: boolean
 }
+
+export interface BaggedEstimatorParams {
+  estimator?: EstimatorSpec
+  kFold?: number
+  nRepeats?: number
+  task?: TaskType
+  seed?: number
+}
+
+export type BaggedEstimatorMutableParams = Partial<
+  Pick<BaggedEstimatorParams, 'kFold' | 'nRepeats' | 'seed'>
+>
+
+export interface WeightOptimizationOpts {
+  task?: TaskType
+  lr?: number
+  nIter?: number
+}
+
+export declare function projectSimplex(values: ArrayLike<number>): Float64Array
+export declare function optimizeWeights(
+  oofPredictions: Float64Array[],
+  yTrue: Labels | number[],
+  initWeights: ArrayLike<number>,
+  opts?: WeightOptimizationOpts
+): Float64Array
 
 export declare function caruanaSelect(
   oofPredictions: Float64Array[],
@@ -760,7 +812,12 @@ export interface CandidateResult {
   modelName: string
   params: Record<string, unknown>
   scores: Float64Array
+  /** Run-level seed used as the root for executor-owned deterministic choices. */
   baseSeed: number
+  /**
+   * Candidate/fold-derived provenance seeds. These drive executor-owned random
+   * operations such as budget subsampling; they do not override model params.
+   */
   foldSeeds: Uint32Array
   meanScore: number
   stdScore: number

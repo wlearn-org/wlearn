@@ -258,4 +258,52 @@ describe('crossValScore', () => {
     const scores = await crossValScore(MockClassifier, X, y, { cv: 2 })
     assert.equal(scores.length, 2)
   })
+
+  it('waits for asynchronous fit before prediction and disposal', async () => {
+    let disposals = 0
+    class DeferredClassifier {
+      #fitted = false
+
+      static async create() { return new DeferredClassifier() }
+      async fit() {
+        await Promise.resolve()
+        this.#fitted = true
+        return this
+      }
+      predict(input) {
+        assert.equal(this.#fitted, true)
+        return new Int32Array(input.rows)
+      }
+      dispose() {
+        assert.equal(this.#fitted, true)
+        disposals++
+      }
+    }
+
+    const X = { data: new Float64Array(8), rows: 4, cols: 2 }
+    const y = new Int32Array([0, 0, 1, 1])
+    const scores = await crossValScore(DeferredClassifier, X, y, { cv: 2 })
+    assert.equal(scores.length, 2)
+    assert.equal(disposals, 2)
+  })
+
+  it('preserves a primary evaluation error when cleanup also fails', async () => {
+    const primary = new Error('primary prediction failure')
+    class FailingClassifier {
+      static async create() { return new FailingClassifier() }
+      fit() { return this }
+      predict() { throw primary }
+      dispose() { throw new Error('secondary disposal failure') }
+    }
+
+    const X = { data: new Float64Array([1, 2]), rows: 2, cols: 1 }
+    const y = new Int32Array([0, 1])
+    const folds = [{
+      train: new Int32Array([0]), test: new Int32Array([1]),
+    }]
+    await assert.rejects(
+      () => crossValScore(FailingClassifier, X, y, { cv: folds }),
+      error => error === primary
+    )
+  })
 })

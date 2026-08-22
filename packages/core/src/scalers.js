@@ -111,6 +111,7 @@ class StandardScaler {
 
   getParams() { return { ...this.#params } }
   setParams(p) { Object.assign(this.#params, p); return this }
+  get capabilities() { return { transformer: true } }
   get isFitted() { return this.#fitted && !this.#disposed }
 
   #ensureAlive() {
@@ -216,6 +217,7 @@ class MinMaxScaler {
 
   getParams() { return { ...this.#params } }
   setParams(p) { Object.assign(this.#params, p); return this }
+  get capabilities() { return { transformer: true } }
   get isFitted() { return this.#fitted && !this.#disposed }
 
   #ensureAlive() {

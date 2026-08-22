@@ -80,25 +80,26 @@ function createPreprocessAPI(defaultBackend, backendName) {
     }
 
     static async create(config = {}, runtimeOptions = {}) {
-      const backend = await registerPreprocess()
       const resolved = resolveConfig(config)
       const runtime = normalizeRuntimeOptions(runtimeOptions, backendName)
+      const backend = await registerPreprocess()
       const limits = resolveBackendLimits(backend, runtime)
       assertConfigWithinHostLimits(resolved, limits)
       return new Preprocessor(INTERNAL, backend, resolved, runtime, limits)
     }
 
     static async load(bytes, runtimeOptions = {}) {
-      const backend = await registerPreprocess()
       const decoded = validateBundle(bytes)
       if (decoded.manifest.typeId !== TYPE_ID) {
         throw new ValidationError(
           `Preprocessor.load expected typeId "${TYPE_ID}", got "${decoded.manifest.typeId}"`
         )
       }
+      const runtime = normalizeRuntimeOptions(runtimeOptions, backendName)
+      const backend = await registerPreprocess()
       return loadFromParts(
         Preprocessor, backend, decoded.manifest, decoded.toc, decoded.blobs,
-        normalizeRuntimeOptions(runtimeOptions, backendName)
+        runtime
       )
     }
 
@@ -287,13 +288,14 @@ function createPreprocessAPI(defaultBackend, backendName) {
     assertExactKeys(options, ['backend'], 'registerPreprocess options', true)
     if (!registrationInstalled) {
       register(TYPE_ID, async (manifest, toc, blobs, context) => {
-        const backend = await ensureBackend()
         const loaderOptions = context && context.loaderOptions
           ? context.loaderOptions[TYPE_ID]
           : undefined
+        const runtime = normalizeRuntimeOptions(loaderOptions || {}, backendName)
+        const backend = await ensureBackend()
         return loadFromParts(
           Preprocessor, backend, manifest, toc, blobs,
-          normalizeRuntimeOptions(loaderOptions || {}, backendName)
+          runtime
         )
       }, { acceptsContext: true, sync: false })
       registrationInstalled = true

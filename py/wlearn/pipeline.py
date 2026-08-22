@@ -179,9 +179,55 @@ class Pipeline:
             for name, est in self._steps
         }
 
+    def set_params(self, params):
+        """Update named child parameters and require an explicit refit.
+
+        Invalidation happens before the first child mutation, so a child
+        ``set_params`` failure cannot leave the pipeline claiming to be fitted.
+        """
+        self._ensure_alive()
+        if not isinstance(params, dict):
+            raise ValidationError(
+                'Pipeline params must be a mapping keyed by step name')
+        step_names = {name for name, _ in self._steps}
+        unknown = [name for name in params if name not in step_names]
+        if unknown:
+            raise ValidationError(
+                f'Unknown Pipeline step parameter "{unknown[0]}"')
+        selected = [
+            (name, estimator)
+            for name, estimator in self._steps
+            if name in params
+        ]
+        for name, estimator in selected:
+            if not callable(getattr(estimator, 'set_params', None)):
+                raise ValidationError(
+                    f'Pipeline step "{name}" does not support set_params')
+        if selected:
+            self._fitted = False
+        for name, estimator in selected:
+            estimator.set_params(params[name])
+        return self
+
     @property
     def is_fitted(self):
         return self._fitted and not self._disposed
+
+    @property
+    def capabilities(self):
+        """Expose an isolated snapshot of the final estimator capabilities."""
+        estimator = self._steps[-1][1]
+        capabilities = getattr(estimator, 'capabilities', {})
+        if callable(capabilities):
+            capabilities = capabilities()
+        return deepcopy(capabilities)
+
+    @property
+    def classes(self):
+        self._ensure_fitted()
+        estimator = self._steps[-1][1]
+        classes = getattr(estimator, 'classes', None)
+        return classes() if callable(classes) else classes
 
     @property
     def provenance(self):

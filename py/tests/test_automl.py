@@ -92,6 +92,10 @@ class MockModel:
     def dispose(self):
         self._disposed = True
 
+    @property
+    def classes(self):
+        return self._classes
+
     def save(self):
         state = json.dumps({
             'classes': (
@@ -141,6 +145,19 @@ class MockModel:
     @property
     def is_fitted(self):
         return self._fitted
+
+    @property
+    def capabilities(self):
+        classifier = self._classes is not None
+        return {
+            'classifier': classifier,
+            'regressor': not classifier,
+            'predictProba': classifier,
+            'decisionFunction': False,
+            'sampleWeight': False,
+            'csr': False,
+            'earlyStopping': False,
+        }
 
 
 register('wlearn.test.automl-mock@1', MockModel._from_bundle)

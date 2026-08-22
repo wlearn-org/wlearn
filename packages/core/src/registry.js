@@ -132,11 +132,38 @@ function normalizeLoadContext(options) {
   if (!isPlainObject(loaderOptions)) {
     throw new RegistryError('loaderOptions must be an object keyed by typeId')
   }
+  const seen = new Set()
+  const snapshot = Object.fromEntries(Object.entries(loaderOptions).map(
+    ([typeId, value]) => [
+      typeId,
+      snapshotLoadOption(value, `loaderOptions["${typeId}"]`, seen),
+    ]
+  ))
   const context = {
-    loaderOptions: Object.freeze({ ...loaderOptions })
+    loaderOptions: Object.freeze(snapshot)
   }
   Object.defineProperty(context, LOAD_CONTEXT, { value: true })
   return Object.freeze(context)
+}
+
+function snapshotLoadOption(value, label, seen) {
+  if (Array.isArray(value)) {
+    if (seen.has(value)) throw new RegistryError(`${label} must not contain cycles`)
+    seen.add(value)
+    const copy = value.map((item, index) =>
+      snapshotLoadOption(item, `${label}[${index}]`, seen)
+    )
+    seen.delete(value)
+    return Object.freeze(copy)
+  }
+  if (!isPlainObject(value)) return value
+  if (seen.has(value)) throw new RegistryError(`${label} must not contain cycles`)
+  seen.add(value)
+  const copy = Object.fromEntries(Object.entries(value).map(([key, item]) => [
+    key, snapshotLoadOption(item, `${label}.${key}`, seen),
+  ]))
+  seen.delete(value)
+  return Object.freeze(copy)
 }
 
 function isPlainObject(value) {

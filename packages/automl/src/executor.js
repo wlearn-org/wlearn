@@ -150,7 +150,7 @@ class Executor {
       const model = await cls.create(effectiveParams)
       let operationError = null
       try {
-        model.fit(Xtrain, ytrain)
+        await model.fit(Xtrain, ytrain)
         const preds = await model.predict(Xtest)
         scores[f] = this.#scorerFn(ytest, preds)
       } catch (error) {

@@ -14,7 +14,7 @@ WebAssembly makes this possible. The same optimized C code that powers scikit-le
 
 **WASM ports, not reimplementations.** Each model package compiles the original upstream C/C++ source to WebAssembly via Emscripten. The numerical results match the native libraries.
 
-**Unified API.** Every model follows the same pattern: async construction (WASM must load), then synchronous `fit`, `predict`, `score`, `save`, `dispose`. No surprises if you know scikit-learn.
+**Unified API.** Base models use async construction (WASM must load), then synchronous `fit` and `save`; prediction may be sync or async by backend. Orchestration composites Promise-lift fit only when they must create asynchronous children.
 
 **Portable bundles.** `save()` produces a self-describing binary bundle (format: WLRN v1) containing the model weights, hyperparameters, and a type identifier. `load()` reads the bundle and dispatches to the right loader automatically. Bundles are language-agnostic -- the Python `wlearn` package reads the same files.
 
@@ -104,7 +104,7 @@ WASM modules load asynchronously. Use the static `create()` factory:
 const model = await LinearModel.create({ solver: 'L2R_LR', C: 1.0 })
 ```
 
-After construction, `fit`, `save`, and `dispose` are synchronous. `predict`, `predictProba`, and `score` are synchronous for WASM-backed models but return Promises for async backends (e.g. `@wlearn/mitra` uses ONNX Runtime).
+After construction, base-model `fit` and `save` are synchronous. `predict`, `predictProba`, and `score` are synchronous for WASM-backed models but return Promises for async backends (for example, `@wlearn/mitra` uses ONNX Runtime). Ensembles and Pipelines that contain them Promise-lift `fit`; use `await composite.fit(X, y)` when accepting orchestration composites.
 
 ### fit / predict / score
 

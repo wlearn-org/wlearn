@@ -110,6 +110,7 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
         task: task,
         params: params,
         fitted: false,
+        fitInProgress: false,
         disposed: false,
       })
     }
@@ -191,6 +192,7 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
     fit(X, y, fitOpts) {
       const s = _get(this)
       if (s.disposed) throw new Error(`${modelName} has been disposed.`)
+      if (s.fitInProgress) throw new Error(`${modelName} fit is already in progress`)
 
       // Auto-detect task if not set
       if (!s.task) {
@@ -207,12 +209,28 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
       }
 
       s.fitted = false
-      s.inner.fit(X, y, fitOpts)
-      // Explicit backend selectors (for example objective/solver/family) are
-      // authoritative. Keep the wrapper task aligned with the fitted backend.
-      s.task = _taskFromInner(s.inner, s.task)
-      s.fitted = true
-      return this
+      s.fitInProgress = true
+      const commit = () => {
+        s.fitInProgress = false
+        if (s.disposed) throw new Error(`${modelName} has been disposed.`)
+        // Explicit backend selectors (for example objective/solver/family) are
+        // authoritative. Keep the wrapper task aligned with the fitted backend.
+        s.task = _taskFromInner(s.inner, s.task)
+        s.fitted = true
+        return this
+      }
+      const fail = error => {
+        s.fitInProgress = false
+        throw error
+      }
+      try {
+        const result = s.inner.fit(X, y, fitOpts)
+        return result != null && typeof result.then === 'function'
+          ? Promise.resolve(result).then(commit, fail)
+          : commit()
+      } catch (error) {
+        return fail(error)
+      }
     }
 
     predict(X, predOpts) {
@@ -238,6 +256,9 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
     dispose() {
       const s = _get(this)
       if (s.disposed) return
+      if (s.fitInProgress) {
+        throw new Error(`Cannot dispose ${modelName} while fit is in progress`)
+      }
       const disposed = new Set()
       for (const instance of s.instances.values()) {
         if (!instance || disposed.has(instance)) continue
@@ -262,6 +283,9 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
     setParams(p) {
       const s = _get(this)
       if (s.disposed) throw new Error(`${modelName} has been disposed.`)
+      if (s.fitInProgress) {
+        throw new Error(`Cannot set ${modelName} params while fit is in progress`)
+      }
       const updates = { ...p }
       let taskChanged = false
       let newTask = s.task

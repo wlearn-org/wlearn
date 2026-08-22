@@ -9,6 +9,11 @@ const {
 
 const TYPE_ID_CLS = 'wlearn.ensemble.stacking.classifier@1'
 const TYPE_ID_REG = 'wlearn.ensemble.stacking.regressor@1'
+const { validateStackingManifest } = require('./manifest.js')
+const {
+  classColumnMap, requireProbabilityModel, validateLabelOutput,
+  validateProbabilityOutput, validateRegressionOutput
+} = require('./class-order.js')
 let _registered = false
 
 class StackingEnsemble {
@@ -25,13 +30,14 @@ class StackingEnsemble {
   #nMetaCols
   #fitted = false
   #disposed = false
+  #fitInProgress = false
 
-  constructor(params) {
-    this.#baseSpecs = params.estimators || []
+  constructor(params = {}) {
+    this.#baseSpecs = params.estimators ?? []
     this.#metaSpec = params.finalEstimator || null
-    this.#cv = params.cv || 5
-    this.#task = params.task || 'classification'
-    this.#passthrough = params.passthrough || false
+    this.#cv = params.cv ?? 5
+    this.#task = params.task ?? 'classification'
+    this.#passthrough = params.passthrough ?? false
     this.#seed = params.seed ?? 42
     this.#baseModels = null
     this.#metaModel = null
@@ -56,9 +62,22 @@ class StackingEnsemble {
 
   async fit(X, y) {
     this.#ensureAlive()
-    if (!this.#metaSpec) {
-      throw new ValidationError('StackingEnsemble requires a finalEstimator')
+    if (this.#fitInProgress) {
+      throw new ValidationError('StackingEnsemble fit is already in progress')
     }
+    this.#fitInProgress = true
+    try {
+      return await this.#fitOnce(X, y)
+    } finally {
+      this.#fitInProgress = false
+    }
+  }
+
+  async #fitOnce(X, y) {
+    _validateStackingConfig(
+      this.#baseSpecs, this.#metaSpec, this.#cv, this.#task,
+      this.#passthrough, this.#seed
+    )
 
     const Xn = normalizeX(X)
     const yn = normalizeY(y)
@@ -79,14 +98,69 @@ class StackingEnsemble {
       ? stratifiedKFold(yn, this.#cv, { shuffle: true, seed: this.#seed })
       : kFold(n, this.#cv, { shuffle: true, seed: this.#seed })
 
+    const baggedBases = []
+    const specBases = []
+    for (let index = 0; index < this.#baseSpecs.length; index++) {
+      const entry = this.#baseSpecs[index]
+      if (!Array.isArray(entry)) {
+        throw new ValidationError(`Base estimator ${index} must be an array specification`)
+      }
+      if (entry.length === 2) {
+        const [name, model] = entry
+        if (!model?.isFitted || !('oofPredictions' in model)) {
+          throw new ValidationError(
+            `Base estimator "${name}" is a 2-tuple but not a fitted ` +
+            'BaggedEstimator with oofPredictions.'
+          )
+        }
+        baggedBases.push([index, name, model])
+      } else if (entry.length >= 3 && typeof entry[1]?.create === 'function') {
+        specBases.push([index, entry[0], entry[1], entry[2]])
+      } else {
+        throw new ValidationError(`Base estimator ${index} has an invalid specification`)
+      }
+    }
+
     // Step 1: Generate OOF predictions for each base model
     const nBase = this.#baseSpecs.length
     const colsPerModel = this.#task === 'classification' ? nClasses : 1
     const oofCols = nBase * colsPerModel
     const oofData = new Float64Array(n * oofCols)
 
-    for (let b = 0; b < nBase; b++) {
-      const [, EstClass, params] = this.#baseSpecs[b]
+    for (const [b, name, model] of baggedBases) {
+      const baggedParams = typeof model.getParams === 'function'
+        ? model.getParams()
+        : null
+      if (baggedParams?.task !== this.#task) {
+        throw new ValidationError(
+          `Pre-fitted BaggedEstimator "${name}" task does not match stacking task`
+        )
+      }
+      const oof = _validatePrefittedOof(
+        model.oofPredictions, n * colsPerModel,
+        `Pre-fitted BaggedEstimator "${name}"`
+      )
+      if (this.#task === 'classification') {
+        const columns = classColumnMap(
+          model, classes, `Pre-fitted BaggedEstimator "${name}"`
+        )
+        for (let row = 0; row < n; row++) {
+          for (let column = 0; column < colsPerModel; column++) {
+            oofData[row * oofCols + b * colsPerModel + column] =
+              oof[row * colsPerModel + columns[column]]
+          }
+        }
+        continue
+      }
+      for (let row = 0; row < n; row++) {
+        for (let column = 0; column < colsPerModel; column++) {
+          oofData[row * oofCols + b * colsPerModel + column] =
+            oof[row * colsPerModel + column]
+        }
+      }
+    }
+
+    for (const [b, , EstClass, params] of specBases) {
       for (const { train, test } of folds) {
         const Xtrain = _subsetX(Xn, train)
         const ytrain = _subsetY(yn, train)
@@ -95,17 +169,26 @@ class StackingEnsemble {
         const model = await EstClass.create(params || {})
         let operationError = null
         try {
-          model.fit(Xtrain, ytrain)
+          await model.fit(Xtrain, ytrain)
           if (this.#task === 'classification') {
-            const proba = await model.predictProba(Xtest)
+            const label = `StackingEnsemble base estimator "${this.#baseSpecs[b][0]}"`
+            requireProbabilityModel(model, label)
+            const columns = classColumnMap(model, classes, label)
+            const proba = validateProbabilityOutput(
+              await model.predictProba(Xtest), test.length, nClasses, label
+            )
             for (let i = 0; i < test.length; i++) {
               const row = test[i]
               for (let c = 0; c < nClasses; c++) {
-                oofData[row * oofCols + b * colsPerModel + c] = proba[i * nClasses + c]
+                oofData[row * oofCols + b * colsPerModel + c] =
+                  proba[i * nClasses + columns[c]]
               }
             }
           } else {
-            const preds = await model.predict(Xtest)
+            const preds = validateRegressionOutput(
+              await model.predict(Xtest), test.length,
+              `StackingEnsemble base estimator "${this.#baseSpecs[b][0]}"`
+            )
             for (let i = 0; i < test.length; i++) {
               oofData[test[i] * oofCols + b] = preds[i]
             }
@@ -145,20 +228,37 @@ class StackingEnsemble {
 
     // Steps 3-4 build replacement state transactionally. Every successful
     // create transfers ownership immediately, before fit can fail.
-    const baseModels = []
+    const baseModels = new Array(nBase)
+    for (const [index, , model] of baggedBases) baseModels[index] = model
+    const createdModels = []
     let metaModel = null
     try {
-      for (const [, EstClass, params] of this.#baseSpecs) {
+      for (const [index, , EstClass, params] of specBases) {
         const model = await EstClass.create(params || {})
-        baseModels.push(model)
-        model.fit(Xn, yn)
+        createdModels.push(model)
+        baseModels[index] = model
+        await model.fit(Xn, yn)
+        if (this.#task === 'classification') {
+          const label =
+            `StackingEnsemble base estimator "${this.#baseSpecs[index][0]}"`
+          requireProbabilityModel(model, label)
+          classColumnMap(
+            model, classes, label
+          )
+        }
       }
 
       const [, MetaClass, metaParams] = this.#metaSpec
       metaModel = await MetaClass.create(metaParams || {})
-      metaModel.fit(metaX, yn)
+      await metaModel.fit(metaX, yn)
+      if (this.#task === 'classification') {
+        classColumnMap(
+          metaModel, classes,
+          `StackingEnsemble meta estimator "${this.#metaSpec[0]}"`
+        )
+      }
     } catch (error) {
-      _disposeOwned([...baseModels, metaModel], error)
+      _disposeOwned([...createdModels, metaModel], error)
       throw error
     }
 
@@ -169,14 +269,27 @@ class StackingEnsemble {
     this.#nClasses = nClasses
     this.#nMetaCols = nMetaCols
     this.#fitted = true
-    _disposeOwned(previous)
+    const retained = new Set([...baseModels, metaModel])
+    _disposeReplaced(previous.filter(model => model && !retained.has(model)))
     return this
   }
 
   predict(X) {
     this.#ensureFitted()
     const metaX = this.#buildMetaFeatures(X)
-    return lift(metaX, mx => this.#metaModel.predict(mx))
+    return lift(metaX, mx => {
+      const output = this.#metaModel.predict(mx)
+      if (this.#task !== 'classification') {
+        return lift(output, predictions => validateRegressionOutput(
+          predictions, mx.rows,
+          `StackingEnsemble meta estimator "${this.#metaSpec[0]}"`
+        ))
+      }
+      return lift(output, labels => validateLabelOutput(
+        labels, mx.rows, this.#classes,
+        `StackingEnsemble meta estimator "${this.#metaSpec[0]}"`
+      ))
+    })
   }
 
   predictProba(X) {
@@ -184,11 +297,29 @@ class StackingEnsemble {
     if (this.#task !== 'classification') {
       throw new ValidationError('predictProba is only available for classification')
     }
-    if (typeof this.#metaModel.predictProba !== 'function') {
+    if (!_supportsPredictProba(this.#metaModel)) {
       throw new ValidationError('Meta-model does not support predictProba')
     }
     const metaX = this.#buildMetaFeatures(X)
-    return lift(metaX, mx => this.#metaModel.predictProba(mx))
+    return lift(metaX, mx => {
+      const output = this.#metaModel.predictProba(mx)
+      return lift(output, proba => {
+        const rows = mx.rows
+        const label = `StackingEnsemble meta estimator "${this.#metaSpec[0]}"`
+        const values = validateProbabilityOutput(
+          proba, rows, this.#nClasses, label
+        )
+        const columns = classColumnMap(this.#metaModel, this.#classes, label)
+        const aligned = new Float64Array(values.length)
+        for (let row = 0; row < rows; row++) {
+          for (let column = 0; column < this.#nClasses; column++) {
+            aligned[row * this.#nClasses + column] =
+              values[row * this.#nClasses + columns[column]]
+          }
+        }
+        return aligned
+      })
+    })
   }
 
   score(X, y) {
@@ -241,8 +372,19 @@ class StackingEnsemble {
 
   dispose() {
     if (this.#disposed) return
+    if (this.#fitInProgress) {
+      throw new ValidationError(
+        'Cannot dispose StackingEnsemble while fit is in progress'
+      )
+    }
     this.#disposed = true
-    _disposeOwned([...(this.#baseModels || []), this.#metaModel])
+    try {
+      _disposeOwned([...(this.#baseModels || []), this.#metaModel])
+    } finally {
+      this.#baseModels = null
+      this.#metaModel = null
+      this.#fitted = false
+    }
   }
 
   getParams() {
@@ -258,9 +400,34 @@ class StackingEnsemble {
 
   setParams(p) {
     this.#ensureAlive()
-    if (p.cv !== undefined) this.#cv = p.cv
-    if (p.passthrough !== undefined) this.#passthrough = p.passthrough
-    if (p.seed !== undefined) this.#seed = p.seed
+    if (this.#fitInProgress) {
+      throw new ValidationError(
+        'Cannot set StackingEnsemble params while fit is in progress'
+      )
+    }
+    if (!p || typeof p !== 'object' || Array.isArray(p)) {
+      throw new ValidationError('StackingEnsemble params must be an object')
+    }
+    for (const name of Object.keys(p)) {
+      if (name !== 'cv' && name !== 'passthrough' && name !== 'seed') {
+        throw new ValidationError(`Unknown StackingEnsemble parameter "${name}"`)
+      }
+    }
+    const cv = p.cv !== undefined ? p.cv : this.#cv
+    const passthrough = p.passthrough !== undefined
+      ? p.passthrough
+      : this.#passthrough
+    const seed = p.seed !== undefined ? p.seed : this.#seed
+    _validateStackingConfig(
+      this.#baseSpecs, this.#metaSpec, cv, this.#task,
+      passthrough, seed, false
+    )
+    if (p.cv !== undefined || p.passthrough !== undefined || p.seed !== undefined) {
+      this.#fitted = false
+    }
+    this.#cv = cv
+    this.#passthrough = passthrough
+    this.#seed = seed
     return this
   }
 
@@ -268,7 +435,8 @@ class StackingEnsemble {
     return {
       classifier: this.#task === 'classification',
       regressor: this.#task === 'regression',
-      predictProba: this.#task === 'classification',
+      predictProba: this.#task === 'classification' &&
+        _supportsPredictProba(this.#metaModel),
       decisionFunction: false,
       sampleWeight: false,
       csr: false,
@@ -276,7 +444,7 @@ class StackingEnsemble {
     }
   }
 
-  get isFitted() { return this.#fitted }
+  get isFitted() { return this.#fitted && !this.#disposed }
   get classes() { return this.#classes }
 
   // --- Private helpers ---
@@ -303,14 +471,24 @@ class StackingEnsemble {
       const metaData = new Float64Array(n * this.#nMetaCols)
       for (let b = 0; b < nBase; b++) {
         if (this.#task === 'classification') {
-          const proba = outputs[b]
+          const label = `StackingEnsemble base estimator "${this.#baseSpecs[b][0]}"`
+          const proba = validateProbabilityOutput(
+            outputs[b], n, this.#nClasses, label
+          )
+          const columns = classColumnMap(
+            this.#baseModels[b], this.#classes, label
+          )
           for (let i = 0; i < n; i++) {
             for (let c = 0; c < this.#nClasses; c++) {
-              metaData[i * this.#nMetaCols + b * colsPerModel + c] = proba[i * this.#nClasses + c]
+              metaData[i * this.#nMetaCols + b * colsPerModel + c] =
+                proba[i * this.#nClasses + columns[c]]
             }
           }
         } else {
-          const preds = outputs[b]
+          const preds = validateRegressionOutput(
+            outputs[b], n,
+            `StackingEnsemble base estimator "${this.#baseSpecs[b][0]}"`
+          )
           for (let i = 0; i < n; i++) {
             metaData[i * this.#nMetaCols + b] = preds[i]
           }
@@ -341,16 +519,7 @@ class StackingEnsemble {
   }
 
   static async _loadFromParts(manifest, toc, blobs, context) {
-    const p = manifest.params
-    const expectedTypeId = p?.task === 'regression' ? TYPE_ID_REG : TYPE_ID_CLS
-    if (manifest.typeId !== expectedTypeId) {
-      throw new ValidationError(
-        `StackingEnsemble.load expected typeId "${expectedTypeId}", got "${manifest.typeId}"`
-      )
-    }
-    if (!Array.isArray(p.estimatorNames) || typeof p.metaName !== 'string') {
-      throw new ValidationError('StackingEnsemble manifest must declare base and meta estimators')
-    }
+    const p = validateStackingManifest(manifest, toc, TYPE_ID_CLS, TYPE_ID_REG)
     assertRequiredLoaders(manifest)
     const ens = new StackingEnsemble({
       task: p.task,
@@ -371,7 +540,15 @@ class StackingEnsemble {
         const entry = toc.find(t => t.id === name)
         if (!entry) throw new ValidationError(`No artifact for base estimator "${name}"`)
         const blob = blobs.subarray(entry.offset, entry.offset + entry.length)
-        ens.#baseModels.push(await registryLoad(blob, context))
+        const model = await registryLoad(blob, context)
+        ens.#baseModels.push(model)
+        if (ens.#task === 'classification') {
+          const label = `StackingEnsemble base estimator "${name}"`
+          requireProbabilityModel(model, label)
+          classColumnMap(
+            model, ens.#classes, label
+          )
+        }
       }
 
       // Load meta-model
@@ -379,6 +556,12 @@ class StackingEnsemble {
       if (!metaEntry) throw new ValidationError(`No artifact for meta estimator "${p.metaName}"`)
       const metaBlob = blobs.subarray(metaEntry.offset, metaEntry.offset + metaEntry.length)
       ens.#metaModel = await registryLoad(metaBlob, context)
+      if (ens.#task === 'classification') {
+        classColumnMap(
+          ens.#metaModel, ens.#classes,
+          `StackingEnsemble meta estimator "${p.metaName}"`
+        )
+      }
 
       ens.#fitted = true
       return ens
@@ -389,8 +572,91 @@ class StackingEnsemble {
   }
 }
 
+function _validatePrefittedOof(value, expectedLength, label) {
+  if ((!Array.isArray(value) &&
+       !(ArrayBuffer.isView(value) && !(value instanceof DataView))) ||
+      value.length !== expectedLength) {
+    throw new ValidationError(
+      `${label} OOF shape does not match the stacking data`
+    )
+  }
+  for (let index = 0; index < value.length; index++) {
+    if (typeof value[index] !== 'number' || !Number.isFinite(value[index])) {
+      throw new ValidationError(`${label} OOF predictions must be finite`)
+    }
+  }
+  return value
+}
+
+function _supportsPredictProba(model) {
+  return typeof model?.predictProba === 'function' &&
+    model?.capabilities?.predictProba === true
+}
+
+function _validateStackingConfig(
+  baseSpecs, metaSpec, cv, task, passthrough, seed,
+  requireConstructors = true
+) {
+  if (task !== 'classification' && task !== 'regression') {
+    throw new ValidationError(
+      'StackingEnsemble task must be "classification" or "regression"'
+    )
+  }
+  if (!Number.isSafeInteger(cv) || cv < 2) {
+    throw new ValidationError('StackingEnsemble cv must be a safe integer >= 2')
+  }
+  if (typeof passthrough !== 'boolean') {
+    throw new ValidationError('StackingEnsemble passthrough must be a boolean')
+  }
+  if (!Number.isSafeInteger(seed)) {
+    throw new ValidationError('StackingEnsemble seed must be a safe integer')
+  }
+  if (!Array.isArray(baseSpecs) || baseSpecs.length === 0) {
+    throw new ValidationError('StackingEnsemble estimators must be a nonempty array')
+  }
+
+  const names = new Set()
+  for (let index = 0; index < baseSpecs.length; index++) {
+    const spec = baseSpecs[index]
+    if (!Array.isArray(spec) || spec.length < 2 ||
+        typeof spec[0] !== 'string' || spec[0].length === 0) {
+      throw new ValidationError(
+        `StackingEnsemble base estimator ${index} has an invalid specification`
+      )
+    }
+    if (requireConstructors) {
+      const fittedBag = spec.length === 2 && spec[1]?.isFitted &&
+        'oofPredictions' in spec[1]
+      if (!fittedBag && (spec.length < 3 || typeof spec[1]?.create !== 'function')) {
+        throw new ValidationError(
+          `StackingEnsemble base estimator ${index} has an invalid specification`
+        )
+      }
+    }
+    if (names.has(spec[0])) {
+      throw new ValidationError('StackingEnsemble estimator names must be unique')
+    }
+    names.add(spec[0])
+  }
+
+  if (!Array.isArray(metaSpec) || metaSpec.length < 2 ||
+      typeof metaSpec[0] !== 'string' || metaSpec[0].length === 0 ||
+      (requireConstructors && typeof metaSpec[1]?.create !== 'function')) {
+    throw new ValidationError('StackingEnsemble requires a valid finalEstimator')
+  }
+  if (names.has(metaSpec[0])) {
+    throw new ValidationError(
+      'StackingEnsemble finalEstimator name must differ from base estimator names'
+    )
+  }
+}
+
 function _disposeLoaded(models) {
   _disposeOwned(models, new Error('preserve load error'))
+}
+
+function _disposeReplaced(models) {
+  _disposeOwned(models, new Error('replacement already committed'))
 }
 
 function _disposeOwned(models, operationError = null) {

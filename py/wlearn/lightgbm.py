@@ -10,6 +10,7 @@ import os
 import numpy as np
 
 from .errors import NotFittedError, DisposedError
+from ._capabilities import estimator_capabilities
 from .bundle import encode_bundle, write_bundle_output
 from .registry import register
 
@@ -254,6 +255,21 @@ class LGBModel:
     def set_params(self, p):
         self._params.update(p)
         return self
+
+    @property
+    def classes(self):
+        self._ensure_fitted()
+        return self._classes.copy()
+
+    @property
+    def capabilities(self):
+        objective = self._params.get('objective', 'regression')
+        classifier = objective in CLASSIFIER_OBJECTIVES
+        return estimator_capabilities(
+            classifier=classifier,
+            regressor=not classifier,
+            predict_proba=objective in PROBA_OBJECTIVES,
+        )
 
     @property
     def is_fitted(self):

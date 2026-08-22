@@ -5,7 +5,6 @@
 const path = require('path')
 const http = require('http')
 const fs = require('fs')
-const { encodeBundle } = require('@wlearn/core')
 
 const ROOT = path.resolve(__dirname, '..')
 const pkg = require(path.join(ROOT, 'package.json'))
@@ -13,16 +12,6 @@ const NAME = pkg.name.split('/').pop()
 const EXPORTS = Object.keys(require(path.join(ROOT, 'src', 'index.js')))
 const TMP_DIR = fs.mkdtempSync(path.join(ROOT, '.browser-test-'))
 let chromium
-const PROBE_MODEL_BUNDLE = Buffer.from(encodeBundle({
-  typeId: 'wlearn.ensemble.voting.classifier@1',
-  params: {
-    task: 'classification',
-    voting: 'soft',
-    weights: [],
-    estimatorNames: [],
-    classes: [0, 1],
-  },
-}, [])).toString('base64')
 
 function failMissingPlaywright(e) {
   fs.rmSync(TMP_DIR, { recursive: true, force: true })
@@ -89,7 +78,7 @@ async function runTest() {
     return { ok: true, exports: expected.length, types: types, execution: execution }
   } catch(e) { return { ok: false, error: e.message, stack: e.stack } }
 }
-${browserExecutionSource(PROBE_MODEL_BUNDLE)}
+${browserExecutionSource()}
 window.__testResult = runTest()
 </script></body></html>`
 }
@@ -108,12 +97,12 @@ async function runTest() {
     return { ok: true, exports: ${exportKeys.length}, types: types, execution: execution }
   } catch(e) { return { ok: false, error: e.message, stack: e.stack } }
 }
-${browserExecutionSource(PROBE_MODEL_BUNDLE)}
+${browserExecutionSource()}
 window.__testResult = runTest()
 </script></body></html>`
 }
 
-function browserExecutionSource(probeModelBundle) {
+function browserExecutionSource() {
   return `
 class BrowserProbeModel {
   static get classId() { return 'wlearn.test.browser-probe@1' }
@@ -128,26 +117,26 @@ class BrowserProbeModel {
     counts.forEach((count, label) => {
       if (count > best) { best = count; this.label = label }
     })
+    this.classes_ = new Int32Array([...counts.keys()].sort((a, b) => a - b))
     this.fitted = true
     return this
   }
   predict(X) { return new Int32Array(X.rows).fill(this.label) }
   predictProba(X) {
     var out = new Float64Array(X.rows * 2)
-    for (var i = 0; i < X.rows; i++) out[i * 2 + this.label] = 1
+    var column = this.classes_.indexOf(this.label)
+    for (var i = 0; i < X.rows; i++) out[i * 2 + column] = 1
     return out
   }
   getParams() { return Object.assign({}, this.params) }
-  save() {
-    var binary = atob('${probeModelBundle}')
-    var bytes = new Uint8Array(binary.length)
-    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-    return bytes
-  }
+  save() { throw new Error('BrowserProbeModel is an inference-only test fixture') }
   setParams(params) { Object.assign(this.params, params); return this }
   dispose() { this.fitted = false }
   get isFitted() { return this.fitted }
-  get capabilities() { return { classifier: true, regressor: false } }
+  get classes() { return this.classes_ }
+  get capabilities() {
+    return { classifier: true, regressor: false, predictProba: true }
+  }
 }
 async function runPreprocessAutoFit(lib) {
   var X = {
@@ -156,11 +145,6 @@ async function runPreprocessAutoFit(lib) {
     cols: 1
   }
   var y = new Int32Array([0, 0, 0, 0, 1, 1, 1, 1])
-  var loadOptions = {
-    loaderOptions: {
-      'wlearn.preprocess.tabular@1': { limits: { maxPlanBytes: 1048576 } }
-    }
-  }
   var result = await lib.autoFit(
     [{ name: 'browser-probe', cls: BrowserProbeModel }],
     X,
@@ -174,11 +158,9 @@ async function runPreprocessAutoFit(lib) {
       refit: true
     }
   )
-  var loaded = null
   var nested = null
-  var loadedNested = null
   try {
-    var predictions = result.model.predict(X)
+    var predictions = await result.model.predict(X)
     if (!(predictions instanceof Int32Array) || predictions.length !== X.rows) {
       throw new Error('browser AutoML preprocessing returned invalid predictions')
     }
@@ -204,28 +186,18 @@ async function runPreprocessAutoFit(lib) {
         ensembleSize: 2
       }
     )
-    var bytes = result.model.save()
-    loaded = await result.model.constructor.load(bytes, loadOptions)
-    var loadedPredictions = loaded.predict(X)
-    if (loadedPredictions.length !== X.rows ||
-        loaded.provenance.candidateId !== result.leaderboard[0].candidateId) {
-      throw new Error('browser AutoML Pipeline round-trip lost predictions or provenance')
-    }
-    var nestedBytes = nested.model.save()
-    loadedNested = await nested.model.constructor.load(nestedBytes, loadOptions)
-    var nestedPredictions = loadedNested.predict(X)
-    if (!(nestedPredictions instanceof Float64Array) || nestedPredictions.length !== X.rows) {
-      throw new Error('browser nested AutoML ensemble round-trip returned invalid predictions')
+    var nestedPredictions = await nested.model.predict(X)
+    if (!(nestedPredictions instanceof Int32Array) ||
+        nestedPredictions.length !== X.rows) {
+      throw new Error('browser nested AutoML ensemble returned invalid predictions')
     }
     return {
-      rows: loadedPredictions.length,
+      rows: predictions.length,
       nestedRows: nestedPredictions.length,
       templateId: result.bestCandidate.preprocess.templateId
     }
   } finally {
-    if (loadedNested) loadedNested.dispose()
     if (nested && nested.model) nested.model.dispose()
-    if (loaded) loaded.dispose()
     if (result.model) result.model.dispose()
   }
 }`

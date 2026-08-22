@@ -69,7 +69,11 @@ def test_register_invalid_context_metadata():
 
 
 def test_load_context_is_opt_in_and_immutable():
-    runtime_options = {'maxPlanBytes': 123}
+    cancel_token = object()
+    runtime_options = {
+        'limits': {'maxPlanBytes': 123},
+        'cancel_token': cancel_token,
+    }
     received = []
 
     def context_loader(manifest, toc, blobs, context):
@@ -81,7 +85,12 @@ def test_load_context_is_opt_in_and_immutable():
         _make_bundle('test.reg.context@1'),
         loader_options={'test.reg.context@1': runtime_options},
     )
-    assert result is runtime_options
+    assert result is not runtime_options
+    assert result['limits'] is not runtime_options['limits']
+    assert result['limits']['maxPlanBytes'] == 123
+    assert result['cancel_token'] is cancel_token
+    runtime_options['limits']['maxPlanBytes'] = 1
+    assert result['limits']['maxPlanBytes'] == 123
     with pytest.raises(TypeError):
         received[0]['new'] = 'value'
     with pytest.raises(TypeError):
@@ -119,7 +128,8 @@ def test_recursive_load_forwards_the_same_context():
         _make_bundle('test.reg.context-outer@1'),
         loader_options={'wlearn.preprocess.tabular@1': runtime_options},
     )
-    assert result is runtime_options
+    assert result is not runtime_options
+    assert result['maxPlanBytes'] == 123
     assert contexts[0] is contexts[1]
 
 

@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from wlearn.pipeline import Pipeline
 from wlearn.ensemble import (
     VotingEnsemble, StackingEnsemble, BaggedEstimator,
     caruana_select, get_oof_predictions, optimize_weights, project_simplex,
@@ -30,7 +31,11 @@ class MockModel:
 
     def fit(self, X, y):
         self._fitted = True
-        unique = sorted(set(int(v) for v in y))
+        unique = list(dict.fromkeys(int(v) for v in y))
+        if self._params.get('classOrder') == 'descending':
+            unique.sort(reverse=True)
+        elif self._params.get('classOrder') != 'firstSeen':
+            unique.sort()
         if len(unique) <= 20:
             self._classes = np.array(unique, dtype=np.int32)
             self._n_classes = len(unique)
@@ -124,6 +129,37 @@ class MockModel:
     def is_fitted(self):
         return self._fitted
 
+    @property
+    def classes(self):
+        return self._classes
+
+    @property
+    def capabilities(self):
+        classifier = self._classes is not None
+        return {
+            'classifier': classifier,
+            'regressor': not classifier,
+            'predictProba': classifier,
+            'decisionFunction': False,
+            'sampleWeight': False,
+            'csr': False,
+            'earlyStopping': False,
+        }
+
+
+class HardOnlyMock(MockModel):
+    predict_proba = None
+
+    @property
+    def classes(self):
+        return None
+
+
+class NoProbabilityCapabilityMock(MockModel):
+    @property
+    def capabilities(self):
+        return {**super().capabilities, 'predictProba': False}
+
 
 from wlearn.registry import register as _register_loader
 _register_loader('test.mock@1', MockModel._from_bundle)
@@ -198,7 +234,42 @@ class TestVotingEnsembleSoft:
         )
         ens.fit(X, y)
         preds = ens.predict(X)
+        assert preds.dtype == np.int32
         assert len(preds) == len(X)
+
+    def test_accepts_pipeline_ending_in_probability_classifier(self):
+        class PipelineFactory:
+            @classmethod
+            def create(cls, params=None):
+                return Pipeline([
+                    ('model', MockModel.create(params or {})),
+                ])
+
+        X, y = make_cls_data()
+        ens = VotingEnsemble.create(
+            estimators=[('pipeline', PipelineFactory, {})],
+            voting='soft',
+            task='classification',
+        )
+        ens.fit(X, y)
+        assert ens.capabilities['predictProba'] is True
+        assert ens.predict(X).dtype == np.int32
+        ens.dispose()
+
+    def test_aligns_child_probability_class_order(self):
+        X, _ = make_cls_data(n=30, n_classes=2)
+        y = np.array([2] * 20 + [1] * 10, dtype=np.int32)
+        ens = VotingEnsemble.create(
+            estimators=[(
+                'reversed', MockModel, {'classOrder': 'descending'})],
+            task='classification',
+        )
+        ens.fit(X, y)
+        np.testing.assert_array_equal(ens.classes, [1, 2])
+        proba = ens.predict_proba(X)
+        direct = ens._models[0].predict_proba(X)
+        np.testing.assert_allclose(proba.reshape(-1, 2),
+                                   direct.reshape(-1, 2)[:, ::-1])
 
 
 class TestVotingEnsembleHard:
@@ -215,6 +286,7 @@ class TestVotingEnsembleHard:
         )
         ens.fit(X, y)
         preds = ens.predict(X)
+        assert preds.dtype == np.int32
         assert len(preds) == len(X)
 
     def test_hard_no_predict_proba(self):
@@ -227,6 +299,63 @@ class TestVotingEnsembleHard:
         ens.fit(X, y)
         with pytest.raises(ValidationError):
             ens.predict_proba(X)
+
+    def test_hard_does_not_require_probability_class_metadata(self):
+        X, y = make_cls_data()
+        ens = VotingEnsemble.create(
+            estimators=[('hard-only', HardOnlyMock, {})],
+            voting='hard',
+            task='classification',
+        )
+        ens.fit(X, y)
+        assert len(ens.predict(X)) == len(X)
+        with pytest.raises(ValidationError, match='predict_proba'):
+            ens.set_params({'voting': 'soft'})
+        assert ens.get_params()['voting'] == 'hard'
+        assert ens.is_fitted
+        assert len(ens.predict(X)) == len(X)
+
+    def test_hard_predicts_once_per_child_and_validates_labels(self):
+        class CountingMock(MockModel):
+            def __init__(self, params=None):
+                super().__init__(params)
+                self.predict_calls = 0
+
+            def predict(self, X):
+                self.predict_calls += 1
+                return super().predict(X)
+
+        X, y = make_cls_data()
+        ens = VotingEnsemble.create(
+            estimators=[('m1', CountingMock, {}), ('m2', CountingMock, {})],
+            voting='hard',
+            task='classification',
+        )
+        ens.fit(X, y)
+        ens.predict(X)
+        assert [model.predict_calls for model in ens._models] == [1, 1]
+        ens.dispose()
+
+        invalid_outputs = [
+            np.empty(0),
+            np.full(len(X), np.nan),
+            np.full(len(X), 0.5),
+            np.full(len(X), 99),
+        ]
+        for output in invalid_outputs:
+            class InvalidOutputMock(MockModel):
+                def predict(self, _X):
+                    return output
+
+            invalid = VotingEnsemble.create(
+                estimators=[('bad', InvalidOutputMock, {})],
+                voting='hard',
+                task='classification',
+            )
+            invalid.fit(X, y)
+            with pytest.raises(ValidationError):
+                invalid.predict(X)
+            invalid.dispose()
 
 
 class TestVotingEnsembleRegression:
@@ -253,8 +382,80 @@ class TestVotingEnsembleRegression:
         with pytest.raises(ValidationError):
             ens.predict_proba(X)
 
+    def test_normalizes_relative_weights(self):
+        X, y = make_reg_data()
+        ens = VotingEnsemble.create(
+            estimators=[
+                ('m1', MockModel, {'bias': 0.0}),
+                ('m2', MockModel, {'bias': 2.0}),
+            ],
+            weights=[1, 1],
+            task='regression',
+        )
+        ens.fit(X, y)
+        assert ens.get_params()['weights'] == [0.5, 0.5]
+        expected = (
+            ens._models[0].predict(X) + ens._models[1].predict(X)) / 2
+        np.testing.assert_allclose(ens.predict(X), expected)
+
 
 class TestVotingEnsembleLifecycle:
+    def test_rejects_invalid_fit_configuration_before_training(self):
+        X, y = make_cls_data()
+        wrong_weights = VotingEnsemble.create(
+            estimators=[('m1', MockModel, {}), ('m2', MockModel, {})],
+            weights=[1],
+            task='classification',
+        )
+        with pytest.raises(ValidationError):
+            wrong_weights.fit(X, y)
+        wrong_weights.dispose()
+
+        nonfinite = VotingEnsemble.create(
+            estimators=[('m1', MockModel, {})],
+            weights=[float('nan')],
+            task='classification',
+        )
+        with pytest.raises(ValidationError):
+            nonfinite.fit(X, y)
+        nonfinite.dispose()
+
+        nonnumeric = VotingEnsemble.create(
+            estimators=[('m1', MockModel, {})],
+            weights=['1'],
+            task='classification',
+        )
+        with pytest.raises(ValidationError):
+            nonnumeric.fit(X, y)
+        nonnumeric.dispose()
+
+        boolean = VotingEnsemble.create(
+            estimators=[('m1', MockModel, {})],
+            weights=[True],
+            task='classification',
+        )
+        with pytest.raises(ValidationError):
+            boolean.fit(X, y)
+        boolean.dispose()
+
+        for weights in ([0], [-1]):
+            invalid_weights = VotingEnsemble.create(
+                estimators=[('m1', MockModel, {})],
+                weights=weights,
+                task='classification',
+            )
+            with pytest.raises(ValidationError):
+                invalid_weights.fit(X, y)
+            invalid_weights.dispose()
+
+        duplicate_names = VotingEnsemble.create(
+            estimators=[('m1', MockModel, {}), ('m1', MockModel, {})],
+            task='classification',
+        )
+        with pytest.raises(ValidationError):
+            duplicate_names.fit(X, y)
+        duplicate_names.dispose()
+
     def test_not_fitted_error(self):
         ens = VotingEnsemble.create(
             estimators=[('m1', MockModel, {})],
@@ -272,6 +473,7 @@ class TestVotingEnsembleLifecycle:
         )
         ens.fit(X, y)
         ens.dispose()
+        assert not ens.is_fitted
         with pytest.raises(DisposedError):
             ens.predict(X)
 
@@ -294,6 +496,26 @@ class TestVotingEnsembleLifecycle:
         ens.set_params({'voting': 'hard'})
         assert ens.get_params()['voting'] == 'hard'
 
+    def test_invalid_set_params_preserves_fitted_inference_config(self):
+        X, y = make_cls_data()
+        ens = VotingEnsemble.create(
+            estimators=[('m1', MockModel, {}), ('m2', MockModel, {})],
+            weights=[0.5, 0.5],
+            task='classification',
+        )
+        ens.fit(X, y)
+        before = ens.get_params()
+        with pytest.raises(ValidationError):
+            ens.set_params({'weights': [1]})
+        with pytest.raises(ValidationError):
+            ens.set_params({'voting': 'invalid'})
+        with pytest.raises(ValidationError, match='Unknown.*task'):
+            ens.set_params({'task': 'regression'})
+        assert ens.is_fitted
+        assert ens.get_params() == before
+        assert len(ens.predict(X)) == len(X)
+        ens.dispose()
+
     def test_later_child_failure_releases_reverse_and_preserves_error(self):
         events = []
         live = {'count': 0}
@@ -314,6 +536,9 @@ class TestVotingEnsembleLifecycle:
                     events.append(f'{label}:fit')
                     if fail:
                         raise fit_error
+                    self.classes = np.array(
+                        sorted(set(int(value) for value in _y)),
+                        dtype=np.int32)
                     return self
 
                 def dispose(self):
@@ -332,6 +557,7 @@ class TestVotingEnsembleLifecycle:
         X, y = make_cls_data(n=20)
         ensemble = VotingEnsemble.create(
             estimators=[('first', first, {}), ('second', second, {})],
+            voting='hard',
             task='classification')
         with pytest.raises(RuntimeError) as exc:
             ensemble.fit(X, y)
@@ -364,7 +590,53 @@ class TestStackingEnsemble:
         ens.fit(X, y)
         assert ens.is_fitted
         preds = ens.predict(X)
+        assert preds.dtype == np.int32
         assert len(preds) == len(X)
+
+    def test_derives_probability_capability_from_meta_model(self):
+        X, y = make_cls_data(n=60, n_classes=2)
+        ens = StackingEnsemble.create(
+            estimators=[('base', MockModel, {})],
+            final_estimator=('meta', NoProbabilityCapabilityMock, {}),
+            cv=3,
+            task='classification',
+        )
+        ens.fit(X, y)
+        assert ens.capabilities['predictProba'] is False
+        assert ens.predict(X).dtype == np.int32
+        with pytest.raises(ValidationError, match='does not support'):
+            ens.predict_proba(X)
+        ens.dispose()
+
+    def test_rejects_base_without_probability_capability(self):
+        X, y = make_cls_data(n=30, n_classes=2)
+        ens = StackingEnsemble.create(
+            estimators=[('base', NoProbabilityCapabilityMock, {})],
+            final_estimator=('meta', MockModel, {}),
+            cv=2,
+            task='classification',
+        )
+        with pytest.raises(ValidationError, match='capability'):
+            ens.fit(X, y)
+        assert not ens.is_fitted
+        ens.dispose()
+
+    def test_aligns_base_and_meta_probability_class_order(self):
+        X, _ = make_cls_data(n=30, n_classes=2)
+        y = np.array([2] * 20 + [1] * 10, dtype=np.int32)
+        params = {'classOrder': 'descending'}
+        ens = StackingEnsemble.create(
+            estimators=[('base', MockModel, params)],
+            final_estimator=('meta', MockModel, params),
+            cv=2,
+            task='classification',
+        )
+        ens.fit(X, y)
+        np.testing.assert_array_equal(ens.classes, [1, 2])
+        proba = ens.predict_proba(X)
+        raw = ens._meta_model.predict_proba(ens._build_meta_features(X))
+        np.testing.assert_allclose(proba.reshape(-1, 2),
+                                   raw.reshape(-1, 2)[:, ::-1])
 
     def test_regression(self):
         X, y = make_reg_data(n=60)
@@ -413,8 +685,52 @@ class TestStackingEnsemble:
         )
         ens.fit(X, y)
         ens.dispose()
+        assert not ens.is_fitted
         with pytest.raises(DisposedError):
             ens.predict(X)
+
+    def test_training_param_change_invalidates_fitted_state(self):
+        X, y = make_cls_data(n=60, n_classes=2)
+        ens = StackingEnsemble.create(
+            estimators=[('base1', MockModel, {})],
+            final_estimator=('meta', MockModel, {}),
+            cv=3,
+            task='classification',
+        )
+        ens.fit(X, y)
+        assert ens.is_fitted
+        ens.set_params({'seed': 123})
+        assert not ens.is_fitted
+        with pytest.raises(NotFittedError):
+            ens.save()
+        ens.dispose()
+
+    def test_rejects_invalid_training_config_transactionally(self):
+        X, y = make_cls_data(n=30, n_classes=2)
+        ens = StackingEnsemble.create(
+            estimators=[('base', MockModel, {})],
+            final_estimator=('meta', MockModel, {}),
+            cv=2,
+            task='classification',
+        )
+        ens.fit(X, y)
+        with pytest.raises(ValidationError):
+            ens.set_params({'cv': 1})
+        with pytest.raises(ValidationError, match='Unknown.*task'):
+            ens.set_params({'task': 'regression'})
+        assert ens.get_params()['cv'] == 2
+        assert ens.is_fitted
+
+        invalid = StackingEnsemble.create(
+            estimators=[('base', MockModel, {})],
+            final_estimator=('meta', MockModel, {}),
+            cv=2,
+            task='unknown',
+        )
+        with pytest.raises(ValidationError):
+            invalid.fit(X, y)
+        ens.dispose()
+        invalid.dispose()
 
     @pytest.mark.parametrize('failure', ['later-base', 'meta'])
     def test_transactional_full_data_failure_cleanup(self, failure):
@@ -437,10 +753,17 @@ class TestStackingEnsemble:
                     self.full = len(X) == 20
                     if self.full and fail_full:
                         raise fit_error
+                    self.classes = np.array(
+                        sorted(set(int(value) for value in _y)),
+                        dtype=np.int32)
                     return self
 
                 def predict(self, X):
                     return np.zeros(len(X), dtype=np.int32)
+
+                @property
+                def capabilities(self):
+                    return {'predictProba': True}
 
                 def predict_proba(self, X):
                     return np.full(len(X) * 2, 0.5, dtype=np.float64)
@@ -590,6 +913,31 @@ class TestOofPredictions:
             row_sum = sum(oof[i * n_classes + c] for c in range(n_classes))
             assert abs(row_sum - 1.0) < 1e-10
 
+    def test_aligns_classes_and_requires_probability_capability(self):
+        class ReversedProbabilityMock(MockModel):
+            def predict_proba(self, X):
+                output = np.empty(len(X) * 2, dtype=np.float64)
+                output[0::2] = 0.9
+                output[1::2] = 0.1
+                return output
+
+        X, _ = make_cls_data(n=30, n_classes=2)
+        y = np.array([2] * 20 + [1] * 10, dtype=np.int32)
+        result = get_oof_predictions([
+            ('reversed', ReversedProbabilityMock,
+             {'classOrder': 'descending'}),
+        ], X, y, cv=2, seed=42, task='classification')
+        np.testing.assert_array_equal(result['classes'], [1, 2])
+        np.testing.assert_allclose(
+            result['oofPreds'][0].reshape(-1, 2),
+            np.tile([0.1, 0.9], (len(X), 1)),
+        )
+
+        with pytest.raises(ValidationError, match='capability'):
+            get_oof_predictions([
+                ('no-probability', NoProbabilityCapabilityMock, {}),
+            ], X, y, cv=2, seed=42, task='classification')
+
 
 # ===========================================================================
 # BaggedEstimator
@@ -607,6 +955,7 @@ class TestBaggedEstimatorClassification:
         bag.fit(X, y)
         assert bag.is_fitted
         preds = bag.predict(X)
+        assert preds.dtype == np.int32
         assert len(preds) == len(X)
         valid_classes = set(int(v) for v in y)
         for p in preds:
@@ -694,6 +1043,36 @@ class TestBaggedEstimatorClassification:
             manual[i] /= len(bag._fold_models)
         np.testing.assert_allclose(proba, manual, atol=1e-12)
 
+    def test_aligns_fold_model_probability_class_order(self):
+        X, _ = make_cls_data(n=30, n_classes=2)
+        y = np.array([2] * 20 + [1] * 10, dtype=np.int32)
+        bag = BaggedEstimator.create(
+            estimator=(
+                'reversed', MockModel, {'classOrder': 'descending'}),
+            k_fold=2,
+            task='classification',
+        )
+        bag.fit(X, y)
+        np.testing.assert_array_equal(bag.classes, [1, 2])
+        proba = bag.predict_proba(X)
+        manual = np.zeros_like(proba)
+        for model in bag._fold_models:
+            manual += model.predict_proba(X).reshape(-1, 2)[:, ::-1].reshape(-1)
+        manual /= len(bag._fold_models)
+        np.testing.assert_allclose(proba, manual)
+
+    def test_rejects_child_without_probability_capability(self):
+        X, y = make_cls_data(n=30, n_classes=2)
+        bag = BaggedEstimator.create(
+            estimator=('no-probability', NoProbabilityCapabilityMock, {}),
+            k_fold=2,
+            task='classification',
+        )
+        with pytest.raises(ValidationError, match='capability'):
+            bag.fit(X, y)
+        assert not bag.is_fitted
+        bag.dispose()
+
 
 class TestBaggedEstimatorRegression:
     def test_regression_basic(self):
@@ -705,6 +1084,7 @@ class TestBaggedEstimatorRegression:
         )
         bag.fit(X, y)
         preds = bag.predict(X)
+        assert preds.dtype == np.float64
         assert len(preds) == len(X)
 
     def test_oof_predictions_shape(self):
@@ -771,6 +1151,47 @@ class TestBaggedEstimatorLifecycle:
         bag.set_params({'kFold': 3})
         assert bag.get_params()['kFold'] == 3
 
+    def test_training_param_change_invalidates_fitted_state(self):
+        X, y = make_cls_data(n=30, n_classes=2)
+        bag = BaggedEstimator.create(
+            estimator=('m1', MockModel, {}),
+            k_fold=2,
+            task='classification',
+        )
+        bag.fit(X, y)
+        assert bag.is_fitted
+        bag.set_params({'nRepeats': 2})
+        assert not bag.is_fitted
+        with pytest.raises(NotFittedError):
+            bag.save()
+        bag.dispose()
+
+    def test_rejects_invalid_training_config_transactionally(self):
+        X, y = make_cls_data(n=30, n_classes=2)
+        bag = BaggedEstimator.create(
+            estimator=('m1', MockModel, {}),
+            k_fold=2,
+            task='classification',
+        )
+        bag.fit(X, y)
+        with pytest.raises(ValidationError):
+            bag.set_params({'nRepeats': 0})
+        with pytest.raises(ValidationError, match='Unknown.*estimator'):
+            bag.set_params({'estimator': None})
+        assert bag.get_params()['nRepeats'] == 1
+        assert bag.is_fitted
+
+        invalid = BaggedEstimator.create(
+            estimator=('m1', MockModel, {}),
+            k_fold=2,
+            n_repeats=-1,
+            task='classification',
+        )
+        with pytest.raises(ValidationError):
+            invalid.fit(X, y)
+        bag.dispose()
+        invalid.dispose()
+
     def test_is_fitted_property(self):
         bag = BaggedEstimator.create(
             estimator=('m1', MockModel, {}),
@@ -782,6 +1203,110 @@ class TestBaggedEstimatorLifecycle:
         assert bag.is_fitted
         bag.dispose()
         assert not bag.is_fitted
+
+    def test_failed_refit_preserves_previous_fitted_state(self):
+        class TrackingModel:
+            fail = False
+            live = 0
+
+            def __init__(self):
+                self.disposed = False
+
+            @classmethod
+            def create(cls, _params=None):
+                cls.live += 1
+                return cls()
+
+            def fit(self, _X, _y):
+                if type(self).fail:
+                    raise RuntimeError('refit failed')
+                self.classes = np.array(
+                    sorted(set(int(value) for value in _y)),
+                    dtype=np.int32)
+                return self
+
+            def predict_proba(self, X):
+                result = np.empty(len(X) * 2, dtype=np.float64)
+                result[0::2] = 0.75
+                result[1::2] = 0.25
+                return result
+
+            @property
+            def capabilities(self):
+                return {'predictProba': True}
+
+            def dispose(self):
+                if self.disposed:
+                    return
+                self.disposed = True
+                type(self).live -= 1
+
+        X, y = make_cls_data(n=20, n_classes=2)
+        bag = BaggedEstimator.create(
+            estimator=('tracking', TrackingModel, {}),
+            k_fold=2,
+            task='classification',
+        )
+        bag.fit(X, y)
+        assert TrackingModel.live == 2
+        before = bag.predict(X).copy()
+        TrackingModel.fail = True
+        with pytest.raises(RuntimeError, match='refit failed'):
+            bag.fit(X, y)
+        assert bag.is_fitted
+        np.testing.assert_array_equal(bag.predict(X), before)
+        assert TrackingModel.live == 2
+        bag.dispose()
+        assert TrackingModel.live == 0
+
+    def test_committed_refit_ignores_old_model_cleanup_failure(self):
+        class CleanupModel:
+            generation = 1
+            live = 0
+
+            def __init__(self):
+                self.generation = type(self).generation
+                self.disposed = False
+
+            @classmethod
+            def create(cls, _params=None):
+                cls.live += 1
+                return cls()
+
+            def fit(self, _X, _y):
+                self.classes = np.array(
+                    sorted(set(int(value) for value in _y)),
+                    dtype=np.int32)
+                return self
+
+            def predict_proba(self, X):
+                return np.full(len(X) * 2, 0.5, dtype=np.float64)
+
+            @property
+            def capabilities(self):
+                return {'predictProba': True}
+
+            def dispose(self):
+                if self.disposed:
+                    return
+                self.disposed = True
+                type(self).live -= 1
+                if self.generation == 1:
+                    raise RuntimeError('old cleanup failed')
+
+        X, y = make_cls_data(n=20, n_classes=2)
+        bag = BaggedEstimator.create(
+            estimator=('cleanup', CleanupModel, {}),
+            k_fold=2,
+            task='classification',
+        )
+        bag.fit(X, y)
+        CleanupModel.generation = 2
+        bag.fit(X, y)
+        assert bag.is_fitted
+        assert CleanupModel.live == 2
+        bag.dispose()
+        assert CleanupModel.live == 0
 
     def test_save_load_roundtrip(self):
         X, y = make_cls_data(n=60, n_classes=2)
@@ -1049,3 +1574,195 @@ class TestStackingWithBaggedBase:
         assert stacking.is_fitted
         preds = stacking.predict(X)
         assert len(preds) == len(X)
+
+    def test_rejects_incompatible_bagged_oof_rows_without_ownership(self):
+        X, y = make_cls_data(n=60, n_classes=2)
+        bagged = BaggedEstimator.create(
+            estimator=('m1', MockModel, {}),
+            k_fold=3,
+            task='classification',
+            seed=42,
+        )
+        bagged.fit(X, y)
+        stacking = StackingEnsemble.create(
+            estimators=[('bagged_m1', bagged)],
+            final_estimator=('meta', MockModel, {}),
+            cv=3,
+            task='classification',
+        )
+        with pytest.raises(ValidationError, match='OOF shape'):
+            stacking.fit(X[:50], y[:50])
+        assert bagged.is_fitted
+        stacking.dispose()
+        bagged.dispose()
+
+    def test_rejects_nonfinite_bagged_oof_without_ownership(self):
+        X, y = make_cls_data(n=60, n_classes=2)
+
+        class Prefitted:
+            is_fitted = True
+            disposed = False
+            classes = np.array([0, 1], dtype=np.int32)
+            oof_predictions = np.full(len(X) * 2, 0.5, dtype=np.float64)
+            oof_predictions[0] = np.nan
+
+            @staticmethod
+            def get_params():
+                return {'task': 'classification'}
+
+            def dispose(self):
+                self.disposed = True
+
+        prefitted = Prefitted()
+        stacking = StackingEnsemble.create(
+            estimators=[('prefitted', prefitted)],
+            final_estimator=('meta', MockModel, {}),
+            cv=3,
+            task='classification',
+        )
+        with pytest.raises(ValidationError, match='OOF predictions must be finite'):
+            stacking.fit(X, y)
+        assert not prefitted.disposed
+        assert not stacking.is_fitted
+        stacking.dispose()
+
+    def test_rejects_bagged_task_and_classes_without_ownership(self):
+        X, y = make_cls_data(n=60, n_classes=2)
+        classification_bag = BaggedEstimator.create(
+            estimator=('m1', MockModel, {}),
+            k_fold=3,
+            task='classification',
+            seed=42,
+        )
+        classification_bag.fit(X, y)
+        class_mismatch = StackingEnsemble.create(
+            estimators=[('bagged_m1', classification_bag)],
+            final_estimator=('meta', MockModel, {}),
+            cv=3,
+            task='classification',
+        )
+        with pytest.raises(ValidationError, match='classes'):
+            class_mismatch.fit(X, y + 1)
+        assert classification_bag.is_fitted
+        class_mismatch.dispose()
+        classification_bag.dispose()
+
+        _, y_reg = make_reg_data(n=60)
+        regression_bag = BaggedEstimator.create(
+            estimator=('m1', MockModel, {}),
+            k_fold=3,
+            task='regression',
+            seed=42,
+        )
+        regression_bag.fit(X, y_reg)
+        task_mismatch = StackingEnsemble.create(
+            estimators=[('bagged_m1', regression_bag)],
+            final_estimator=('meta', MockModel, {}),
+            cv=3,
+            task='classification',
+        )
+        with pytest.raises(ValidationError, match='task'):
+            task_mismatch.fit(X, y)
+        assert regression_bag.is_fitted
+        task_mismatch.dispose()
+        regression_bag.dispose()
+
+
+def test_voting_rejects_malformed_regression_predictions():
+    X, y = make_reg_data(n=20)
+
+    class MalformedRegression(MockModel):
+        mode = 'short'
+
+        def predict(self, values):
+            if type(self).mode == 'short':
+                return np.zeros(max(0, len(values) - 1), dtype=np.float64)
+            return np.full(len(values), np.nan, dtype=np.float64)
+
+    ensemble = VotingEnsemble.create(
+        estimators=[('malformed', MalformedRegression, {})],
+        task='regression')
+    ensemble.fit(X, y)
+    with pytest.raises(ValidationError, match='wrong shape'):
+        ensemble.predict(X)
+    MalformedRegression.mode = 'nonfinite'
+    with pytest.raises(ValidationError, match='finite numbers'):
+        ensemble.predict(X)
+    ensemble.dispose()
+
+
+def test_bagging_and_oof_reject_malformed_regression_predictions():
+    X, y = make_reg_data(n=20)
+
+    class NonfiniteRegression(MockModel):
+        def predict(self, values):
+            return np.full(len(values), np.inf, dtype=np.float64)
+
+    with pytest.raises(ValidationError, match='finite numbers'):
+        get_oof_predictions(
+            [('nonfinite', NonfiniteRegression, {})], X, y,
+            cv=2, task='regression')
+
+    bag = BaggedEstimator.create(
+        estimator=('nonfinite', NonfiniteRegression, {}),
+        k_fold=2, task='regression')
+    with pytest.raises(ValidationError, match='finite numbers'):
+        bag.fit(X, y)
+    assert not bag.is_fitted
+    bag.dispose()
+
+
+def test_stacking_rejects_malformed_regression_oof_predictions():
+    X, y = make_reg_data(n=20)
+
+    class ShortRegression(MockModel):
+        def predict(self, values):
+            return np.zeros(max(0, len(values) - 1), dtype=np.float64)
+
+    stacking = StackingEnsemble.create(
+        estimators=[('short', ShortRegression, {})],
+        final_estimator=('meta', MockModel, {}),
+        cv=2, task='regression')
+    with pytest.raises(ValidationError, match='wrong shape'):
+        stacking.fit(X, y)
+    stacking.dispose()
+
+
+def test_stacking_validates_regression_base_and_meta_inference():
+    X, y = make_reg_data(n=20)
+
+    class ToggleRegression(MockModel):
+        instances = []
+
+        def __init__(self, params=None):
+            super().__init__(params)
+            self.malformed = False
+            type(self).instances.append(self)
+
+        def predict(self, values):
+            if self.malformed:
+                return np.full(len(values), np.nan, dtype=np.float64)
+            return super().predict(values)
+
+    base_malformed = StackingEnsemble.create(
+        estimators=[('base', ToggleRegression, {})],
+        final_estimator=('meta', MockModel, {}),
+        cv=2, task='regression')
+    base_malformed.fit(X, y)
+    for model in ToggleRegression.instances:
+        model.malformed = True
+    with pytest.raises(ValidationError, match='finite numbers'):
+        base_malformed.predict(X)
+    base_malformed.dispose()
+
+    ToggleRegression.instances = []
+    meta_malformed = StackingEnsemble.create(
+        estimators=[('base', MockModel, {})],
+        final_estimator=('meta', ToggleRegression, {}),
+        cv=2, task='regression')
+    meta_malformed.fit(X, y)
+    for model in ToggleRegression.instances:
+        model.malformed = True
+    with pytest.raises(ValidationError, match='finite numbers'):
+        meta_malformed.predict(X)
+    meta_malformed.dispose()

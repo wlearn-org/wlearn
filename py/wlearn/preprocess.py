@@ -1,6 +1,7 @@
 """Portable fitted tabular preprocessing over Tranfi prepared transforms."""
 
 from array import array
+from collections.abc import Mapping
 import hashlib
 import importlib
 import json
@@ -386,8 +387,8 @@ def _load_tranfi():
 
 
 def _normalize_runtime_options(backend, options):
-    if not isinstance(options, dict):
-        raise ValidationError('runtime_options must be a dict.')
+    if not isinstance(options, Mapping):
+        raise ValidationError('runtime_options must be a mapping.')
     unknown = set(options).difference(('limits', 'cancel_token'))
     if unknown:
         raise ValidationError(
@@ -395,7 +396,7 @@ def _normalize_runtime_options(backend, options):
     limits = options.get('limits')
     if limits is None:
         limits = backend.TransformLimits()
-    elif isinstance(limits, dict):
+    elif isinstance(limits, Mapping):
         normalized = {}
         for name, value in limits.items():
             snake = _LIMIT_NAMES.get(name, name)

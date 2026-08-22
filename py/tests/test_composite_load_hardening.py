@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from wlearn.bundle import encode_bundle
@@ -28,6 +29,12 @@ def _assert_transactional_cleanup(
     state = {'disposed': 0}
 
     class LoadedModel:
+        classes = np.array([0, 1], dtype=np.int32)
+        capabilities = {'predictProba': True}
+
+        def predict_proba(self, X):
+            return np.empty(0, dtype=np.float64)
+
         def dispose(self):
             state['disposed'] += 1
 
@@ -59,6 +66,12 @@ def _assert_context_forwarding(
     contexts = []
 
     class LoadedModel:
+        classes = np.array([0, 1], dtype=np.int32)
+        capabilities = {'predictProba': True}
+
+        def predict_proba(self, X):
+            return np.empty(0, dtype=np.float64)
+
         def dispose(self):
             pass
 
@@ -81,7 +94,11 @@ def _assert_context_forwarding(
     assert len(contexts) == len(artifact_ids)
     assert all(
         context['loaderOptions']['wlearn.preprocess.tabular@1']
-        is runtime_options for context in contexts)
+        is not runtime_options for context in contexts)
+    assert all(
+        context['loaderOptions']['wlearn.preprocess.tabular@1']['limits']
+        ['max_apply_rows'] == 2 for context in contexts)
+    assert all(context is contexts[0] for context in contexts)
     loaded.dispose()
 
 
@@ -128,6 +145,36 @@ def test_pipeline_direct_load_type_preflight_and_transactional_cleanup():
     )
 
 
+def test_pipeline_set_params_invalidates_before_child_mutation():
+    class Child:
+        def __init__(self, fail=False):
+            self.fail = fail
+            self.params = {}
+
+        def fit(self, _X, _y):
+            return self
+
+        def set_params(self, params):
+            if self.fail:
+                raise RuntimeError('parameter update failed')
+            self.params.update(params)
+            return self
+
+    child = Child()
+    pipeline = Pipeline([('model', child)])
+    pipeline.fit([[1.0]], [0])
+    pipeline.set_params({'model': {'depth': 2}})
+    assert not pipeline.is_fitted
+    assert child.params == {'depth': 2}
+
+    failing = Child(fail=True)
+    pipeline = Pipeline([('model', failing)])
+    pipeline.fit([[1.0]], [0])
+    with pytest.raises(RuntimeError, match='parameter update failed'):
+        pipeline.set_params({'model': {'depth': 3}})
+    assert not pipeline.is_fitted
+
+
 def test_voting_direct_load_type_and_transactional_cleanup():
     params = {
         'task': 'classification', 'voting': 'soft',
@@ -166,6 +213,67 @@ def test_bagging_direct_load_type_and_transactional_cleanup():
         ['fold_0', 'fold_1'],
         'py-bagging-transaction',
     )
+
+
+def test_legacy_bagging_inference_rejects_unavailable_oof_evidence():
+    child_type_id = 'wlearn.test.py-legacy-bag-child@1'
+    state = {'meta_creates': 0}
+
+    class LoadedModel:
+        classes = np.array([0, 1], dtype=np.int32)
+        capabilities = {'predictProba': True}
+
+        def predict_proba(self, X):
+            return np.tile([0.75, 0.25], len(X))
+
+        def save(self):
+            return _child_bundle(child_type_id)
+
+        def dispose(self):
+            pass
+
+    register(child_type_id, lambda manifest, toc, blobs: LoadedModel())
+    legacy = encode_bundle({
+        'typeId': 'wlearn.ensemble.bagged.classifier@1',
+        'params': {
+            'task': 'classification', 'kFold': 2, 'nRepeats': 1,
+            'seed': 42, 'estimatorName': 'base', 'classes': [0, 1],
+            'nClasses': 2, 'nSamples': 4,
+        },
+    }, [
+        _nested_artifact('fold_0', child_type_id),
+        _nested_artifact('fold_1', child_type_id),
+    ])
+    bag = BaggedEstimator.load(legacy)
+    X = np.arange(4, dtype=np.float64).reshape(4, 1)
+    y = np.array([0, 0, 1, 1], dtype=np.int32)
+
+    assert bag.is_fitted
+    np.testing.assert_allclose(
+        bag.predict_proba(X), np.tile([0.75, 0.25], 4))
+    with pytest.raises(ValidationError, match='does not include stored OOF'):
+        _ = bag.oof_predictions
+    with pytest.raises(ValidationError, match='does not include stored OOF'):
+        bag.save()
+
+    class NeverCreatedMeta:
+        @classmethod
+        def create(cls, params=None):
+            state['meta_creates'] += 1
+            return cls()
+
+    stacking = StackingEnsemble.create(
+        estimators=[('legacy', bag)],
+        final_estimator=('meta', NeverCreatedMeta, {}),
+        cv=2,
+        task='classification',
+    )
+    with pytest.raises(ValidationError, match='does not include stored OOF'):
+        stacking.fit(X, y)
+    assert state['meta_creates'] == 0
+    assert bag.is_fitted
+    stacking.dispose()
+    bag.dispose()
 
 
 def test_stacking_direct_load_type_and_transactional_cleanup():
@@ -230,3 +338,74 @@ def test_ensemble_loaders_forward_one_recursive_context():
         ['base', 'meta'],
         'py-stacking-context',
     )
+
+
+def test_ensemble_loaders_reject_semantically_inconsistent_manifests():
+    child_type_id = 'wlearn.test.py-ensemble-semantic-child@1'
+    state = {'dispatched': 0}
+
+    def child_loader(manifest, toc, blobs):
+        state['dispatched'] += 1
+        return object()
+
+    register(child_type_id, child_loader)
+    child = lambda artifact_id: _nested_artifact(artifact_id, child_type_id)
+
+    voting = encode_bundle({
+        'typeId': 'wlearn.ensemble.voting.classifier@1',
+        'params': {
+            'task': 'classification', 'voting': 'soft', 'weights': [1],
+            'estimatorNames': ['first', 'second'], 'classes': [0, 1],
+        },
+    }, [child('first'), child('second')])
+    with pytest.raises(ValidationError, match='weights.*estimatorNames'):
+        VotingEnsemble.load(voting)
+
+    stacking = encode_bundle({
+        'typeId': 'wlearn.ensemble.stacking.classifier@1',
+        'params': {
+            'task': 'classification', 'cv': 2, 'passthrough': False,
+            'seed': 42, 'estimatorNames': ['base'], 'metaName': 'base',
+            'classes': [0, 1], 'nMetaCols': 2,
+        },
+    }, [child('base')])
+    with pytest.raises(ValidationError, match='metaName must differ'):
+        StackingEnsemble.load(stacking)
+
+    bagging = encode_bundle({
+        'typeId': 'wlearn.ensemble.bagged.classifier@1',
+        'params': {
+            'task': 'classification', 'kFold': 2, 'nRepeats': 1,
+            'seed': 42, 'estimatorName': 'base', 'classes': [0, 1],
+            'nClasses': 2, 'nSamples': 2,
+        },
+    }, [
+        child('fold_0'), child('fold_1'),
+        {'id': 'oof', 'data': bytes(8),
+         'mediaType': 'application/octet-stream'},
+    ])
+    with pytest.raises(ValidationError, match='OOF artifact length'):
+        BaggedEstimator.load(bagging)
+
+    boolean_count = encode_bundle({
+        'typeId': 'wlearn.ensemble.bagged.classifier@1',
+        'params': {
+            'task': 'classification', 'kFold': 2, 'nRepeats': 1,
+            'seed': 42, 'estimatorName': 'base', 'classes': [0],
+            'nClasses': True, 'nSamples': 2,
+        },
+    }, [child('fold_0'), child('fold_1')])
+    with pytest.raises(ValidationError, match='nClasses.*safe integer'):
+        BaggedEstimator.load(boolean_count)
+
+    oversized_bagging = encode_bundle({
+        'typeId': 'wlearn.ensemble.bagged.classifier@1',
+        'params': {
+            'task': 'classification', 'kFold': 100000000,
+            'nRepeats': 1, 'seed': 42, 'estimatorName': 'base',
+            'classes': [0, 1], 'nClasses': 2, 'nSamples': 2,
+        },
+    }, [])
+    with pytest.raises(ValidationError, match='artifact count'):
+        BaggedEstimator.load(oversized_bagging)
+    assert state['dispatched'] == 0

@@ -1,4 +1,8 @@
 const { stratifiedKFold, kFold, normalizeX, normalizeY, ValidationError } = require('@wlearn/core')
+const {
+  classColumnMap, requireProbabilityModel, validateProbabilityOutput,
+  validateRegressionOutput
+} = require('./class-order.js')
 
 /**
  * Generate out-of-fold predictions for a list of estimator specs.
@@ -44,17 +48,26 @@ async function getOofPredictions(estimatorSpecs, X, y, {
       const model = await EstimatorClass.create(params || {})
       let operationError = null
       try {
-        model.fit(Xtrain, ytrain)
+        await model.fit(Xtrain, ytrain)
         if (task === 'classification') {
-          const proba = await model.predictProba(Xtest)
+          const label = `OOF estimator "${name}"`
+          requireProbabilityModel(model, label)
+          const columns = classColumnMap(model, classes, label)
+          const proba = validateProbabilityOutput(
+            await model.predictProba(Xtest), test.length, nClasses, label
+          )
           for (let i = 0; i < test.length; i++) {
             const row = test[i]
             for (let c = 0; c < nClasses; c++) {
-              oof[row * nClasses + c] = proba[i * nClasses + c]
+              oof[row * nClasses + c] =
+                proba[i * nClasses + columns[c]]
             }
           }
         } else {
-          const preds = await model.predict(Xtest)
+          const preds = validateRegressionOutput(
+            await model.predict(Xtest), test.length,
+            `OOF estimator "${name}"`
+          )
           for (let i = 0; i < test.length; i++) {
             oof[test[i]] = preds[i]
           }

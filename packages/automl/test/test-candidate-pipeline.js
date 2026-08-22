@@ -7,7 +7,7 @@ const {
   createCandidate, makeCandidateId,
 } = require('../src/candidate.js')
 const {
-  createCandidatePipelineClass,
+  createCandidatePipelineClass, fitCandidate,
 } = require('../src/candidate-pipeline.js')
 const { Executor } = require('../src/executor.js')
 const { RandomSearch } = require('../src/search.js')
@@ -72,6 +72,34 @@ function modelSpec(Model) {
 }
 
 describe('preprocessed candidate ownership', () => {
+  it('fitCandidate waits for asynchronous model fit', async () => {
+    class DeferredFitModel {
+      #fitted = false
+
+      static async create() { return new DeferredFitModel() }
+      async fit() {
+        await Promise.resolve()
+        this.#fitted = true
+        return this
+      }
+      predict(input) {
+        assert.equal(this.#fitted, true)
+        return new Int32Array(input.rows)
+      }
+      dispose() {}
+    }
+    const candidate = createCandidate({
+      displayName: 'deferred', classId: 'wlearn.test.deferred-fit@1',
+    }, {})
+    const fitted = await fitCandidate(
+      { cls: DeferredFitModel }, candidate,
+      { data: new Float64Array([1, 2]), rows: 2, cols: 1 },
+      new Int32Array([0, 1]), makeCandidateId(candidate)
+    )
+    assert.deepEqual(fitted.predict({ rows: 2 }), new Int32Array(2))
+    fitted.dispose()
+  })
+
   it('releases the preprocessor when model construction fails', async () => {
     const events = []
     class FailingModel {

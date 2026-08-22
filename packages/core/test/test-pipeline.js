@@ -68,6 +68,7 @@ function createMockClassifier() {
     get capabilities() {
       return { classifier: true, regressor: false, predictProba: true, decisionFunction: false, sampleWeight: false, csr: false, earlyStopping: false }
     },
+    get classes() { return new Int32Array([1, 0]) },
     get isFitted() { return fitted },
     get isDisposed() { return disposed }
   }
@@ -120,6 +121,64 @@ describe('Pipeline', () => {
     assert.equal(clf.isFitted, true)
   })
 
+  it('Promise-lifts intermediate and final fit without an eager fitted state', async () => {
+    const transformer = createMockTransformer('async')
+    const classifier = createMockClassifier()
+    let fittedInput = null
+    transformer.fitTransform = async function (input, labels) {
+      await Promise.resolve()
+      this.fit(input, labels)
+      return this.transform(input)
+    }
+    classifier.fit = async function (input) {
+      await Promise.resolve()
+      fittedInput = input
+      return this
+    }
+    const pipe = new Pipeline([
+      ['transform', transformer], ['classify', classifier]
+    ])
+    const pending = pipe.fit(X, y)
+    assert(pending instanceof Promise)
+    assert.equal(pipe.isFitted, false)
+    assert.throws(() => pipe.predict(X), NotFittedError)
+    assert.strictEqual(await pending, pipe)
+    assert.equal(pipe.isFitted, true)
+    assert.equal(fittedInput.data[0], X.data[0] * 2)
+    pipe.dispose()
+  })
+
+  it('keeps rejected asynchronous fits unfitted and guards pending disposal', async () => {
+    let settle = null
+    let rejectFit = true
+    const classifier = createMockClassifier()
+    classifier.fit = function () {
+      return new Promise((resolve, reject) => {
+        settle = () => rejectFit
+          ? reject(new Error('async fit failed'))
+          : resolve(this)
+      })
+    }
+    const pipe = new Pipeline([['classify', classifier]])
+    const rejected = pipe.fit(X, y)
+    assert.throws(() => pipe.fit(X, y), /already in progress/)
+    assert.throws(
+      () => pipe.setParams({ classify: {} }), /while fit is in progress/
+    )
+    settle()
+    await assert.rejects(rejected, /async fit failed/)
+    assert.equal(pipe.isFitted, false)
+
+    rejectFit = false
+    const pending = pipe.fit(X, y)
+    assert.throws(() => pipe.dispose(), /while fit is in progress/)
+    settle()
+    await pending
+    assert.equal(pipe.isFitted, true)
+    pipe.dispose()
+    assert.equal(pipe.isFitted, false)
+  })
+
   it('predict transforms then predicts', () => {
     const t1 = createMockTransformer('t1')
     const clf = createMockClassifier()
@@ -140,6 +199,15 @@ describe('Pipeline', () => {
     const proba = pipe.predictProba(X)
     assert(proba instanceof Float64Array)
     assert.equal(proba.length, 6) // 3 rows * 2 classes
+    assert.deepEqual([...pipe.classes], [1, 0])
+  })
+
+  it('does not report fitted after disposal', () => {
+    const pipe = new Pipeline([['classify', createMockClassifier()]])
+    pipe.fit(X, y)
+    pipe.dispose()
+    assert.equal(pipe.isFitted, false)
+    assert.throws(() => pipe.classes, DisposedError)
   })
 
   it('predictProba throws if last step lacks it', () => {
@@ -168,6 +236,9 @@ describe('Pipeline', () => {
 
     assert.equal(pipe.capabilities.classifier, true)
     assert.equal(pipe.capabilities.predictProba, true)
+    const snapshot = pipe.capabilities
+    snapshot.predictProba = false
+    assert.equal(pipe.capabilities.predictProba, true)
   })
 
   it('getParams returns per-step params', () => {
@@ -178,6 +249,52 @@ describe('Pipeline', () => {
     const params = pipe.getParams()
     assert.deepEqual(params.transform, { name: 't1' })
     assert.deepEqual(params.classify, { type: 'classifier' })
+  })
+
+  it('setParams invalidates fit before child mutation', () => {
+    const transformer = createMockTransformer('transform')
+    const classifier = createMockClassifier()
+    const pipe = new Pipeline([
+      ['transform', transformer], ['classify', classifier]
+    ])
+    pipe.fit(X, y)
+    pipe.setParams({ transform: { changed: true } })
+    assert.equal(pipe.isFitted, false)
+    assert.throws(() => pipe.predict(X), NotFittedError)
+
+    pipe.fit(X, y)
+    transformer.setParams = () => { throw new Error('mutation failed') }
+    assert.throws(
+      () => pipe.setParams({ transform: { changed: true } }),
+      /mutation failed/
+    )
+    assert.equal(pipe.isFitted, false)
+    pipe.dispose()
+  })
+
+  it('rejects unknown steps and preflights every selected setter', () => {
+    const transformer = createMockTransformer('transform')
+    const classifier = createMockClassifier()
+    let transformerMutations = 0
+    transformer.setParams = () => { transformerMutations++; return transformer }
+    classifier.setParams = undefined
+    const pipe = new Pipeline([
+      ['transform', transformer], ['classify', classifier]
+    ])
+    pipe.fit(X, y)
+
+    assert.throws(
+      () => pipe.setParams({ clasify: {} }),
+      error => error instanceof ValidationError && /Unknown.*clasify/.test(error.message)
+    )
+    assert.equal(pipe.isFitted, true)
+    assert.throws(
+      () => pipe.setParams({ transform: {}, classify: {} }),
+      error => error instanceof ValidationError && /classify.*setParams/.test(error.message)
+    )
+    assert.equal(transformerMutations, 0)
+    assert.equal(pipe.isFitted, true)
+    pipe.dispose()
   })
 
   it('defensively snapshots candidate provenance', () => {
@@ -311,7 +428,10 @@ describe('Pipeline.load', () => {
 
     assert.equal(contexts.length, 2)
     assert.strictEqual(contexts[0], contexts[1])
-    assert.strictEqual(
+    assert.deepEqual(
+      contexts[0].loaderOptions['wlearn.preprocess.tabular@1'], runtimeOptions
+    )
+    assert.notStrictEqual(
       contexts[0].loaderOptions['wlearn.preprocess.tabular@1'], runtimeOptions
     )
     loaded.dispose()

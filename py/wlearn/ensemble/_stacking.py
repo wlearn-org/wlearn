@@ -9,6 +9,11 @@ from ..registry import (
     assert_required_loaders,
 )
 from ..automl._cv import accuracy, r2_score, stratified_k_fold, k_fold
+from ._manifest import validate_stacking_manifest
+from ._class_order import (
+    class_column_map, require_probability_model, validate_label_output,
+    validate_probability_output, validate_regression_output,
+)
 
 TYPE_ID_CLS = 'wlearn.ensemble.stacking.classifier@1'
 TYPE_ID_REG = 'wlearn.ensemble.stacking.regressor@1'
@@ -61,8 +66,9 @@ class StackingEnsemble:
 
     def fit(self, X, y):
         self._ensure_alive()
-        if self._meta_spec is None:
-            raise ValidationError('StackingEnsemble requires a finalEstimator')
+        _validate_stacking_config(
+            self._base_specs, self._meta_spec, self._cv, self._task,
+            self._passthrough, self._seed)
 
         n = len(X)
         n_features = X.shape[1] if hasattr(X, 'shape') else len(X[0])
@@ -87,7 +93,8 @@ class StackingEnsemble:
         for b, entry in enumerate(self._base_specs):
             if len(entry) == 2:
                 name, model = entry
-                if hasattr(model, 'oof_predictions') and model.is_fitted:
+                if (hasattr(type(model), 'oof_predictions') and
+                        model.is_fitted):
                     bagged_bases.append((b, name, model))
                 else:
                     raise ValidationError(
@@ -95,7 +102,8 @@ class StackingEnsemble:
                         f'BaggedEstimator with oof_predictions.'
                     )
             else:
-                name, est_cls, params = entry
+                name, est_cls = entry[:2]
+                params = entry[2] if len(entry) > 2 else None
                 spec_bases.append((b, name, est_cls, params))
 
         # Step 1: Generate OOF predictions
@@ -106,15 +114,26 @@ class StackingEnsemble:
 
         # Fill OOF from pre-fitted BaggedEstimators
         for b, name, model in bagged_bases:
-            oof = model.oof_predictions
+            bagged_params = model.get_params()
+            if bagged_params.get('task') != self._task:
+                raise ValidationError(
+                    f'Pre-fitted BaggedEstimator "{name}" task does not '
+                    'match stacking task')
+            oof = _validate_prefitted_oof(
+                model.oof_predictions, n * cols_per_model,
+                f'Pre-fitted BaggedEstimator "{name}"')
             if self._task == 'classification':
-                nc = n_classes
-                for i in range(n):
-                    for c in range(nc):
-                        oof_data[i * oof_cols + b * cols_per_model + c] = oof[i * nc + c]
-            else:
-                for i in range(n):
-                    oof_data[i * oof_cols + b] = float(oof[i])
+                columns = class_column_map(
+                    model, classes,
+                    f'Pre-fitted BaggedEstimator "{name}"')
+                for row in range(n):
+                    for column in range(cols_per_model):
+                        oof_data[
+                            row * oof_cols + b * cols_per_model + column
+                        ] = oof[row * cols_per_model + columns[column]]
+                continue
+            for i in range(n):
+                oof_data[i * oof_cols + b] = float(oof[i])
 
         # Generate OOF from regular specs via fold training
         for b, name, est_cls, params in spec_bases:
@@ -127,14 +146,23 @@ class StackingEnsemble:
                 try:
                     model.fit(X_train, y_train)
                     if self._task == 'classification':
-                        proba = model.predict_proba(X_test)
+                        label = (
+                            f'StackingEnsemble base estimator '
+                            f'"{self._base_specs[b][0]}"')
+                        require_probability_model(model, label)
+                        columns = class_column_map(model, classes, label)
+                        proba = validate_probability_output(
+                            model.predict_proba(X_test), len(test),
+                            n_classes, label)
                         for i in range(len(test)):
                             row = test[i]
                             for c in range(n_classes):
                                 oof_data[row * oof_cols + b * cols_per_model + c] = \
-                                    proba[i * n_classes + c]
+                                    proba[i * n_classes + columns[c]]
                     else:
-                        preds = model.predict(X_test)
+                        preds = validate_regression_output(
+                            model.predict(X_test), len(test),
+                            f'StackingEnsemble base estimator "{name}"')
                         for i in range(len(test)):
                             oof_data[test[i] * oof_cols + b] = float(preds[i])
                 except Exception as exc:
@@ -170,10 +198,23 @@ class StackingEnsemble:
                 created_models.append(model)
                 base_models[b] = model
                 model.fit(X, y)
+                if self._task == 'classification':
+                    label = (
+                        f'StackingEnsemble base estimator '
+                        f'"{self._base_specs[b][0]}"')
+                    require_probability_model(model, label)
+                    class_column_map(
+                        model, classes, label)
 
-            _, meta_cls, meta_params = self._meta_spec
+            meta_cls = self._meta_spec[1]
+            meta_params = (
+                self._meta_spec[2] if len(self._meta_spec) > 2 else None)
             meta_model = meta_cls.create(meta_params or {})
             meta_model.fit(meta_X, y)
+            if self._task == 'classification':
+                class_column_map(
+                    meta_model, classes,
+                    f'StackingEnsemble meta estimator "{self._meta_spec[0]}"')
         except Exception as exc:
             _dispose_owned([*created_models, meta_model], exc)
             raise
@@ -187,7 +228,7 @@ class StackingEnsemble:
         self._fitted = True
         retained = {id(model) for model in [*base_models, meta_model]
                     if model is not None}
-        _dispose_owned([
+        _dispose_replaced([
             model for model in previous
             if model is not None and id(model) not in retained
         ])
@@ -196,16 +237,34 @@ class StackingEnsemble:
     def predict(self, X):
         self._ensure_fitted()
         meta_X = self._build_meta_features(X)
-        return self._meta_model.predict(meta_X)
+        output = self._meta_model.predict(meta_X)
+        if self._task != 'classification':
+            return validate_regression_output(
+                output, len(meta_X),
+                f'StackingEnsemble meta estimator "{self._meta_spec[0]}"')
+        return validate_label_output(
+            output, len(meta_X), self._classes,
+            f'StackingEnsemble meta estimator "{self._meta_spec[0]}"')
 
     def predict_proba(self, X):
         self._ensure_fitted()
         if self._task != 'classification':
             raise ValidationError('predict_proba is only available for classification')
-        if not hasattr(self._meta_model, 'predict_proba'):
+        if not _supports_predict_proba(self._meta_model):
             raise ValidationError('Meta-model does not support predict_proba')
         meta_X = self._build_meta_features(X)
-        return self._meta_model.predict_proba(meta_X)
+        label = f'StackingEnsemble meta estimator "{self._meta_spec[0]}"'
+        proba = validate_probability_output(
+            self._meta_model.predict_proba(meta_X), len(X),
+            self._n_classes, label)
+        columns = class_column_map(
+            self._meta_model, self._classes, label)
+        aligned = np.empty_like(proba)
+        for row in range(len(X)):
+            for column in range(self._n_classes):
+                aligned[row * self._n_classes + column] = \
+                    proba[row * self._n_classes + columns[column]]
+        return aligned
 
     def score(self, X, y):
         self._ensure_fitted()
@@ -262,7 +321,12 @@ class StackingEnsemble:
         if self._disposed:
             return
         self._disposed = True
-        _dispose_owned([*(self._base_models or []), self._meta_model])
+        try:
+            _dispose_owned([*(self._base_models or []), self._meta_model])
+        finally:
+            self._base_models = None
+            self._meta_model = None
+            self._fitted = False
 
     def get_params(self):
         return {
@@ -276,12 +340,23 @@ class StackingEnsemble:
 
     def set_params(self, p):
         self._ensure_alive()
-        if 'cv' in p:
-            self._cv = p['cv']
-        if 'passthrough' in p:
-            self._passthrough = p['passthrough']
-        if 'seed' in p:
-            self._seed = p['seed']
+        if not isinstance(p, dict):
+            raise ValidationError('StackingEnsemble params must be a dict')
+        unknown = set(p).difference(('cv', 'passthrough', 'seed'))
+        if unknown:
+            raise ValidationError(
+                f'Unknown StackingEnsemble parameter "{next(iter(unknown))}"')
+        cv = p.get('cv', self._cv)
+        passthrough = p.get('passthrough', self._passthrough)
+        seed = p.get('seed', self._seed)
+        _validate_stacking_config(
+            self._base_specs, self._meta_spec, cv, self._task,
+            passthrough, seed, require_constructors=False)
+        if any(name in p for name in ('cv', 'passthrough', 'seed')):
+            self._fitted = False
+        self._cv = cv
+        self._passthrough = passthrough
+        self._seed = seed
         return self
 
     @property
@@ -289,7 +364,9 @@ class StackingEnsemble:
         return {
             'classifier': self._task == 'classification',
             'regressor': self._task == 'regression',
-            'predictProba': self._task == 'classification',
+            'predictProba': (
+                self._task == 'classification' and
+                _supports_predict_proba(self._meta_model)),
             'decisionFunction': False,
             'sampleWeight': False,
             'csr': False,
@@ -298,7 +375,7 @@ class StackingEnsemble:
 
     @property
     def is_fitted(self):
-        return self._fitted
+        return self._fitted and not self._disposed
 
     @property
     def classes(self):
@@ -314,13 +391,23 @@ class StackingEnsemble:
         meta_data = np.zeros(n * self._n_meta_cols, dtype=np.float64)
         for b in range(n_base):
             if self._task == 'classification':
-                proba = self._base_models[b].predict_proba(X)
+                label = (
+                    f'StackingEnsemble base estimator '
+                    f'"{self._base_specs[b][0]}"')
+                proba = validate_probability_output(
+                    self._base_models[b].predict_proba(X), n,
+                    self._n_classes, label)
+                columns = class_column_map(
+                    self._base_models[b], self._classes, label)
                 for i in range(n):
                     for c in range(self._n_classes):
                         meta_data[i * self._n_meta_cols + b * cols_per_model + c] = \
-                            proba[i * self._n_classes + c]
+                            proba[i * self._n_classes + columns[c]]
             else:
-                preds = self._base_models[b].predict(X)
+                preds = validate_regression_output(
+                    self._base_models[b].predict(X), n,
+                    f'StackingEnsemble base estimator '
+                    f'"{self._base_specs[b][0]}"')
                 for i in range(n):
                     meta_data[i * self._n_meta_cols + b] = float(preds[i])
 
@@ -347,18 +434,8 @@ class StackingEnsemble:
 
     @staticmethod
     def _load_from_parts(manifest, toc, blobs, context):
-        p = manifest['params']
-        expected_type_id = TYPE_ID_REG if p.get('task') == 'regression' \
-            else TYPE_ID_CLS
-        if manifest.get('typeId') != expected_type_id:
-            raise ValidationError(
-                f'StackingEnsemble.load expected typeId "{expected_type_id}", '
-                f'got "{manifest.get("typeId")}"')
-        if (not isinstance(p.get('estimatorNames'), list) or
-                not isinstance(p.get('metaName'), str)):
-            raise ValidationError(
-                'StackingEnsemble manifest must declare base and meta '
-                'estimators')
+        p = validate_stacking_manifest(
+            manifest, toc, TYPE_ID_CLS, TYPE_ID_REG)
         assert_required_loaders(manifest)
         ens = StackingEnsemble(
             task=p['task'],
@@ -381,7 +458,13 @@ class StackingEnsemble:
                         f'No artifact for base estimator "{name}"')
                 blob = bytes(
                     blobs[entry['offset']:entry['offset'] + entry['length']])
-                ens._base_models.append(_load_with_context(blob, context))
+                model = _load_with_context(blob, context)
+                ens._base_models.append(model)
+                if ens._task == 'classification':
+                    label = f'StackingEnsemble base estimator "{name}"'
+                    require_probability_model(model, label)
+                    class_column_map(
+                        model, ens._classes, label)
 
             meta_entry = next(
                 (t for t in toc if t['id'] == p['metaName']), None)
@@ -392,6 +475,10 @@ class StackingEnsemble:
                 blobs[meta_entry['offset']:
                       meta_entry['offset'] + meta_entry['length']])
             ens._meta_model = _load_with_context(meta_blob, context)
+            if ens._task == 'classification':
+                class_column_map(
+                    ens._meta_model, ens._classes,
+                    f'StackingEnsemble meta estimator "{p["metaName"]}"')
 
             ens._fitted = True
             return ens
@@ -403,8 +490,88 @@ class StackingEnsemble:
             raise
 
 
+def _validate_prefitted_oof(value, expected_length, label):
+    try:
+        output = np.asarray(value, dtype=np.float64).reshape(-1)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValidationError(
+            f'{label} OOF predictions must be numeric') from exc
+    if output.size != expected_length:
+        raise ValidationError(
+            f'{label} OOF shape does not match the stacking data')
+    if not np.all(np.isfinite(output)):
+        raise ValidationError(f'{label} OOF predictions must be finite')
+    return output
+
+
+def _supports_predict_proba(model):
+    capabilities = getattr(model, 'capabilities', None)
+    return (callable(getattr(model, 'predict_proba', None)) and
+            isinstance(capabilities, dict) and
+            capabilities.get('predictProba') is True)
+
+
+def _validate_stacking_config(
+        base_specs, meta_spec, cv, task, passthrough, seed, *,
+        require_constructors=True):
+    if task not in ('classification', 'regression'):
+        raise ValidationError(
+            'StackingEnsemble task must be "classification" or "regression"')
+    if (isinstance(cv, bool) or not isinstance(cv, int) or cv < 2 or
+            cv > (1 << 53) - 1):
+        raise ValidationError(
+            'StackingEnsemble cv must be a safe integer >= 2')
+    if not isinstance(passthrough, bool):
+        raise ValidationError(
+            'StackingEnsemble passthrough must be a boolean')
+    if (isinstance(seed, bool) or not isinstance(seed, int) or
+            abs(seed) > (1 << 53) - 1):
+        raise ValidationError(
+            'StackingEnsemble seed must be a safe integer')
+    if not isinstance(base_specs, (list, tuple)) or not base_specs:
+        raise ValidationError(
+            'StackingEnsemble estimators must be a nonempty sequence')
+
+    names = set()
+    for index, spec in enumerate(base_specs):
+        if (not isinstance(spec, (list, tuple)) or len(spec) < 2 or
+                not isinstance(spec[0], str) or not spec[0]):
+            raise ValidationError(
+                f'StackingEnsemble base estimator {index} has an invalid '
+                'specification')
+        if require_constructors:
+            fitted_bag = (
+                len(spec) == 2 and bool(getattr(spec[1], 'is_fitted', False))
+                and hasattr(type(spec[1]), 'oof_predictions'))
+            if (not fitted_bag and
+                    (len(spec) < 3 or
+                     not callable(getattr(spec[1], 'create', None)))):
+                raise ValidationError(
+                    f'StackingEnsemble base estimator {index} has an '
+                    'invalid specification')
+        if spec[0] in names:
+            raise ValidationError(
+                'StackingEnsemble estimator names must be unique')
+        names.add(spec[0])
+
+    if (not isinstance(meta_spec, (list, tuple)) or len(meta_spec) < 2 or
+            not isinstance(meta_spec[0], str) or not meta_spec[0] or
+            (require_constructors and
+             not callable(getattr(meta_spec[1], 'create', None)))):
+        raise ValidationError(
+            'StackingEnsemble requires a valid finalEstimator')
+    if meta_spec[0] in names:
+        raise ValidationError(
+            'StackingEnsemble finalEstimator name must differ from base '
+            'estimator names')
+
+
 def _dispose_loaded(models):
     _dispose_owned(models, RuntimeError('preserve load error'))
+
+
+def _dispose_replaced(models):
+    _dispose_owned(models, RuntimeError('replacement already committed'))
 
 
 def _dispose_owned(models, operation_error=None):

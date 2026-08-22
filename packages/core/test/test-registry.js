@@ -64,7 +64,8 @@ describe('load (async)', () => {
   })
 
   it('passes one immutable context only to opt-in loaders', async () => {
-    const runtimeOptions = { maxPlanBytes: 123 }
+    const cancelFlag = new Int32Array(new SharedArrayBuffer(4))
+    const runtimeOptions = { limits: { maxPlanBytes: 123 }, cancelFlag }
     let receivedContext
     register('wlearn.test.context@1', function(manifest, toc, blobs, context) {
       assert.equal(arguments.length, 4)
@@ -74,9 +75,14 @@ describe('load (async)', () => {
     const result = await load(makeBundle('wlearn.test.context@1'), {
       loaderOptions: { 'wlearn.test.context@1': runtimeOptions }
     })
-    assert.strictEqual(result, runtimeOptions)
+    assert.deepEqual(result.limits, runtimeOptions.limits)
+    assert.notStrictEqual(result, runtimeOptions)
+    assert.notStrictEqual(result.limits, runtimeOptions.limits)
+    assert.strictEqual(result.cancelFlag, cancelFlag)
     assert(Object.isFrozen(receivedContext))
     assert(Object.isFrozen(receivedContext.loaderOptions))
+    assert(Object.isFrozen(result))
+    assert(Object.isFrozen(result.limits))
 
     register('wlearn.test.no-context@1', function() {
       assert.equal(arguments.length, 3)
@@ -85,6 +91,36 @@ describe('load (async)', () => {
     assert.equal(await load(makeBundle('wlearn.test.no-context@1'), {
       loaderOptions: { ignored: true }
     }), 'ok')
+  })
+
+  it('snapshots nested loader options before an async loader runs', async () => {
+    let release
+    const gate = new Promise(resolve => { release = resolve })
+    register('wlearn.test.context-race@1', async (manifest, toc, blobs, context) => {
+      await gate
+      return context.loaderOptions['wlearn.test.context-race@1'].limits.maxPlanBytes
+    }, { acceptsContext: true })
+    const runtimeOptions = { limits: { maxPlanBytes: 123 } }
+    const pending = load(makeBundle('wlearn.test.context-race@1'), {
+      loaderOptions: { 'wlearn.test.context-race@1': runtimeOptions }
+    })
+    runtimeOptions.limits.maxPlanBytes = 1
+    release()
+    assert.equal(await pending, 123)
+  })
+
+  it('preserves own __proto__ option keys without mutating prototypes', async () => {
+    register('wlearn.test.context-proto@1', (manifest, toc, blobs, context) =>
+      context.loaderOptions['wlearn.test.context-proto@1'],
+    { acceptsContext: true })
+    const runtimeOptions = JSON.parse('{"__proto__":{"safe":true}}')
+    const result = await load(makeBundle('wlearn.test.context-proto@1'), {
+      loaderOptions: { 'wlearn.test.context-proto@1': runtimeOptions },
+    })
+    assert(Object.hasOwn(result, '__proto__'))
+    assert.deepEqual(result.__proto__, { safe: true })
+    assert.equal(Object.getPrototypeOf(result), Object.prototype)
+    assert.equal({}.safe, undefined)
   })
 
   it('throws RegistryError for missing loader', async () => {

@@ -64,6 +64,11 @@ class MockTransformer:
     def get_params(self):
         return {}
 
+    def set_params(self, params):
+        if params.get('fail'):
+            raise RuntimeError('mutation failed')
+        return self
+
     def dispose(self):
         pass
 
@@ -104,6 +109,16 @@ class TestPipelineFit:
         assert len(proba) > 0
         assert np.all(proba >= 0)
 
+    def test_capabilities_forwarded_as_defensive_copy(self):
+        from wlearn.liblinear import LinearModel
+        model = LinearModel.create({'solver': 0})
+        pipe = Pipeline([('model', model)])
+        capabilities = pipe.capabilities
+        assert capabilities['classifier'] is True
+        assert capabilities['predictProba'] is True
+        capabilities['predictProba'] = False
+        assert pipe.capabilities['predictProba'] is True
+
     def test_not_fitted_errors(self):
         from wlearn.liblinear import LinearModel
         model = LinearModel.create({'solver': 0})
@@ -140,6 +155,58 @@ class TestPipelineWithTransformer:
         pipe = Pipeline([('scaler', scaler), ('model', model)])
         pipe.fit(X, y)
         assert scaler.is_fitted
+
+    def test_set_params_invalidates_before_child_mutation(self):
+        from wlearn.liblinear import LinearModel
+        X, y = make_binary_data()
+        scaler = MockTransformer()
+        model = LinearModel.create({'solver': 0, 'C': 1.0})
+        pipe = Pipeline([('scaler', scaler), ('model', model)])
+        pipe.fit(X, y)
+        pipe.set_params({'scaler': {}})
+        assert not pipe.is_fitted
+        with pytest.raises(NotFittedError):
+            pipe.predict(X)
+
+        pipe.fit(X, y)
+        with pytest.raises(RuntimeError, match='mutation failed'):
+            pipe.set_params({'scaler': {'fail': True}})
+        assert not pipe.is_fitted
+
+    def test_set_params_rejects_unknown_and_preflights_all_setters(self):
+        class MissingSetterEstimator:
+            capabilities = {}
+
+            def fit(self, X, y):
+                return self
+
+            def predict(self, X):
+                return np.zeros(len(X), dtype=np.int32)
+
+            def dispose(self):
+                pass
+
+        X, y = make_binary_data()
+        scaler = MockTransformer()
+        mutations = {'count': 0}
+
+        def mutate(params):
+            mutations['count'] += 1
+            return scaler
+
+        scaler.set_params = mutate
+        pipe = Pipeline([
+            ('scaler', scaler), ('model', MissingSetterEstimator())])
+        pipe.fit(X, y)
+
+        with pytest.raises(ValidationError, match='Unknown.*modle'):
+            pipe.set_params({'modle': {}})
+        assert pipe.is_fitted
+        with pytest.raises(ValidationError, match='model.*set_params'):
+            pipe.set_params({'scaler': {}, 'model': {}})
+        assert mutations['count'] == 0
+        assert pipe.is_fitted
+        pipe.dispose()
 
     def test_fit_transform_used(self):
         """Verify fit_transform is preferred over separate fit + transform."""

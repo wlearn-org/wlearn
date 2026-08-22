@@ -116,7 +116,9 @@ export class Leaderboard {
     candidateId: string
     candidate: CandidateTemplate
     scores: Float64Array
+    /** Run-level seed used as the root for executor-owned deterministic choices. */
     baseSeed?: number
+    /** Candidate/fold-derived provenance seeds; model params are not overridden. */
     foldSeeds?: Uint32Array
     fitTimeMs: number
   }): CandidateResult

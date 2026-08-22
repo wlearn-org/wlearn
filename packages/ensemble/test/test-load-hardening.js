@@ -23,7 +23,12 @@ async function assertTransactionalCleanup(load, outerTypeId, manifestFields, ids
   const firstTypeId = `wlearn.test.${prefix}.first@1`
   const failingTypeId = `wlearn.test.${prefix}.failing@1`
   let disposed = 0
-  register(firstTypeId, () => ({ dispose() { disposed++ } }))
+  register(firstTypeId, () => ({
+    classes: new Int32Array([0, 1]),
+    capabilities: { predictProba: true },
+    predictProba() { return new Float64Array() },
+    dispose() { disposed++ },
+  }))
   register(failingTypeId, () => { throw new Error(`${prefix} loader failure`) })
   const artifacts = ids.map((id, index) => nestedArtifact(
     id, index === 0 ? firstTypeId : failingTypeId
@@ -38,7 +43,12 @@ async function assertContextForwarding(load, outerTypeId, manifestFields, ids, p
   const contexts = []
   register(childTypeId, (manifest, toc, blobs, context) => {
     contexts.push(context)
-    return { dispose() {} }
+    return {
+      classes: new Int32Array([0, 1]),
+      capabilities: { predictProba: true },
+      predictProba() { return new Float64Array() },
+      dispose() {},
+    }
   }, { acceptsContext: true, sync: true })
   const bytes = encodeBundle({ typeId: outerTypeId, ...manifestFields }, ids.map(
     id => nestedArtifact(id, childTypeId)
@@ -50,10 +60,12 @@ async function assertContextForwarding(load, outerTypeId, manifestFields, ids, p
   assert.equal(contexts.length, ids.length)
   for (const context of contexts) {
     assert(Object.isFrozen(context))
-    assert.strictEqual(
+    assert.deepEqual(context.loaderOptions['wlearn.preprocess.tabular@1'], runtimeOptions)
+    assert.notStrictEqual(
       context.loaderOptions['wlearn.preprocess.tabular@1'], runtimeOptions
     )
   }
+  assert(contexts.every(context => context === contexts[0]))
   loaded.dispose()
 }
 
@@ -133,6 +145,57 @@ describe('direct composite load hardening', () => {
     )
   })
 
+  it('keeps legacy bagging inference but rejects unavailable OOF evidence', async () => {
+    const childTypeId = 'wlearn.test.legacy-bag-child@1'
+    let metaCreates = 0
+    register(childTypeId, () => ({
+      classes: new Int32Array([0, 1]),
+      capabilities: { predictProba: true },
+      predictProba(input) {
+        const output = new Float64Array(input.rows * 2)
+        for (let row = 0; row < input.rows; row++) {
+          output[row * 2] = 0.75
+          output[row * 2 + 1] = 0.25
+        }
+        return output
+      },
+      save() { return childBundle(childTypeId) },
+      dispose() {},
+    }), { sync: true })
+    const legacy = encodeBundle({
+      typeId: 'wlearn.ensemble.bagged.classifier@1',
+      params: {
+        task: 'classification', kFold: 2, nRepeats: 1, seed: 42,
+        estimatorName: 'base', classes: [0, 1], nClasses: 2, nSamples: 4,
+      },
+    }, [nestedArtifact('fold_0', childTypeId), nestedArtifact('fold_1', childTypeId)])
+    const bag = await BaggedEstimator.load(legacy)
+    const X = { data: new Float64Array([0, 1, 2, 3]), rows: 4, cols: 1 }
+    const y = new Int32Array([0, 0, 1, 1])
+
+    assert.equal(bag.isFitted, true)
+    assert.deepEqual([...bag.predictProba(X)], [
+      0.75, 0.25, 0.75, 0.25, 0.75, 0.25, 0.75, 0.25,
+    ])
+    assert.throws(() => bag.oofPredictions, /does not include stored OOF/)
+    assert.throws(() => bag.save(), /does not include stored OOF/)
+
+    class NeverCreatedMeta {
+      static async create() { metaCreates++; return new NeverCreatedMeta() }
+    }
+    const stacking = await StackingEnsemble.create({
+      estimators: [['legacy', bag]],
+      finalEstimator: ['meta', NeverCreatedMeta, {}],
+      cv: 2,
+      task: 'classification',
+    })
+    await assert.rejects(() => stacking.fit(X, y), /does not include stored OOF/)
+    assert.equal(metaCreates, 0)
+    assert.equal(bag.isFitted, true, 'rejected stacking fit does not take ownership')
+    stacking.dispose()
+    bag.dispose()
+  })
+
   it('StackingEnsemble rejects wrong outer types and cleans up partial loads', async () => {
     const params = {
       task: 'classification', cv: 2, passthrough: false, seed: 42,
@@ -184,5 +247,65 @@ describe('direct composite load hardening', () => {
       ['base', 'meta'],
       'stacking-context'
     )
+  })
+
+  it('rejects hash-valid but semantically inconsistent ensemble manifests', async () => {
+    const childTypeId = 'wlearn.test.ensemble-semantic-child@1'
+    let dispatched = 0
+    register(childTypeId, () => {
+      dispatched++
+      return { dispose() {} }
+    })
+    const child = id => nestedArtifact(id, childTypeId)
+
+    const voting = encodeBundle({
+      typeId: 'wlearn.ensemble.voting.classifier@1',
+      params: {
+        task: 'classification', voting: 'soft', weights: [1],
+        estimatorNames: ['first', 'second'], classes: [0, 1]
+      }
+    }, [child('first'), child('second')])
+    await assert.rejects(
+      () => VotingEnsemble.load(voting),
+      /weights.*matching estimatorNames/
+    )
+
+    const stacking = encodeBundle({
+      typeId: 'wlearn.ensemble.stacking.classifier@1',
+      params: {
+        task: 'classification', cv: 2, passthrough: false, seed: 42,
+        estimatorNames: ['base'], metaName: 'base', classes: [0, 1],
+        nMetaCols: 2
+      }
+    }, [child('base')])
+    await assert.rejects(
+      () => StackingEnsemble.load(stacking), /metaName must differ/
+    )
+
+    const bagging = encodeBundle({
+      typeId: 'wlearn.ensemble.bagged.classifier@1',
+      params: {
+        task: 'classification', kFold: 2, nRepeats: 1, seed: 42,
+        estimatorName: 'base', classes: [0, 1], nClasses: 2, nSamples: 2
+      }
+    }, [
+      child('fold_0'), child('fold_1'),
+      { id: 'oof', data: new Uint8Array(8), mediaType: 'application/octet-stream' }
+    ])
+    await assert.rejects(
+      () => BaggedEstimator.load(bagging), /OOF artifact length/
+    )
+
+    const oversizedBagging = encodeBundle({
+      typeId: 'wlearn.ensemble.bagged.classifier@1',
+      params: {
+        task: 'classification', kFold: 100000000, nRepeats: 1, seed: 42,
+        estimatorName: 'base', classes: [0, 1], nClasses: 2, nSamples: 2
+      }
+    }, [])
+    await assert.rejects(
+      () => BaggedEstimator.load(oversizedBagging), /artifact count/
+    )
+    assert.equal(dispatched, 0, 'semantic preflight must run before child loaders')
   })
 })

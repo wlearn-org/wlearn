@@ -90,7 +90,7 @@ async function fitCandidate(spec, candidate, X, y, candidateId = null) {
   const CandidateClass = classForCandidate(spec, candidate)
   const instance = await CandidateClass.create(candidate.model.params)
   try {
-    instance.fit(normalizeX(X), normalizeY(y))
+    await instance.fit(normalizeX(X), normalizeY(y))
     return instance
   } catch (error) {
     disposeQuietly(instance)

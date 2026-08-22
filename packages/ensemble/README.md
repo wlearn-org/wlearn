@@ -28,7 +28,7 @@ const ens = await VotingEnsemble.create({
   task: 'classification'
 })
 
-ens.fit(X, y)
+await ens.fit(X, y)
 const preds = ens.predict(X_test)
 const acc = ens.score(X_test, y_test)
 ```
@@ -52,13 +52,15 @@ const stack = await StackingEnsemble.create({
   task: 'classification'
 })
 
-stack.fit(X, y)
+await stack.fit(X, y)
 const preds = stack.predict(X_test)
 ```
 
-## Bagging
+## K-fold bagging
 
-Bootstrap aggregating: train multiple copies of the same model on bootstrap samples.
+Train one model per held-out fold and retain averaged out-of-fold (OOF)
+predictions. Repeats use new deterministic fold assignments; this is repeated
+K-fold bagging, not bootstrap sampling.
 
 ```js
 const { BaggedEstimator } = require('@wlearn/ensemble')
@@ -66,33 +68,79 @@ const { LinearModel } = require('@wlearn/liblinear')
 
 const bag = await BaggedEstimator.create({
   estimator: ['linear', LinearModel, { task: 'classification' }],
-  nEstimators: 10,
+  kFold: 5,
+  nRepeats: 2,
   task: 'classification'
 })
 
-bag.fit(X, y)
+await bag.fit(X, y)
 const preds = bag.predict(X_test)
+const oof = bag.oofPredictions
 ```
+
+A fitted `BaggedEstimator` can be supplied to stacking as
+`['baggedName', bag]`. Stacking consumes its OOF predictions without retraining
+it and takes ownership only after the stacking fit commits successfully. Its task,
+class set, and exact OOF row/column shape must match the stacking data; stored
+probability columns must be finite and are aligned from its declared class order.
+Regression child predictions must likewise contain exactly one finite numeric
+value per input row at OOF, aggregation, meta-feature, and final-output boundaries.
+Legacy bagging artifacts that omit OOF data remain loadable for inference, but
+their OOF accessor, canonical re-save, and use as a pre-fitted stacking base are
+rejected rather than treating missing training evidence as zeros.
 
 ## API
 
 - `VotingEnsemble.create(opts)` supports soft/hard voting over fitted submodels.
 - `StackingEnsemble.create(opts)` trains base models and a final estimator on out-of-fold predictions.
-- `BaggedEstimator.create(opts)` trains bootstrap copies of one estimator spec.
-- Ensemble instances implement `fit(X, y)`, `predict(X)`, `predictProba(X)`, `score(X, y)`, `save()`, and `dispose()` for deterministic cleanup in long-running loops.
-- Estimator specs use `[name, ModelClass, params]`.
+- `BaggedEstimator.create(opts)` trains `kFold * nRepeats` copies of one estimator spec.
+- Ensemble instances implement asynchronous `fit(X, y)`, MaybePromise inference, `save()`, and `dispose()` for deterministic cleanup in long-running loops.
+- Estimator specs use `[name, ModelClass, params]`; stacking also accepts `[name, fittedBaggedEstimator]`.
+
+Fit/refit is transactional: a failed replacement is cleaned up without changing
+the previous fitted state. After a successful commit, cleanup failures from old
+models do not turn the completed fit into a rejection. Bundle loaders validate
+ensemble task, names, weights, class metadata, artifact IDs/media types, and OOF
+shape before dispatching any child loader.
+While asynchronous child construction or fit is pending, a second `fit()`,
+`setParams()`, or `dispose()` call is rejected. Await fit completion before any of
+those lifecycle operations.
+
+Changing a bagging or stacking training parameter with `setParams()` invalidates
+the fitted state; call `fit()` again before inference or persistence. Bagging and
+stacking validate task, fold/repeat counts, seeds, names, constructors, and
+passthrough configuration before creating children, and a rejected `setParams()`
+update leaves the prior fitted state and configuration intact.
+Mutable fields are exact: Voting accepts only `voting`/`weights`, Bagging only
+`kFold`/`nRepeats`/`seed`, and Stacking only `cv`/`passthrough`/`seed`; unknown or
+constructor-only fields are rejected instead of becoming silent no-ops.
+Voting validates nonempty unique estimator specs and nonnegative finite weights
+with a positive sum before training. Weights are relative and normalized to sum
+to one. An invalid inference-only `setParams()` update is rejected without
+changing a fitted ensemble. Children used for probability aggregation must expose
+their fitted `classes`; soft voting also requires an explicit
+`capabilities.predictProba === true` declaration. Pipelines forward the final
+estimator's classes and capabilities, so a pipeline ending in a probability
+classifier remains a valid soft-voting child. Soft voting, bagging, and stacking
+validate the class set and align every `predictProba` block to the ensemble class
+order. Stacking derives its own probability capability from the fitted meta-model.
+Hard voting needs only label predictions, calls each child once per inference, and
+rejects wrong-shape, non-finite, fractional, or unknown class labels.
+Classification `predict()` results are `Int32Array` in JavaScript and NumPy
+`int32` in Python; regression remains float64.
 
 ## Utilities
 
 - `caruanaSelect(oofPredictions, yTrue, opts?)` -- Caruana greedy ensemble selection
 - `getOofPredictions(estimatorSpecs, X, y, opts?)` -- compute out-of-fold predictions
-- `optimizeWeights(oofPredictions, yTrue, opts?)` -- optimize ensemble weights
+- `optimizeWeights(oofPredictions, yTrue, initialWeights, opts?)` -- optimize ensemble weights
 - `projectSimplex(weights)` -- project weights onto probability simplex
 
 ## Testing
 
 ```bash
 npm test             # ensemble unit tests, no browser dependency
+npm run test:types   # compile public TypeScript usage
 npm run test:browser # builds IIFE/ESM bundles and checks exports in Chromium
 ```
 

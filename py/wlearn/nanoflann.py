@@ -19,6 +19,7 @@ import numpy as np
 import pynanoflann
 
 from .errors import NotFittedError, DisposedError
+from ._capabilities import estimator_capabilities
 from .bundle import encode_bundle, write_bundle_output
 from .registry import register
 
@@ -143,12 +144,13 @@ class KNNModel:
 
         task = self._params.get('task', 'classification')
         if task == 'classification':
-            preds = np.empty(len(X), dtype=np.float64)
+            preds = np.empty(len(X), dtype=np.int32)
             for i, row in enumerate(neighbor_labels):
-                counts = np.bincount(row.astype(np.intp),
-                                     minlength=self._n_classes)
+                compact = np.searchsorted(self._classes, row)
+                counts = np.bincount(
+                    compact.astype(np.intp), minlength=self._n_classes)
                 # Tie-break: smallest class label wins (argmax picks first max)
-                preds[i] = float(self._classes[counts.argmax()])
+                preds[i] = self._classes[counts.argmax()]
             return preds
         else:
             return neighbor_labels.mean(axis=1)
@@ -171,8 +173,9 @@ class KNNModel:
         n_queries = len(X)
         proba = np.zeros((n_queries, self._n_classes), dtype=np.float64)
         for i, row in enumerate(neighbor_labels):
-            counts = np.bincount(row.astype(np.intp),
-                                 minlength=self._n_classes)
+            compact = np.searchsorted(self._classes, row)
+            counts = np.bincount(
+                compact.astype(np.intp), minlength=self._n_classes)
             proba[i] = counts / counts.sum()
         return proba.ravel()
 
@@ -242,6 +245,20 @@ class KNNModel:
     def set_params(self, p):
         self._params.update(p)
         return self
+
+    @property
+    def classes(self):
+        self._ensure_fitted()
+        return None if self._classes is None else self._classes.copy()
+
+    @property
+    def capabilities(self):
+        classifier = self._params.get('task', 'classification') == 'classification'
+        return estimator_capabilities(
+            classifier=classifier,
+            regressor=not classifier,
+            predict_proba=classifier,
+        )
 
     @property
     def is_fitted(self):

@@ -417,4 +417,39 @@ describe('createModelClass edge cases', () => {
     )
     m.dispose()
   })
+
+  it('Promise-lifts an asynchronous inner fit and guards its lifecycle', async () => {
+    let releaseFit
+    class DeferredClassifier extends MockClassifier {
+      static async create(params) { return new DeferredClassifier(params) }
+      fit(X, y) {
+        return new Promise(resolve => {
+          releaseFit = () => {
+            super.fit(X, y)
+            resolve(this)
+          }
+        })
+      }
+    }
+
+    const M = createModelClass(DeferredClassifier, MockRegressor, {
+      name: 'DeferredModel',
+    })
+    const m = await M.create({ task: 'classification' })
+    const pending = m.fit([[1], [2]], new Int32Array([0, 1]))
+
+    assert.ok(pending instanceof Promise)
+    assert.equal(m.isFitted, false)
+    assert.throws(
+      () => m.fit([[1]], new Int32Array([0])),
+      /fit is already in progress/
+    )
+    assert.throws(() => m.setParams({ alpha: 0.1 }), /fit is in progress/)
+    assert.throws(() => m.dispose(), /fit is in progress/)
+
+    releaseFit()
+    assert.equal(await pending, m)
+    assert.equal(m.isFitted, true)
+    m.dispose()
+  })
 })

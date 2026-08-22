@@ -3,6 +3,10 @@
 import numpy as np
 
 from ..automl._cv import stratified_k_fold, k_fold
+from ._class_order import (
+    class_column_map, require_probability_model,
+    validate_probability_output, validate_regression_output,
+)
 
 
 def get_oof_predictions(estimator_specs, X, y, cv=5, seed=42, task='classification'):
@@ -52,13 +56,21 @@ def get_oof_predictions(estimator_specs, X, y, cv=5, seed=42, task='classificati
             try:
                 model.fit(X_train, y_train)
                 if task == 'classification':
-                    proba = model.predict_proba(X_test)
+                    label = f'OOF estimator "{name}"'
+                    require_probability_model(model, label)
+                    columns = class_column_map(model, classes, label)
+                    proba = validate_probability_output(
+                        model.predict_proba(X_test), len(test),
+                        n_classes, label)
                     for i in range(len(test)):
                         row = test[i]
                         for c in range(n_classes):
-                            oof[row * n_classes + c] = proba[i * n_classes + c]
+                            oof[row * n_classes + c] = \
+                                proba[i * n_classes + columns[c]]
                 else:
-                    preds = model.predict(X_test)
+                    preds = validate_regression_output(
+                        model.predict(X_test), len(test),
+                        f'OOF estimator "{name}"')
                     for i in range(len(test)):
                         oof[test[i]] = float(preds[i])
             except Exception as error:

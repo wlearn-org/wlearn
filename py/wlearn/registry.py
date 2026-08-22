@@ -99,5 +99,35 @@ def _make_load_context(loader_options):
         loader_options = {}
     if not isinstance(loader_options, dict):
         raise RegistryError('loader_options must be a dict keyed by typeId')
-    options = MappingProxyType(dict(loader_options))
+    options = MappingProxyType({
+        type_id: _snapshot_load_option(
+            value, f'loader_options["{type_id}"]', set())
+        for type_id, value in loader_options.items()
+    })
     return MappingProxyType({'loaderOptions': options})
+
+
+def _snapshot_load_option(value, label, seen):
+    if isinstance(value, dict):
+        identity = id(value)
+        if identity in seen:
+            raise RegistryError(f'{label} must not contain cycles')
+        seen.add(identity)
+        copy = MappingProxyType({
+            key: _snapshot_load_option(item, f'{label}.{key}', seen)
+            for key, item in value.items()
+        })
+        seen.remove(identity)
+        return copy
+    if isinstance(value, (list, tuple)):
+        identity = id(value)
+        if identity in seen:
+            raise RegistryError(f'{label} must not contain cycles')
+        seen.add(identity)
+        copy = tuple(
+            _snapshot_load_option(item, f'{label}[{index}]', seen)
+            for index, item in enumerate(value)
+        )
+        seen.remove(identity)
+        return copy
+    return value

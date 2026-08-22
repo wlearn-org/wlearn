@@ -78,6 +78,11 @@ Global loader dispatcher. Model packages register themselves on import.
 - `getRegistry()` -- inspect registered loaders
 - `assertRequiredLoaders(manifest)` -- preflight all declared nested loaders
 
+`load(bytes, { loaderOptions })` snapshots plain nested objects and arrays before
+the first asynchronous loader runs. Every recursive child receives the same
+read-only snapshot, so caller mutation during an `await` cannot change load
+policy. Runtime identity objects such as typed cancellation flags are preserved.
+
 ### Pipeline
 
 Sequential composition of transformers and estimators.
@@ -85,9 +90,29 @@ Sequential composition of transformers and estimators.
 - `new Pipeline(steps)` -- `steps` is `[name, estimator][]`
 - `pipe.fit(X, y)` -- fit all steps in order
 - `pipe.predict(X)` -- transform + predict
+- `pipe.classes` -- fitted class order forwarded by the final classifier
+- `pipe.capabilities` -- final-estimator capability descriptor
 - `pipe.score(X, y)` -- transform + score
 - `pipe.save()` / `Pipeline.load(bytes)` -- serialize/deserialize WLRN bytes
 - `pipe.dispose()` -- deterministic cleanup for long-running loops
+
+`pipe.setParams({ stepName: params })` invalidates the fitted pipeline before
+mutating the first selected child. Call `fit()` again before inference, including
+when a child parameter setter throws partway through the update.
+Unknown step names are rejected, and every selected child is checked for a
+callable parameter setter before any fitted state or child configuration changes.
+
+Base estimators still fit synchronously. If a Pipeline contains an orchestration
+composite with asynchronous fit (for example a voting or stacking ensemble),
+`pipe.fit()` Promise-lifts that operation and becomes fitted only after it resolves;
+use `await pipe.fit(X, y)` for code that accepts either kind of child.
+Concurrent `fit()`, `setParams()`, and `dispose()` calls are rejected while an
+asynchronous Pipeline fit is pending, preventing late completion from resurrecting
+or leaking a disposed composite.
+
+The package publishes `index.d.ts`; `npm run test:types` checks the public
+TypeScript surface against representative registry, bundle, scaler, and pipeline
+usage.
 
 ### Preprocessing
 

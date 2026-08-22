@@ -11,6 +11,7 @@ import numpy as np
 from liblinear.liblinearutil import load_model, save_model, predict as ll_predict
 
 from .errors import NotFittedError, DisposedError
+from ._capabilities import estimator_capabilities
 from .bundle import encode_bundle, write_bundle_output
 from .registry import register
 
@@ -167,6 +168,23 @@ class LinearModel:
     def set_params(self, p):
         self._params.update(p)
         return self
+
+    @property
+    def classes(self):
+        self._ensure_fitted()
+        if self._params.get('solver', 0) in SVR_SOLVERS:
+            return None
+        return np.asarray(self._model.get_labels(), dtype=np.int32)
+
+    @property
+    def capabilities(self):
+        solver = self._params.get('solver', 0)
+        classifier = solver not in SVR_SOLVERS
+        return estimator_capabilities(
+            classifier=classifier,
+            regressor=not classifier,
+            predict_proba=solver in LR_SOLVERS,
+        )
 
     @property
     def is_fitted(self):

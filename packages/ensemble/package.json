@@ -4,8 +4,10 @@
   "description": "Ensemble methods for wlearn: voting, stacking, Caruana selection",
   "type": "commonjs",
   "main": "src/index.js",
+  "types": "index.d.ts",
   "exports": {
     ".": {
+      "types": "./index.d.ts",
       "require": "./src/index.js",
       "default": "./src/index.js"
     }
@@ -13,6 +15,7 @@
   "files": [
     "src/",
     "dist/",
+    "index.d.ts",
     "LICENSE",
     "NOTICE",
     "README.md",
@@ -20,11 +23,13 @@
   ],
   "sideEffects": false,
   "dependencies": {
-    "@wlearn/core": "^0.3.0"
+    "@wlearn/core": "^0.3.0",
+    "@wlearn/types": "^0.2.0"
   },
   "scripts": {
     "test": "node --test test/mock-model.js test/test-bagging.js test/test-load-hardening.js test/test-selection.js test/test-stacking.js test/test-voting.js test/test-weights.js",
     "test:browser": "npm run build:browser && node test/test-browser.js",
+    "test:types": "tsc --project test/tsconfig.json",
     "build:browser": "bash scripts/build-browser.sh",
     "prepack": "node scripts/prepack.js"
   },
@@ -47,7 +52,8 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "esbuild": "^0.27.3",
-    "playwright": "1.58.2"
+    "playwright": "1.58.2",
+    "typescript": "^5.9.3"
   },
   "bugs": {
     "url": "https://github.com/wlearn-org/wlearn/issues"
