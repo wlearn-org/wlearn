@@ -61,6 +61,49 @@ describe('caruanaSelect', () => {
     assert.equal(weights[0], 1.0)
   })
 
+  it('maps probability columns to noncontiguous class labels', () => {
+    const yTrue = new Int32Array([2, 2, 5, 5])
+    const bad = new Float64Array([
+      0.1, 0.9,
+      0.1, 0.9,
+      0.9, 0.1,
+      0.9, 0.1,
+    ])
+    const good = new Float64Array([
+      0.9, 0.1,
+      0.9, 0.1,
+      0.1, 0.9,
+      0.1, 0.9,
+    ])
+    const { indices, scores } = caruanaSelect([bad, good], yTrue, {
+      maxSize: 1,
+      task: 'classification',
+      classes: new Int32Array([2, 5]),
+      refineWeights: false,
+    })
+    assert.deepEqual(Array.from(indices), [1])
+    assert.deepEqual(Array.from(scores), [1])
+
+    const swapColumns = values => {
+      const out = new Float64Array(values.length)
+      for (let i = 0; i < values.length; i += 2) {
+        out[i] = values[i + 1]
+        out[i + 1] = values[i]
+      }
+      return out
+    }
+    const reversed = caruanaSelect([
+      swapColumns(bad), swapColumns(good)
+    ], yTrue, {
+      maxSize: 1,
+      task: 'classification',
+      classes: new Int32Array([5, 2]),
+      refineWeights: false,
+    })
+    assert.deepEqual(Array.from(reversed.indices), [1])
+    assert.deepEqual(Array.from(reversed.scores), [1])
+  })
+
   it('works with regression', () => {
     const n = 6
     // Good predictor
@@ -111,6 +154,56 @@ describe('caruanaSelect', () => {
       () => caruanaSelect([], new Int32Array([0, 1]), { task: 'classification' }),
       ValidationError
     )
+  })
+
+  it('rejects class metadata inconsistent with probability width', () => {
+    assert.throws(
+      () => caruanaSelect(
+        [new Float64Array([0.5, 0.5, 0.5, 0.5])],
+        new Int32Array([2, 5]),
+        { task: 'classification', nClasses: 3, classes: [2, 5, 9] }
+      ),
+      /nClasses must match/
+    )
+  })
+
+  it('rejects class metadata outside the unique-int32 contract', () => {
+    const predictions = [
+      new Float64Array([0.8, 0.2, 0.2, 0.8])
+    ]
+    const yTrue = new Int32Array([2, 5])
+    for (const classes of [
+      [2.5, 5], [NaN, 5], [2147483648, 5], ['2', '5'], [2n, 5n], [2, 2]
+    ]) {
+      assert.throws(
+        () => caruanaSelect(predictions, yTrue, {
+          maxSize: 1,
+          task: 'classification',
+          classes,
+          refineWeights: false,
+        }),
+        /unique int32/
+      )
+    }
+  })
+
+  it('rejects mismatched or non-finite candidate predictions', () => {
+    const good = new Float64Array([0.8, 0.2, 0.2, 0.8])
+    const yTrue = new Int32Array([2, 5])
+    for (const bad of [
+      new Float64Array([0.8, 0.2]),
+      new Float64Array([0.8, 0.2, NaN, 0.8]),
+    ]) {
+      assert.throws(
+        () => caruanaSelect([good, bad], yTrue, {
+          maxSize: 1,
+          task: 'classification',
+          classes: [2, 5],
+          refineWeights: false,
+        }),
+        ValidationError
+      )
+    }
   })
 
   it('accepts custom scoring function', () => {

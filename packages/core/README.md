@@ -116,9 +116,13 @@ usage.
 
 ### Preprocessing
 
-- `StandardScaler` -- zero mean, unit variance
-- `MinMaxScaler` -- scale to [0, 1]
+- `StandardScaler` -- zero mean and population variance (`ddof=0`)
+- `MinMaxScaler` -- scale the fitted range to [0, 1]
 - `Preprocessor` -- base transformer class
+
+New scaler artifacts use the corrected `standard_scaler@2` and
+`minmax_scaler@2` contracts. Both runtimes retain `@1` loaders so existing
+constant-column artifacts preserve their historical inference behavior.
 
 ### Metrics
 

@@ -131,7 +131,7 @@ Classification `predict()` results are `Int32Array` in JavaScript and NumPy
 
 ## Utilities
 
-- `caruanaSelect(oofPredictions, yTrue, opts?)` -- Caruana greedy ensemble selection
+- `caruanaSelect(oofPredictions, yTrue, opts?)` -- Caruana greedy ensemble selection; pass `opts.classes` when probability columns use an explicit class order
 - `getOofPredictions(estimatorSpecs, X, y, opts?)` -- compute out-of-fold predictions
 - `optimizeWeights(oofPredictions, yTrue, initialWeights, opts?)` -- optimize ensemble weights
 - `projectSimplex(weights)` -- project weights onto probability simplex

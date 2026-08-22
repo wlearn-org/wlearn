@@ -1,5 +1,10 @@
 const { getScorer, normalizeY, ValidationError } = require('@wlearn/core')
 const { optimizeWeights } = require('./weights.js')
+const {
+  normalizeClassOrder,
+  validateProbabilityOutput,
+  validateRegressionOutput,
+} = require('./class-order.js')
 
 /**
  * Caruana greedy ensemble selection (Caruana et al., 2004).
@@ -10,6 +15,7 @@ function caruanaSelect(oofPredictions, yTrue, {
   task = 'classification',
   nClasses = 0,
   refineWeights = true,
+  classes,
 } = {}) {
   const yn = normalizeY(yTrue)
   const n = yn.length
@@ -30,6 +36,22 @@ function caruanaSelect(oofPredictions, yTrue, {
   if (task === 'classification' && nClasses === 0) {
     nClasses = predSize
   }
+  if (task === 'classification' && nClasses !== predSize) {
+    throw new ValidationError(
+      'caruanaSelect: nClasses must match probability columns per row'
+    )
+  }
+  const classLabels = task === 'classification'
+    ? _resolveClasses(yn, nClasses, classes)
+    : null
+  for (let index = 0; index < oofPredictions.length; index++) {
+    const label = `caruanaSelect: oofPredictions[${index}]`
+    if (task === 'classification') {
+      validateProbabilityOutput(oofPredictions[index], n, nClasses, label)
+    } else {
+      validateRegressionOutput(oofPredictions[index], n, label)
+    }
+  }
 
   // Current ensemble prediction (running weighted average)
   const current = new Float64Array(oofPredictions[0].length)
@@ -43,7 +65,9 @@ function caruanaSelect(oofPredictions, yTrue, {
     for (let i = 0; i < nCandidates; i++) {
       // Trial: ((t) * current + P[i]) / (t + 1)
       const trial = _trialPredictions(current, oofPredictions[i], t, t + 1)
-      const trialScore = _score(trial, yn, scorerFn, task, nClasses, n)
+      const trialScore = _score(
+        trial, yn, scorerFn, task, nClasses, n, classLabels
+      )
       if (trialScore > bestScore) {
         bestScore = trialScore
         bestIdx = i
@@ -79,7 +103,9 @@ function caruanaSelect(oofPredictions, yTrue, {
 
   if (refineWeights && uniqueIndices.length > 1) {
     const selectedOofs = Array.from(uniqueIndices, idx => oofPredictions[idx])
-    result.weights = optimizeWeights(selectedOofs, yn, weights, { task })
+    result.weights = optimizeWeights(selectedOofs, yn, weights, {
+      task, classes: classLabels
+    })
   }
 
   return result
@@ -95,7 +121,7 @@ function _trialPredictions(current, candidate, tCount, tTotal) {
   return trial
 }
 
-function _score(preds, yTrue, scorerFn, task, nClasses, n) {
+function _score(preds, yTrue, scorerFn, task, nClasses, n, classes) {
   if (task === 'regression') {
     return scorerFn(yTrue, preds)
   }
@@ -109,9 +135,23 @@ function _score(preds, yTrue, scorerFn, task, nClasses, n) {
         bestC = c
       }
     }
-    hardPreds[i] = bestC
+    hardPreds[i] = classes[bestC]
   }
   return scorerFn(yTrue, hardPreds)
+}
+
+function _resolveClasses(yTrue, nClasses, classes) {
+  const source = classes == null
+    ? [...new Set(Array.from(yTrue))].sort((a, b) => a - b)
+    : classes
+  const labels = normalizeClassOrder(source, nClasses, 'caruanaSelect')
+  const known = new Set(labels)
+  for (const label of yTrue) {
+    if (!known.has(label)) {
+      throw new ValidationError(`caruanaSelect: class "${label}" is missing from classes`)
+    }
+  }
+  return labels
 }
 
 module.exports = { caruanaSelect }

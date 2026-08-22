@@ -6,8 +6,31 @@ const { normalizeX } = require('./matrix.js')
 const { encodeBundle, encodeJSON, decodeJSON } = require('./bundle.js')
 const { register } = require('./registry.js')
 
-const STANDARD_SCALER_TYPE_ID = 'wlearn.preprocess.standard_scaler@1'
-const MINMAX_SCALER_TYPE_ID = 'wlearn.preprocess.minmax_scaler@1'
+const STANDARD_SCALER_TYPE_ID_V1 = 'wlearn.preprocess.standard_scaler@1'
+const STANDARD_SCALER_TYPE_ID = 'wlearn.preprocess.standard_scaler@2'
+const MINMAX_SCALER_TYPE_ID_V1 = 'wlearn.preprocess.minmax_scaler@1'
+const MINMAX_SCALER_TYPE_ID = 'wlearn.preprocess.minmax_scaler@2'
+
+function validatedArtifactVectors(artifact, firstKey, secondKey, label) {
+  if (artifact === null || typeof artifact !== 'object' || Array.isArray(artifact)) {
+    throw new ValidationError(`${label} artifact must be an object`)
+  }
+  const first = artifact[firstKey]
+  const second = artifact[secondKey]
+  if (!Array.isArray(first) || !Array.isArray(second) || first.length === 0 ||
+      first.length !== second.length) {
+    throw new ValidationError(
+      `${label} artifact must contain non-empty, equal-length ${firstKey} and ${secondKey}`
+    )
+  }
+  for (let index = 0; index < first.length; index++) {
+    if (typeof first[index] !== 'number' || !Number.isFinite(first[index]) ||
+        typeof second[index] !== 'number' || !Number.isFinite(second[index])) {
+      throw new ValidationError(`${label} artifact statistics must be finite numbers`)
+    }
+  }
+  return [new Float64Array(first), new Float64Array(second)]
+}
 
 // --- StandardScaler ---
 
@@ -17,6 +40,7 @@ class StandardScaler {
   #fitted = false
   #disposed = false
   #params = {}
+  #legacyConstantScale = false
 
   constructor(params = {}) {
     this.#params = { ...params }
@@ -26,6 +50,7 @@ class StandardScaler {
     this.#ensureAlive()
     const { rows, cols, data } = normalizeX(X)
     if (rows === 0) throw new ValidationError('Cannot fit on empty data')
+    if (cols === 0) throw new ValidationError('Cannot fit data with zero columns')
 
     const means = new Float64Array(cols)
     const m2 = new Float64Array(cols)
@@ -35,6 +60,9 @@ class StandardScaler {
       const n = r + 1
       for (let c = 0; c < cols; c++) {
         const val = data[r * cols + c]
+        if (!Number.isFinite(val)) {
+          throw new ValidationError('StandardScaler fit data must contain only finite numbers')
+        }
         const delta = val - means[c]
         means[c] += delta / n
         const delta2 = val - means[c]
@@ -44,11 +72,12 @@ class StandardScaler {
 
     const stds = new Float64Array(cols)
     for (let c = 0; c < cols; c++) {
-      stds[c] = rows > 1 ? Math.sqrt(m2[c] / (rows - 1)) : 0
+      stds[c] = Math.sqrt(m2[c] / rows)
     }
 
     this.#means = means
     this.#stds = stds
+    this.#legacyConstantScale = false
     this.#fitted = true
     return this
   }
@@ -67,7 +96,9 @@ class StandardScaler {
       for (let c = 0; c < cols; c++) {
         const idx = r * cols + c
         const std = this.#stds[c]
-        out[idx] = std > 0 ? (data[idx] - this.#means[c]) / std : 0
+        out[idx] = std > 0
+          ? (data[idx] - this.#means[c]) / std
+          : this.#legacyConstantScale ? 0 : data[idx] - this.#means[c]
       }
     }
     return { rows, cols, data: out }
@@ -85,7 +116,12 @@ class StandardScaler {
       stds: Array.from(this.#stds),
     }
     return encodeBundle(
-      { typeId: STANDARD_SCALER_TYPE_ID, params: this.getParams() },
+      {
+        typeId: this.#legacyConstantScale
+          ? STANDARD_SCALER_TYPE_ID_V1
+          : STANDARD_SCALER_TYPE_ID,
+        params: this.getParams()
+      },
       [{ id: 'params', data: encodeJSON(artifact), mediaType: 'application/json' }]
     )
   }
@@ -94,9 +130,16 @@ class StandardScaler {
     const entry = toc.find(e => e.id === 'params')
     if (!entry) throw new ValidationError('Bundle missing "params" artifact')
     const artifact = decodeJSON(blobs.subarray(entry.offset, entry.offset + entry.length))
+    const [means, stds] = validatedArtifactVectors(
+      artifact, 'means', 'stds', 'StandardScaler'
+    )
+    if (stds.some(std => std < 0)) {
+      throw new ValidationError('StandardScaler artifact standard deviations must be non-negative')
+    }
     const scaler = new StandardScaler(manifest.params || {})
-    scaler.#means = new Float64Array(artifact.means)
-    scaler.#stds = new Float64Array(artifact.stds)
+    scaler.#means = means
+    scaler.#stds = stds
+    scaler.#legacyConstantScale = manifest.typeId === STANDARD_SCALER_TYPE_ID_V1
     scaler.#fitted = true
     return scaler
   }
@@ -132,6 +175,7 @@ class MinMaxScaler {
   #fitted = false
   #disposed = false
   #params = {}
+  #legacyConstantScale = false
 
   constructor(params = {}) {
     this.#params = { ...params }
@@ -141,6 +185,7 @@ class MinMaxScaler {
     this.#ensureAlive()
     const { rows, cols, data } = normalizeX(X)
     if (rows === 0) throw new ValidationError('Cannot fit on empty data')
+    if (cols === 0) throw new ValidationError('Cannot fit data with zero columns')
 
     const mins = new Float64Array(cols).fill(Infinity)
     const maxs = new Float64Array(cols).fill(-Infinity)
@@ -148,6 +193,9 @@ class MinMaxScaler {
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const val = data[r * cols + c]
+        if (!Number.isFinite(val)) {
+          throw new ValidationError('MinMaxScaler fit data must contain only finite numbers')
+        }
         if (val < mins[c]) mins[c] = val
         if (val > maxs[c]) maxs[c] = val
       }
@@ -155,6 +203,7 @@ class MinMaxScaler {
 
     this.#mins = mins
     this.#maxs = maxs
+    this.#legacyConstantScale = false
     this.#fitted = true
     return this
   }
@@ -173,7 +222,9 @@ class MinMaxScaler {
       for (let c = 0; c < cols; c++) {
         const idx = r * cols + c
         const range = this.#maxs[c] - this.#mins[c]
-        out[idx] = range > 0 ? (data[idx] - this.#mins[c]) / range : 0
+        out[idx] = range > 0
+          ? (data[idx] - this.#mins[c]) / range
+          : this.#legacyConstantScale ? 0 : data[idx] - this.#mins[c]
       }
     }
     return { rows, cols, data: out }
@@ -191,7 +242,12 @@ class MinMaxScaler {
       maxs: Array.from(this.#maxs),
     }
     return encodeBundle(
-      { typeId: MINMAX_SCALER_TYPE_ID, params: this.getParams() },
+      {
+        typeId: this.#legacyConstantScale
+          ? MINMAX_SCALER_TYPE_ID_V1
+          : MINMAX_SCALER_TYPE_ID,
+        params: this.getParams()
+      },
       [{ id: 'params', data: encodeJSON(artifact), mediaType: 'application/json' }]
     )
   }
@@ -200,9 +256,18 @@ class MinMaxScaler {
     const entry = toc.find(e => e.id === 'params')
     if (!entry) throw new ValidationError('Bundle missing "params" artifact')
     const artifact = decodeJSON(blobs.subarray(entry.offset, entry.offset + entry.length))
+    const [mins, maxs] = validatedArtifactVectors(
+      artifact, 'mins', 'maxs', 'MinMaxScaler'
+    )
+    for (let index = 0; index < mins.length; index++) {
+      if (maxs[index] < mins[index]) {
+        throw new ValidationError('MinMaxScaler artifact maxima must not be below minima')
+      }
+    }
     const scaler = new MinMaxScaler(manifest.params || {})
-    scaler.#mins = new Float64Array(artifact.mins)
-    scaler.#maxs = new Float64Array(artifact.maxs)
+    scaler.#mins = mins
+    scaler.#maxs = maxs
+    scaler.#legacyConstantScale = manifest.typeId === MINMAX_SCALER_TYPE_ID_V1
     scaler.#fitted = true
     return scaler
   }
@@ -231,7 +296,9 @@ class MinMaxScaler {
 }
 
 // Auto-register loaders
+register(STANDARD_SCALER_TYPE_ID_V1, StandardScaler._fromBundle, { sync: true })
 register(STANDARD_SCALER_TYPE_ID, StandardScaler._fromBundle, { sync: true })
+register(MINMAX_SCALER_TYPE_ID_V1, MinMaxScaler._fromBundle, { sync: true })
 register(MINMAX_SCALER_TYPE_ID, MinMaxScaler._fromBundle, { sync: true })
 
 module.exports = { StandardScaler, MinMaxScaler }

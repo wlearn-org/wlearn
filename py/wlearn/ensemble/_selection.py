@@ -4,10 +4,16 @@ import numpy as np
 
 from ..errors import ValidationError
 from ..automl._cv import get_scorer
+from ._class_order import (
+    normalize_class_order,
+    validate_probability_output,
+    validate_regression_output,
+)
 
 
 def caruana_select(oof_predictions, y_true, max_size=20, scoring='accuracy',
-                   task='classification', n_classes=0, refine_weights=True):
+                   task='classification', n_classes=0, refine_weights=True,
+                   classes=None):
     """Greedy ensemble selection (Caruana et al., 2004).
 
     Selects a weighted subset from a pool of OOF predictions by greedily
@@ -25,6 +31,7 @@ def caruana_select(oof_predictions, y_true, max_size=20, scoring='accuracy',
         n_classes: inferred from data if 0
         refine_weights: if True, optimize weights via projected gradient descent
             after Caruana selection (requires optimize_weights from _weights.py)
+        classes: probability-column labels. Defaults to sorted labels in y_true.
 
     Returns:
         dict with 'indices', 'weights', 'scores'
@@ -46,6 +53,26 @@ def caruana_select(oof_predictions, y_true, max_size=20, scoring='accuracy',
 
     if task == 'classification' and n_classes == 0:
         n_classes = pred_size
+    if task == 'classification' and n_classes != pred_size:
+        raise ValidationError(
+            'caruana_select: n_classes must match probability columns per row')
+    class_labels = (
+        _resolve_classes(y_true, n_classes, classes)
+        if task == 'classification' else None)
+    if task == 'classification':
+        oof_predictions = [
+            validate_probability_output(
+                prediction, n, n_classes,
+                f'caruana_select: oof_predictions[{index}]')
+            for index, prediction in enumerate(oof_predictions)
+        ]
+    else:
+        oof_predictions = [
+            validate_regression_output(
+                prediction, n,
+                f'caruana_select: oof_predictions[{index}]')
+            for index, prediction in enumerate(oof_predictions)
+        ]
 
     # Current ensemble prediction (running weighted average)
     current = np.zeros(len(oof_predictions[0]), dtype=np.float64)
@@ -58,7 +85,8 @@ def caruana_select(oof_predictions, y_true, max_size=20, scoring='accuracy',
 
         for i in range(n_candidates):
             trial = _trial_predictions(current, oof_predictions[i], t, t + 1)
-            trial_score = _score(trial, y_true, scorer_fn, task, n_classes, n)
+            trial_score = _score(
+                trial, y_true, scorer_fn, task, n_classes, n, class_labels)
             if trial_score > best_score:
                 best_score = trial_score
                 best_idx = i
@@ -93,6 +121,7 @@ def caruana_select(oof_predictions, y_true, max_size=20, scoring='accuracy',
         selected_oofs = [oof_predictions[int(idx)] for idx in unique_indices]
         refined = optimize_weights(
             selected_oofs, y_true, weights, task=task,
+            classes=class_labels,
         )
         result['weights'] = refined
 
@@ -106,7 +135,7 @@ def _trial_predictions(current, candidate, t_count, t_total):
     return trial
 
 
-def _score(preds, y_true, scorer_fn, task, n_classes, n):
+def _score(preds, y_true, scorer_fn, task, n_classes, n, classes):
     if task == 'regression':
         return scorer_fn(y_true, preds)
     # Classification: convert proba to hard predictions via argmax
@@ -118,5 +147,17 @@ def _score(preds, y_true, scorer_fn, task, n_classes, n):
             if preds[i * n_classes + c] > best_v:
                 best_v = preds[i * n_classes + c]
                 best_c = c
-        hard_preds[i] = best_c
+        hard_preds[i] = classes[best_c]
     return scorer_fn(y_true, hard_preds)
+
+
+def _resolve_classes(y_true, n_classes, classes):
+    source = (sorted(set(np.asarray(y_true).tolist()))
+              if classes is None else classes)
+    labels = normalize_class_order(source, n_classes, 'caruana_select')
+    known = set(labels)
+    for label in np.asarray(y_true).tolist():
+        if label not in known:
+            raise ValidationError(
+                f'caruana_select: class "{label}" is missing from classes')
+    return labels

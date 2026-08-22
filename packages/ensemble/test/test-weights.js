@@ -91,6 +91,97 @@ describe('optimizeWeights', () => {
     assert(Math.abs(sum - 1) < 1e-10)
   })
 
+  it('classification: maps noncontiguous labels to probability columns', () => {
+    const yMapped = new Int32Array([0, 0, 1, 1])
+    const yLabels = new Int32Array([2, 2, 5, 5])
+    const m0 = new Float64Array([
+      0.9, 0.1, 0.8, 0.2, 0.4, 0.6, 0.3, 0.7,
+    ])
+    const m1 = new Float64Array([
+      0.6, 0.4, 0.7, 0.3, 0.2, 0.8, 0.1, 0.9,
+    ])
+    const initial = new Float64Array([0.5, 0.5])
+    const expected = optimizeWeights([m0, m1], yMapped, initial, {
+      task: 'classification'
+    })
+    const actual = optimizeWeights([m0, m1], yLabels, initial, {
+      task: 'classification', classes: new Int32Array([2, 5])
+    })
+    assert.deepEqual(actual, expected)
+    const reversed = [m0, m1].map(values => {
+      const out = new Float64Array(values.length)
+      for (let i = 0; i < values.length; i += 2) {
+        out[i] = values[i + 1]
+        out[i + 1] = values[i]
+      }
+      return out
+    })
+    const reversedActual = optimizeWeights(reversed, yLabels, initial, {
+      task: 'classification', classes: new Int32Array([5, 2])
+    })
+    assert.deepEqual(reversedActual, expected)
+  })
+
+  it('classification: rejects class metadata outside the unique-int32 contract', () => {
+    const predictions = [
+      new Float64Array([0.8, 0.2, 0.2, 0.8]),
+      new Float64Array([0.7, 0.3, 0.3, 0.7]),
+    ]
+    const yTrue = new Int32Array([2, 5])
+    const initial = new Float64Array([0.5, 0.5])
+    for (const classes of [
+      [2.5, 5], [NaN, 5], [2147483648, 5], ['2', '5'], [2n, 5n], [2, 2]
+    ]) {
+      assert.throws(
+        () => optimizeWeights(predictions, yTrue, initial, {
+          task: 'classification', classes
+        }),
+        /unique int32/
+      )
+    }
+  })
+
+  it('classification: rejects mismatched or non-finite candidate predictions', () => {
+    const good = new Float64Array([0.8, 0.2, 0.2, 0.8])
+    const yTrue = new Int32Array([2, 5])
+    const initial = new Float64Array([0.5, 0.5])
+    for (const bad of [
+      new Float64Array([0.8, 0.2]),
+      new Float64Array([0.8, 0.2, Infinity, 0.8]),
+    ]) {
+      assert.throws(
+        () => optimizeWeights([good, bad], yTrue, initial, {
+          task: 'classification', classes: [2, 5]
+        }),
+        ValidationError
+      )
+    }
+  })
+
+  it('classification: validates a single candidate before returning unit weight', () => {
+    const yTrue = new Int32Array([2, 5])
+    for (const bad of [
+      new Float64Array([0.8, 0.2]),
+      new Float64Array([0.8, 0.2, NaN, 0.8]),
+    ]) {
+      assert.throws(
+        () => optimizeWeights([bad], yTrue, new Float64Array([1]), {
+          task: 'classification', classes: [2, 5]
+        }),
+        ValidationError
+      )
+    }
+    assert.throws(
+      () => optimizeWeights(
+        [new Float64Array([0.8, 0.2, 0.2, 0.8])],
+        new Int32Array([2, 9]),
+        new Float64Array([1]),
+        { task: 'classification', classes: [2, 5] }
+      ),
+      /missing from classes/
+    )
+  })
+
   it('regression: optimizes weights for two models', () => {
     const n = 6
     const yTrue = new Float64Array([1, 2, 3, 4, 5, 6])

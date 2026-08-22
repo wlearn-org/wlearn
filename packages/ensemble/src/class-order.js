@@ -1,5 +1,31 @@
 const { ValidationError } = require('@wlearn/core')
 
+function normalizeClassOrder(value, expectedLength, label) {
+  if (!Array.isArray(value) &&
+      !(ArrayBuffer.isView(value) && !(value instanceof DataView))) {
+    throw new ValidationError(`${label}: classes must be an array of unique int32 values`)
+  }
+  if (value.length !== expectedLength) {
+    throw new ValidationError(
+      `${label}: classes must contain one unique int32 label per probability column`
+    )
+  }
+  const output = new Int32Array(expectedLength)
+  const known = new Set()
+  for (let index = 0; index < value.length; index++) {
+    const item = value[index]
+    if (typeof item !== 'number' || !Number.isInteger(item) ||
+        item < -2147483648 || item > 2147483647 || known.has(item)) {
+      throw new ValidationError(
+        `${label}: classes must contain one unique int32 label per probability column`
+      )
+    }
+    known.add(item)
+    output[index] = item
+  }
+  return output
+}
+
 function classColumnMap(model, expectedClasses, label) {
   let actual = model?.classes
   if (typeof actual === 'function') actual = actual.call(model)
@@ -102,6 +128,7 @@ function validateRegressionOutput(value, rows, label) {
 
 module.exports = {
   classColumnMap,
+  normalizeClassOrder,
   requireProbabilityModel,
   validateLabelOutput,
   validateProbabilityOutput,

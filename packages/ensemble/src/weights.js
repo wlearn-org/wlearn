@@ -1,4 +1,9 @@
 const { ValidationError } = require('@wlearn/core')
+const {
+  normalizeClassOrder,
+  validateProbabilityOutput,
+  validateRegressionOutput,
+} = require('./class-order.js')
 
 /**
  * Project vector onto the probability simplex {w: w >= 0, sum(w) = 1}.
@@ -49,15 +54,13 @@ function optimizeWeights(oofPredictions, yTrue, initWeights, {
   task = 'classification',
   lr = 0.05,
   nIter = 100,
+  classes,
 } = {}) {
   const nModels = oofPredictions.length
   const n = yTrue.length
 
   if (nModels === 0) {
     throw new ValidationError('optimizeWeights: need at least 1 model')
-  }
-  if (nModels === 1) {
-    return new Float64Array([1.0])
   }
 
   const w = new Float64Array(initWeights)
@@ -69,12 +72,36 @@ function optimizeWeights(oofPredictions, yTrue, initWeights, {
     if (nc !== Math.floor(nc)) {
       throw new ValidationError('optimizeWeights: prediction length must be divisible by n')
     }
+    const source = classes == null
+      ? [...new Set(Array.from(yTrue))].sort((a, b) => a - b)
+      : classes
+    const labels = normalizeClassOrder(source, nc, 'optimizeWeights')
+    const classColumns = new Map(
+      Array.from(labels, (label, index) => [label, index])
+    )
+    const yColumns = new Int32Array(n)
+    for (let index = 0; index < n; index++) {
+      const column = classColumns.get(yTrue[index])
+      if (column == null) {
+        throw new ValidationError(
+          `optimizeWeights: class "${yTrue[index]}" is missing from classes`
+        )
+      }
+      yColumns[index] = column
+    }
+    for (let index = 0; index < oofPredictions.length; index++) {
+      validateProbabilityOutput(
+        oofPredictions[index], n, nc,
+        `optimizeWeights: oofPredictions[${index}]`
+      )
+    }
+    if (nModels === 1) return new Float64Array([1.0])
 
     for (let iter = 0; iter < nIter; iter++) {
       const grad = new Float64Array(nModels)
 
       for (let i = 0; i < n; i++) {
-        const c = yTrue[i] | 0
+        const c = yColumns[i]
         // Ensemble probability for true class
         let pTrue = 0
         for (let m = 0; m < nModels; m++) {
@@ -101,6 +128,13 @@ function optimizeWeights(oofPredictions, yTrue, initWeights, {
     }
   } else {
     // Regression: minimize MSE
+    for (let index = 0; index < oofPredictions.length; index++) {
+      validateRegressionOutput(
+        oofPredictions[index], n,
+        `optimizeWeights: oofPredictions[${index}]`
+      )
+    }
+    if (nModels === 1) return new Float64Array([1.0])
     for (let iter = 0; iter < nIter; iter++) {
       const grad = new Float64Array(nModels)
 

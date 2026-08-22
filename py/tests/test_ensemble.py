@@ -852,6 +852,25 @@ class TestCaruanaSelect:
         assert len(result['scores']) == 5
         assert len(result['weights']) > 0
 
+    def test_noncontiguous_class_labels_follow_probability_columns(self):
+        y = np.array([2, 2, 5, 5], dtype=np.int32)
+        bad = np.array([
+            0.1, 0.9, 0.1, 0.9, 0.9, 0.1, 0.9, 0.1])
+        good = np.array([
+            0.9, 0.1, 0.9, 0.1, 0.1, 0.9, 0.1, 0.9])
+        result = caruana_select(
+            [bad, good], y, max_size=1, task='classification',
+            classes=[2, 5], refine_weights=False)
+        np.testing.assert_array_equal(result['indices'], [1])
+        np.testing.assert_array_equal(result['scores'], [1])
+        reversed_result = caruana_select(
+            [bad.reshape(-1, 2)[:, ::-1].reshape(-1),
+             good.reshape(-1, 2)[:, ::-1].reshape(-1)],
+            y, max_size=1, task='classification',
+            classes=[5, 2], refine_weights=False)
+        np.testing.assert_array_equal(reversed_result['indices'], [1])
+        np.testing.assert_array_equal(reversed_result['scores'], [1])
+
     def test_scores_improve_overall(self):
         n = 50
         n_classes = 2
@@ -872,6 +891,38 @@ class TestCaruanaSelect:
         )
         # Final score should be >= first score (overall improvement)
         assert result['scores'][-1] >= result['scores'][0] - 0.1
+
+    def test_rejects_class_metadata_inconsistent_with_probability_width(self):
+        with pytest.raises(ValidationError, match='n_classes must match'):
+            caruana_select(
+                [np.array([0.5, 0.5, 0.5, 0.5])],
+                np.array([2, 5], dtype=np.int32),
+                task='classification', n_classes=3, classes=[2, 5, 9])
+
+    @pytest.mark.parametrize(
+        'classes',
+        [[2.5, 5], [np.nan, 5], [2 ** 31, 5], ['2', '5'], [True, 5], [2, 2]],
+    )
+    def test_rejects_class_metadata_outside_int32_contract(self, classes):
+        with pytest.raises(ValidationError, match='unique int32'):
+            caruana_select(
+                [np.array([0.8, 0.2, 0.2, 0.8])],
+                np.array([2, 5], dtype=np.int32),
+                max_size=1, task='classification', classes=classes,
+                refine_weights=False)
+
+    @pytest.mark.parametrize(
+        'bad',
+        [np.array([0.8, 0.2]),
+         np.array([0.8, 0.2, np.nan, 0.8])],
+    )
+    def test_rejects_mismatched_or_nonfinite_candidates(self, bad):
+        good = np.array([0.8, 0.2, 0.2, 0.8])
+        with pytest.raises(ValidationError):
+            caruana_select(
+                [good, bad], np.array([2, 5], dtype=np.int32),
+                max_size=1, task='classification', classes=[2, 5],
+                refine_weights=False)
 
 
 # ===========================================================================
@@ -1420,6 +1471,82 @@ class TestOptimizeWeights:
         assert abs(np.sum(refined) - 1.0) < 1e-10
         assert all(refined >= -1e-15)
 
+    def test_noncontiguous_class_labels_follow_probability_columns(self):
+        y_mapped = np.array([0, 0, 1, 1], dtype=np.int32)
+        y_labels = np.array([2, 2, 5, 5], dtype=np.int32)
+        oof_preds = [
+            np.array([0.9, 0.1, 0.8, 0.2, 0.4, 0.6, 0.3, 0.7]),
+            np.array([0.6, 0.4, 0.7, 0.3, 0.2, 0.8, 0.1, 0.9]),
+        ]
+        initial = np.array([0.5, 0.5])
+        expected = optimize_weights(
+            oof_preds, y_mapped, initial, task='classification')
+        actual = optimize_weights(
+            oof_preds, y_labels, initial, task='classification',
+            classes=[2, 5])
+        np.testing.assert_array_equal(actual, expected)
+        reversed_oof = [
+            values.reshape(-1, 2)[:, ::-1].reshape(-1)
+            for values in oof_preds]
+        reversed_actual = optimize_weights(
+            reversed_oof, y_labels, initial, task='classification',
+            classes=[5, 2])
+        np.testing.assert_array_equal(reversed_actual, expected)
+
+    def test_rejects_trailing_probability_values(self):
+        y = np.array([2, 2, 5, 5], dtype=np.int32)
+        predictions = [np.full(9, 0.5), np.full(9, 0.5)]
+        with pytest.raises(ValidationError, match='divisible by n'):
+            optimize_weights(
+                predictions, y, np.array([0.5, 0.5]),
+                task='classification', classes=[2, 5])
+
+    @pytest.mark.parametrize(
+        'classes',
+        [[2.5, 5], [np.nan, 5], [2 ** 31, 5], ['2', '5'], [True, 5], [2, 2]],
+    )
+    def test_rejects_class_metadata_outside_int32_contract(self, classes):
+        y = np.array([2, 5], dtype=np.int32)
+        predictions = [
+            np.array([0.8, 0.2, 0.2, 0.8]),
+            np.array([0.7, 0.3, 0.3, 0.7]),
+        ]
+        with pytest.raises(ValidationError, match='unique int32'):
+            optimize_weights(
+                predictions, y, np.array([0.5, 0.5]),
+                task='classification', classes=classes)
+
+    @pytest.mark.parametrize(
+        'bad',
+        [np.array([0.8, 0.2]),
+         np.array([0.8, 0.2, np.inf, 0.8])],
+    )
+    def test_rejects_mismatched_or_nonfinite_candidates(self, bad):
+        good = np.array([0.8, 0.2, 0.2, 0.8])
+        with pytest.raises(ValidationError):
+            optimize_weights(
+                [good, bad], np.array([2, 5], dtype=np.int32),
+                np.array([0.5, 0.5]), task='classification',
+                classes=[2, 5])
+
+    @pytest.mark.parametrize(
+        'bad',
+        [np.array([0.8, 0.2]),
+         np.array([0.8, 0.2, np.nan, 0.8])],
+    )
+    def test_validates_single_candidate_before_unit_weight(self, bad):
+        with pytest.raises(ValidationError):
+            optimize_weights(
+                [bad], np.array([2, 5], dtype=np.int32),
+                np.array([1.0]), task='classification', classes=[2, 5])
+
+    def test_single_candidate_rejects_unknown_label(self):
+        with pytest.raises(ValidationError, match='missing from classes'):
+            optimize_weights(
+                [np.array([0.8, 0.2, 0.2, 0.8])],
+                np.array([2, 9], dtype=np.int32), np.array([1.0]),
+                task='classification', classes=[2, 5])
+
     def test_single_model(self):
         n = 20
         rng = np.random.RandomState(42)
@@ -1513,10 +1640,65 @@ class TestNegLogloss:
         perfect_score = neg_logloss(y, perfect, n_classes=2)
         assert perfect_score > score
 
+    def test_nonzero_labels_follow_declared_probability_columns(self):
+        from wlearn.automl._cv import neg_logloss
+        y = np.array([2, 5], dtype=np.int32)
+        proba = np.array([0.8, 0.2, 0.1, 0.9])
+        expected = (np.log(0.8) + np.log(0.9)) / 2
+        assert neg_logloss(
+            y, proba, n_classes=2, classes=[2, 5]) == pytest.approx(expected)
+        assert neg_logloss(y, proba, n_classes=2) == pytest.approx(expected)
+        reversed_proba = proba.reshape(-1, 2)[:, ::-1].reshape(-1)
+        assert neg_logloss(
+            y, reversed_proba, n_classes=2,
+            classes=[5, 2]) == pytest.approx(expected)
+
+    def test_explicit_classes_cover_absent_labels(self):
+        from wlearn.automl._cv import neg_logloss
+        y = np.array([2, 2], dtype=np.int32)
+        proba = np.array([0.8, 0.2, 0.7, 0.3])
+        assert neg_logloss(
+            y, proba, n_classes=2, classes=[2, 5]) == pytest.approx(
+                (np.log(0.8) + np.log(0.7)) / 2)
+        with pytest.raises(ValidationError, match='classes are required'):
+            neg_logloss(y, proba, n_classes=2)
+
+    def test_zero_based_subset_does_not_guess_probability_columns(self):
+        from wlearn.automl._cv import neg_logloss
+        y = np.array([0, 2], dtype=np.int32)
+        proba = np.array([0.8, 0.1, 0.1, 0.1, 0.8, 0.1])
+        with pytest.raises(ValidationError, match='classes are required'):
+            neg_logloss(y, proba, n_classes=3)
+        assert neg_logloss(
+            y, proba, n_classes=3, classes=[0, 2, 5]) == pytest.approx(
+                (np.log(0.8) + np.log(0.8)) / 2)
+
+    @pytest.mark.parametrize('proba, match', [
+        (np.array([0.8, 0.2, 0.7]), 'length'),
+        (np.array([0.8, 0.2, np.nan, 0.3]), 'finite'),
+        (np.array([0.8, 0.2, 1.1, -0.1]), r'\[0, 1\]'),
+    ])
+    def test_rejects_malformed_probabilities(self, proba, match):
+        from wlearn.automl._cv import neg_logloss
+        with pytest.raises(ValidationError, match=match):
+            neg_logloss(
+                np.array([2, 5], dtype=np.int32), proba,
+                n_classes=2, classes=[2, 5])
+
+    def test_rejects_unknown_label(self):
+        from wlearn.automl._cv import neg_logloss
+        with pytest.raises(ValidationError, match='missing from classes'):
+            neg_logloss(
+                np.array([2, 9], dtype=np.int32),
+                np.array([0.8, 0.2, 0.1, 0.9]),
+                n_classes=2, classes=[2, 5])
+
     def test_scorer_registry(self):
         from wlearn.automl._cv import get_scorer
-        scorer = get_scorer('neg_logloss')
-        assert callable(scorer)
+        # CV scorers consume predict() labels. Probability-aware scoring needs
+        # a separate scorer/executor contract and is not silently approximated.
+        with pytest.raises(ValidationError, match='Unknown scoring'):
+            get_scorer('neg_logloss')
 
 
 # ===========================================================================

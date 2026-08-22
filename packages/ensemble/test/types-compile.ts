@@ -39,7 +39,7 @@ async function compileSurface(): Promise<void> {
 
   const candidates = [bag.oofPredictions, bag.oofPredictions]
   const selected = caruanaSelect(candidates, y, { refineWeights: true })
-  optimizeWeights(candidates, y, selected.weights)
+  optimizeWeights(candidates, y, selected.weights, { classes: new Int32Array([0, 1]) })
   projectSimplex([0.25, 0.75])
 }
 

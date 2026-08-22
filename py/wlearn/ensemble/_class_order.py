@@ -5,6 +5,32 @@ import numpy as np
 from ..errors import ValidationError
 
 
+def normalize_class_order(value, expected_length, label):
+    """Return a validated unique int32 probability-column order."""
+    try:
+        values = np.asarray(value, dtype=object)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValidationError(
+            f'{label}: classes must be an array of unique int32 values') from exc
+    if values.ndim != 1 or values.size != expected_length:
+        raise ValidationError(
+            f'{label}: classes must contain one unique int32 label per '
+            'probability column')
+    output = np.empty(expected_length, dtype=np.int32)
+    known = set()
+    for index, item in enumerate(values):
+        if (isinstance(item, (bool, np.bool_)) or
+                not isinstance(item, (int, np.integer)) or
+                int(item) < -(1 << 31) or int(item) > (1 << 31) - 1 or
+                int(item) in known):
+            raise ValidationError(
+                f'{label}: classes must contain one unique int32 label per '
+                'probability column')
+        known.add(int(item))
+        output[index] = int(item)
+    return output
+
+
 def class_column_map(model, expected_classes, label):
     """Map ensemble class columns to a fitted child's declared order."""
     actual = getattr(model, 'classes', None)

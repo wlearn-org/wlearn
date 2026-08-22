@@ -38,26 +38,58 @@ def neg_mae(y_true, y_pred):
     return -s / n
 
 
-def neg_logloss(y_true, proba_flat, n_classes=None):
+def neg_logloss(y_true, proba_flat, n_classes=None, classes=None):
     """Negative log-loss for classification.
 
     Args:
         y_true: np.ndarray of true class labels (int)
         proba_flat: np.ndarray of shape (n * n_classes,) flat row-major probabilities
         n_classes: number of classes (inferred from data if None)
+        classes: probability-column labels. Inferred from ``y_true`` only when
+            every class is present; otherwise it must be supplied explicitly.
 
     Returns:
         float: negative log-loss (higher is better)
     """
-    import numpy as np
     n = len(y_true)
+    if n == 0:
+        raise ValidationError('neg_logloss: y_true must be non-empty')
+    probabilities = np.asarray(proba_flat, dtype=np.float64).reshape(-1)
     if n_classes is None:
-        n_classes = len(proba_flat) // n
+        if probabilities.size % n != 0:
+            raise ValidationError(
+                'neg_logloss: probability length must be divisible by rows')
+        n_classes = probabilities.size // n
+    if (isinstance(n_classes, bool) or not isinstance(n_classes, int)
+            or n_classes < 2):
+        raise ValidationError('neg_logloss: n_classes must be an integer >= 2')
+    if probabilities.size != n * n_classes:
+        raise ValidationError(
+            'neg_logloss: probability length must equal rows * n_classes')
+    if not np.all(np.isfinite(probabilities)):
+        raise ValidationError('neg_logloss: probabilities must be finite')
+    if np.any((probabilities < 0) | (probabilities > 1)):
+        raise ValidationError('neg_logloss: probabilities must be in [0, 1]')
+    if classes is None:
+        classes = sorted(set(np.asarray(y_true).tolist()))
+        if len(classes) != n_classes:
+            raise ValidationError(
+                'neg_logloss: classes are required when y_true does not '
+                'contain every probability column label')
+    else:
+        classes = list(np.asarray(classes).tolist())
+    if len(classes) != n_classes or len(set(classes)) != n_classes:
+        raise ValidationError(
+            'neg_logloss: classes must contain one unique label per column')
+    class_map = {label: index for index, label in enumerate(classes)}
     eps = 1e-15
     loss = 0.0
-    for i in range(n):
-        c = int(y_true[i])
-        p = max(float(proba_flat[i * n_classes + c]), eps)
+    for i, label in enumerate(np.asarray(y_true).tolist()):
+        if label not in class_map:
+            raise ValidationError(
+                f'neg_logloss: class "{label}" is missing from classes')
+        p = float(probabilities[i * n_classes + class_map[label]])
+        p = min(1 - eps, max(eps, p))
         loss -= np.log(p)
     return -loss / n
 
@@ -67,7 +99,6 @@ _SCORERS = {
     'r2': r2_score,
     'neg_mse': neg_mse,
     'neg_mae': neg_mae,
-    'neg_logloss': neg_logloss,
 }
 
 

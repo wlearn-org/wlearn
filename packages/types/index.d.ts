@@ -738,6 +738,7 @@ export interface CaruanaOpts {
   task?: TaskType
   nClasses?: number
   refineWeights?: boolean
+  classes?: ArrayLike<number>
 }
 
 export interface BaggedEstimatorParams {
@@ -756,6 +757,7 @@ export interface WeightOptimizationOpts {
   task?: TaskType
   lr?: number
   nIter?: number
+  classes?: ArrayLike<number>
 }
 
 export declare function projectSimplex(values: ArrayLike<number>): Float64Array

@@ -6,6 +6,13 @@ descent with simplex projection (Duchi et al. 2008).
 
 import numpy as np
 
+from ..errors import ValidationError
+from ._class_order import (
+    normalize_class_order,
+    validate_probability_output,
+    validate_regression_output,
+)
+
 
 def project_simplex(v):
     """Project vector v onto the probability simplex {w: w >= 0, sum(w) = 1}.
@@ -36,7 +43,8 @@ def project_simplex(v):
 
 
 def optimize_weights(oof_predictions, y_true, init_weights,
-                     task='classification', lr=0.05, n_iter=100):
+                     task='classification', lr=0.05, n_iter=100,
+                     classes=None):
     """Optimize ensemble member weights via projected gradient descent.
 
     For classification: minimizes negative log-loss over OOF probabilities.
@@ -52,6 +60,7 @@ def optimize_weights(oof_predictions, y_true, init_weights,
         task: 'classification' or 'regression'
         lr: learning rate for gradient descent
         n_iter: number of gradient steps
+        classes: probability-column labels. Defaults to sorted labels in y_true.
 
     Returns:
         np.ndarray of optimized weights (>= 0, sum = 1)
@@ -61,8 +70,6 @@ def optimize_weights(oof_predictions, y_true, init_weights,
 
     if m == 0:
         return np.array([], dtype=np.float64)
-    if m == 1:
-        return np.array([1.0])
 
     w = init_weights.copy().astype(np.float64)
     # Ensure starting point is on simplex
@@ -71,10 +78,32 @@ def optimize_weights(oof_predictions, y_true, init_weights,
     eps = 1e-15
 
     if task == 'classification':
-        n_classes = len(oof_predictions[0]) // n
-        # Precompute: for each model m, extract proba[i, y_true[i]]
-        # and full proba matrix for gradient computation
-        y_int = np.asarray(y_true, dtype=np.int32)
+        prediction_length = len(oof_predictions[0])
+        if n == 0 or prediction_length % n != 0:
+            raise ValidationError(
+                'optimize_weights: prediction length must be divisible by n')
+        n_classes = prediction_length // n
+        source = (sorted(set(np.asarray(y_true).tolist()))
+                  if classes is None else classes)
+        labels = normalize_class_order(
+            source, n_classes, 'optimize_weights')
+        oof_predictions = [
+            validate_probability_output(
+                prediction, n, n_classes,
+                f'optimize_weights: oof_predictions[{index}]')
+            for index, prediction in enumerate(oof_predictions)
+        ]
+        class_columns = {label: index for index, label in enumerate(labels)}
+        try:
+            y_columns = np.array(
+                [class_columns[label]
+                 for label in np.asarray(y_true).tolist()], dtype=np.int32)
+        except KeyError as error:
+            raise ValidationError(
+                f'optimize_weights: class "{error.args[0]}" is missing from '
+                'classes') from error
+        if m == 1:
+            return np.array([1.0])
 
         for _ in range(n_iter):
             # Compute ensemble proba for true class: p_i = sum(w_m * oof_m[i*nc + y_i])
@@ -83,7 +112,7 @@ def optimize_weights(oof_predictions, y_true, init_weights,
                 wj = w[j]
                 oof = oof_predictions[j]
                 for i in range(n):
-                    p_true[i] += wj * oof[i * n_classes + y_int[i]]
+                    p_true[i] += wj * oof[i * n_classes + y_columns[i]]
 
             # Clip for numerical stability
             np.maximum(p_true, eps, out=p_true)
@@ -94,13 +123,21 @@ def optimize_weights(oof_predictions, y_true, init_weights,
                 oof = oof_predictions[j]
                 g = 0.0
                 for i in range(n):
-                    g += oof[i * n_classes + y_int[i]] / p_true[i]
+                    g += oof[i * n_classes + y_columns[i]] / p_true[i]
                 grad[j] = -g / n
 
             w = project_simplex(w - lr * grad)
 
     else:
         # Regression: minimize MSE
+        oof_predictions = [
+            validate_regression_output(
+                prediction, n,
+                f'optimize_weights: oof_predictions[{index}]')
+            for index, prediction in enumerate(oof_predictions)
+        ]
+        if m == 1:
+            return np.array([1.0])
         for _ in range(n_iter):
             # Compute ensemble prediction: p_i = sum(w_m * oof_m[i])
             p = np.zeros(n, dtype=np.float64)

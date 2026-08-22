@@ -34,5 +34,7 @@ the wlearn Transformer lifecycle, strict dense-matrix contract, WLRN persistence
 loader registration, and stable error mapping.
 
 For compatibility, the package also re-exports core's existing `StandardScaler`
-and `MinMaxScaler` constructors by identity. Their existing artifact type IDs and
-loaders are unchanged; new mixed-type preprocessing should use `Preprocessor`.
+and `MinMaxScaler` constructors by identity. Corrected new fits write
+`standard_scaler@2` and `minmax_scaler@2`; core retains the `@1` loaders and legacy
+constant-column inference for existing artifacts. New mixed-type preprocessing
+should use `Preprocessor`.
