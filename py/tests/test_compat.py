@@ -11,37 +11,175 @@ Part 3: JS -> Py -> JS round-trip
 """
 
 import hashlib
+import importlib
 import json
+import os
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from wlearn.bundle import decode_bundle, validate_bundle, encode_bundle
-from wlearn.registry import load as registry_load
+from wlearn.registry import get_registry, load as registry_load
 
-# Import model wrappers to register loaders
-import wlearn.xgboost    # noqa: F401
-import wlearn.liblinear  # noqa: F401
-import wlearn.libsvm     # noqa: F401
-import wlearn.nanoflann  # noqa: F401
-import wlearn.ebm        # noqa: F401
-import wlearn.lightgbm   # noqa: F401
-import wlearn.stochtree  # noqa: F401
-import wlearn.xlearn     # noqa: F401
+EXPECTED_FIXTURES = (
+    'ebm-classifier',
+    'ebm-regressor',
+    'liblinear-classifier',
+    'libsvm-classifier',
+    'lightgbm-binary',
+    'lightgbm-multiclass',
+    'lightgbm-regressor',
+    'nanoflann-classifier',
+    'nanoflann-regressor',
+    'pipeline-preprocess-liblinear',
+    'pipeline-single',
+    'preprocess-tabular',
+    'stochtree-classifier',
+    'stochtree-regressor',
+    'xgboost-binary',
+    'xgboost-multiclass',
+    'xgboost-regressor',
+    'xlearn-classifier',
+    'xlearn-regressor',
+)
+
+LOADER_MODULES = {
+    'xgboost': 'wlearn.xgboost',
+    'liblinear': 'wlearn.liblinear',
+    'libsvm': 'wlearn.libsvm',
+    'nanoflann': 'wlearn.nanoflann',
+    'ebm': 'wlearn.ebm',
+    'lightgbm': 'wlearn.lightgbm',
+    'stochtree': 'wlearn.stochtree',
+    'xlearn': 'wlearn.xlearn',
+    'preprocess': 'wlearn.preprocess',
+}
+
+LOADER_RUNTIME_MODULES = {
+    'preprocess': 'tranfi',
+}
+
+AVAILABLE_LOADERS = set()
+LOADER_IMPORT_ERRORS = {}
+for loader_name, module_name in LOADER_MODULES.items():
+    try:
+        importlib.import_module(module_name)
+        runtime_module = LOADER_RUNTIME_MODULES.get(loader_name)
+        if runtime_module is not None:
+            importlib.import_module(runtime_module)
+    except Exception as error:
+        LOADER_IMPORT_ERRORS[loader_name] = (
+            f'{type(error).__name__}: {error}')
+    else:
+        prefix = f'wlearn.{loader_name}.'
+        if loader_name == 'xlearn':
+            prefix = 'wlearn.xlearn.'
+        if not any(type_id.startswith(prefix) for type_id in get_registry()):
+            continue
+        AVAILABLE_LOADERS.add(loader_name)
+
+FIXTURE_LOADER_PREFIXES = (
+    ('xgboost-', 'xgboost'),
+    ('liblinear-', 'liblinear'),
+    ('libsvm-', 'libsvm'),
+    ('nanoflann-', 'nanoflann'),
+    ('ebm-', 'ebm'),
+    ('lightgbm-', 'lightgbm'),
+    ('stochtree-', 'stochtree'),
+    ('xlearn-', 'xlearn'),
+)
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent / 'fixtures'
+PY_PRODUCED_DIR = FIXTURES_DIR / 'py-produced'
+PRODUCED_BUNDLES = set()
+REQUIRE_ALL_BACKENDS = os.environ.get('WLEARN_INTEROP_REQUIRE_ALL') == '1'
+
+
+def assert_prediction_parity(actual, expected, *, atol, message):
+    actual_array = np.asarray(actual, dtype=np.float64).reshape(-1)
+    expected_array = np.asarray(expected, dtype=np.float64).reshape(-1)
+    assert actual_array.size > 0, f'{message}: actual predictions are empty'
+    assert expected_array.size > 0, f'{message}: expected predictions are empty'
+    assert actual_array.size == expected_array.size, (
+        f'{message}: length differs '
+        f'({actual_array.size} != {expected_array.size})')
+    assert np.isfinite(actual_array).all(), (
+        f'{message}: actual predictions contain NaN or infinity')
+    assert np.isfinite(expected_array).all(), (
+        f'{message}: expected predictions contain NaN or infinity')
+    np.testing.assert_allclose(
+        actual_array, expected_array, atol=atol, err_msg=message)
 
 
 def fixture_names():
-    if not FIXTURES_DIR.exists():
-        return []
-    return sorted(p.stem for p in FIXTURES_DIR.glob('*.wlrn'))
+    return list(EXPECTED_FIXTURES)
 
 
 def model_fixture_names():
-    """Fixtures that have a direct model loader (not pipeline)."""
-    return [n for n in fixture_names() if not n.startswith('pipeline')]
+    """Fixtures with executable Python loaders in the current package."""
+    return fixture_names()
+
+
+@pytest.fixture(scope='session', autouse=True)
+def roundtrip_output_index():
+    """Declare exactly which Python round-trip bundles this environment produced."""
+    if REQUIRE_ALL_BACKENDS:
+        missing = sorted(set(LOADER_MODULES) - AVAILABLE_LOADERS)
+        assert not missing, (
+            'Full interop lane requires every Python backend; missing: '
+            f'{", ".join(missing)}; import errors: '
+            + '; '.join(
+                f'{name}={LOADER_IMPORT_ERRORS[name]}'
+                for name in missing if name in LOADER_IMPORT_ERRORS))
+
+    PY_PRODUCED_DIR.mkdir(parents=True, exist_ok=True)
+    for path in PY_PRODUCED_DIR.glob('*.wlrn'):
+        path.unlink()
+    index_path = PY_PRODUCED_DIR / 'index.json'
+    if index_path.exists():
+        index_path.unlink()
+
+    yield
+
+    if REQUIRE_ALL_BACKENDS:
+        expected = sorted(model_fixture_names())
+    else:
+        expected = sorted(
+            name for name in model_fixture_names()
+            if required_loaders(name) <= AVAILABLE_LOADERS
+        )
+    skipped = sorted(set(model_fixture_names()) - set(expected))
+    index_path.write_text(json.dumps({
+        'mode': 'full' if REQUIRE_ALL_BACKENDS else 'minimal',
+        'expected': expected,
+        'produced': sorted(PRODUCED_BUNDLES),
+        'skipped': skipped,
+    }, indent=2) + '\n')
+
+
+def required_loaders(name):
+    if name == 'preprocess-tabular':
+        return {'preprocess'}
+    if name == 'pipeline-preprocess-liblinear':
+        return {'preprocess', 'liblinear'}
+    if name == 'pipeline-single':
+        return {'xgboost'}
+    for prefix, loader_name in FIXTURE_LOADER_PREFIXES:
+        if name.startswith(prefix):
+            return {loader_name}
+    return set()
+
+
+def require_loader_for_fixture(name):
+    missing = sorted(required_loaders(name) - AVAILABLE_LOADERS)
+    if missing:
+        if REQUIRE_ALL_BACKENDS:
+            pytest.fail(
+                f'{name}: required Python backends are not installed: '
+                f'{", ".join(missing)}')
+        pytest.skip(
+            f'{name}: Python backends are not installed: {", ".join(missing)}')
 
 
 @pytest.fixture(params=fixture_names(), ids=fixture_names())
@@ -64,6 +202,17 @@ def model_fixture(request):
 
 
 class TestBundleFormat:
+    def test_expected_fixture_corpus_is_complete(self):
+        missing = []
+        for name in EXPECTED_FIXTURES:
+            for suffix in ('.wlrn', '.json'):
+                if not (FIXTURES_DIR / f'{name}{suffix}').is_file():
+                    missing.append(f'{name}{suffix}')
+        assert not missing, f'Missing canonical fixtures: {", ".join(missing)}'
+
+        actual = sorted(path.stem for path in FIXTURES_DIR.glob('*.wlrn'))
+        assert actual == sorted(EXPECTED_FIXTURES)
+
     def test_decode(self, fixture):
         name, wlrn, sidecar = fixture
         manifest, toc, blobs = decode_bundle(wlrn)
@@ -72,12 +221,13 @@ class TestBundleFormat:
 
     def test_validate_hashes(self, fixture):
         name, wlrn, sidecar = fixture
-        validate_bundle(wlrn)
+        validate_bundle(wlrn, allow_legacy_manifest=False)
 
     def test_manifest_type_id(self, fixture):
         name, wlrn, sidecar = fixture
         manifest, _, _ = decode_bundle(wlrn)
         assert manifest['typeId'] == sidecar['typeId']
+        assert manifest.get('requires', []) == sidecar.get('requires', [])
 
     def test_manifest_params(self, fixture):
         name, wlrn, sidecar = fixture
@@ -142,23 +292,45 @@ class TestPredictions:
     def test_load_and_predict(self, model_fixture):
         """Load JS fixture via registry, predict on X, match sidecar."""
         name, wlrn, sidecar = model_fixture
+        require_loader_for_fixture(name)
         model = registry_load(wlrn)
-
-        preds = model.predict(sidecar['X'])
-        expected = np.array(sidecar['predictions'], dtype=np.float64)
-
-        assert len(preds) == len(expected)
-        np.testing.assert_allclose(preds, expected, atol=1e-5,
-                                   err_msg=f'{name}: predictions differ')
-        model.dispose()
+        try:
+            if sidecar.get('operation') == 'transform':
+                result = model.transform(sidecar['X'])
+                preds = np.asarray(result).reshape(-1)
+                assert list(result.shape) == sidecar['outputShape']
+            else:
+                preds = model.predict(sidecar['X'])
+            expected = np.array(sidecar['predictions'], dtype=np.float64)
+            assert_prediction_parity(
+                preds, expected, atol=1e-5,
+                message=f'{name}: predictions differ')
+            expected_classes = (
+                sidecar.get('classes') or
+                sidecar.get('metadata', {}).get('classes'))
+            if expected_classes:
+                classes = model.classes
+                if callable(classes):
+                    classes = classes()
+                assert list(np.asarray(classes).reshape(-1)) == expected_classes
+        finally:
+            model.dispose()
 
     def test_score(self, model_fixture):
         """Score on training data should be reasonable."""
         name, wlrn, sidecar = model_fixture
+        require_loader_for_fixture(name)
         model = registry_load(wlrn)
-        s = model.score(sidecar['X'], sidecar['y'])
-        assert s > 0.5, f'{name}: score too low ({s})'
-        model.dispose()
+        try:
+            if sidecar.get('operation') == 'transform':
+                transformed = model.transform(sidecar['X'])
+                assert np.isfinite(transformed).all()
+                return
+            s = model.score(sidecar['X'], sidecar['y'])
+            assert np.isfinite(s), f'{name}: score must be finite ({s})'
+            assert s > 0.5, f'{name}: score too low ({s})'
+        finally:
+            model.dispose()
 
 
 # --- Part 3: JS -> Py -> JS round-trip ---
@@ -168,29 +340,39 @@ class TestRoundTrip:
     def test_save_reload_predict(self, model_fixture):
         """Load JS fixture -> save from Python -> reload -> predict -> compare."""
         name, wlrn, sidecar = model_fixture
+        require_loader_for_fixture(name)
 
         model = registry_load(wlrn)
         py_bundle = model.save()
 
-        validate_bundle(py_bundle)
+        validate_bundle(py_bundle, allow_legacy_manifest=False)
+        (PY_PRODUCED_DIR / f'{name}.wlrn').write_bytes(py_bundle)
+        PRODUCED_BUNDLES.add(name)
 
         model2 = registry_load(py_bundle)
+        try:
+            if sidecar.get('operation') == 'transform':
+                preds1 = np.asarray(model.transform(sidecar['X'])).reshape(-1)
+                preds2 = np.asarray(model2.transform(sidecar['X'])).reshape(-1)
+            else:
+                preds1 = model.predict(sidecar['X'])
+                preds2 = model2.predict(sidecar['X'])
+            expected = np.array(sidecar['predictions'], dtype=np.float64)
 
-        preds1 = model.predict(sidecar['X'])
-        preds2 = model2.predict(sidecar['X'])
-        expected = np.array(sidecar['predictions'], dtype=np.float64)
-
-        np.testing.assert_allclose(preds2, expected, atol=1e-5,
-                                   err_msg=f'{name}: round-trip predictions differ')
-        np.testing.assert_allclose(preds1, preds2, atol=1e-10,
-                                   err_msg=f'{name}: direct vs round-trip differ')
-
-        model.dispose()
-        model2.dispose()
+            assert_prediction_parity(
+                preds2, expected, atol=1e-5,
+                message=f'{name}: round-trip predictions differ')
+            assert_prediction_parity(
+                preds1, preds2, atol=1e-10,
+                message=f'{name}: direct vs round-trip differ')
+        finally:
+            model.dispose()
+            model2.dispose()
 
     def test_manifest_preserved(self, model_fixture):
         """Manifest typeId and params survive round-trip."""
         name, wlrn, sidecar = model_fixture
+        require_loader_for_fixture(name)
 
         model = registry_load(wlrn)
         py_bundle = model.save()
@@ -206,19 +388,10 @@ class TestRoundTrip:
 
         model.dispose()
 
-    # LightGBM text model format is not byte-stable across save APIs:
-    # C API (WASM) vs Python booster.save_model() produce slightly different
-    # output (extra metadata fields). Predictions still match.
-    BLOB_IDENTICAL_SKIP = frozenset([
-        'lightgbm-binary', 'lightgbm-multiclass', 'lightgbm-regressor',
-    ])
-
     def test_blob_identical(self, model_fixture):
-        """Model blob bytes should be identical after Py save."""
+        """Every artifact blob should be identical after Python save."""
         name, wlrn, sidecar = model_fixture
-
-        if name in self.BLOB_IDENTICAL_SKIP:
-            pytest.skip(f'{name}: text format not byte-stable across save APIs')
+        require_loader_for_fixture(name)
 
         _, toc_orig, blobs_orig = decode_bundle(wlrn)
 
@@ -227,14 +400,24 @@ class TestRoundTrip:
 
         _, toc_new, blobs_new = decode_bundle(py_bundle)
 
-        entry_orig = next(e for e in toc_orig if e['id'] == 'model')
-        entry_new = next(e for e in toc_new if e['id'] == 'model')
-
-        blob_orig = bytes(blobs_orig[entry_orig['offset']:entry_orig['offset'] + entry_orig['length']])
-        blob_new = bytes(blobs_new[entry_new['offset']:entry_new['offset'] + entry_new['length']])
-
-        assert blob_orig == blob_new, (
-            f'{name}: model blob differs after round-trip '
-            f'(orig={len(blob_orig)}, new={len(blob_new)})')
+        assert toc_new == toc_orig, f'{name}: TOC differs after round-trip'
+        for entry_orig, entry_new in zip(toc_orig, toc_new):
+            blob_orig = bytes(
+                blobs_orig[entry_orig['offset']:
+                           entry_orig['offset'] + entry_orig['length']])
+            blob_new = bytes(
+                blobs_new[entry_new['offset']:
+                          entry_new['offset'] + entry_new['length']])
+            assert blob_orig == blob_new, (
+                f'{name}: {entry_orig["id"]} blob differs after round-trip '
+                f'(orig={len(blob_orig)}, new={len(blob_new)})')
 
         model.dispose()
+
+
+def test_prediction_parity_rejects_nonfinite_and_empty_values():
+    with pytest.raises(AssertionError, match='empty'):
+        assert_prediction_parity([], [], atol=1e-5, message='empty')
+    with pytest.raises(AssertionError, match='NaN or infinity'):
+        assert_prediction_parity(
+            [float('nan')], [float('nan')], atol=1e-5, message='nan')

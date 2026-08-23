@@ -8,6 +8,7 @@ import {
   normalizeX,
   register
 } from '@wlearn/core'
+import * as core from '@wlearn/core'
 import type { MaybePromise } from '@wlearn/types'
 
 const matrix = normalizeX([[1], [2]])
@@ -22,8 +23,35 @@ decodeBundle(bytes)
 register('wlearn.test.types@1', () => scaler, { sync: true })
 const sync = loadSync<typeof scaler>(bytes)
 const pending: Promise<typeof scaler> = load<typeof scaler>(bytes)
+const exhaustiveRuntimeNames = [
+  'Archive', 'BackendError', 'BundleError', 'CancelledError',
+  'DEFAULT_BUNDLE_LIMITS', 'DisposedError', 'MEASURE_DIRECTIONS',
+  'MEASURE_RESPONSES', 'MinMaxScaler', 'NotFittedError', 'PREDICTION_FIELDS',
+  'Pipeline', 'Preprocessor', 'RESAMPLING_STRATEGIES', 'RegistryError',
+  'ResourceLimitError', 'StandardScaler', 'Step', 'TASK_KINDS',
+  'TRIAL_STATUSES', 'ValidationError', 'WlearnError', 'accuracy',
+  'aggregateMeasure', 'assertRequiredLoaders', 'confusionMatrix',
+  'createFeatureSchema', 'createModelClass', 'createPrediction',
+  'createResamplingPlan', 'createTask', 'createTrialRecord', 'crossValScore',
+  'decodeBundle', 'decodeJSON', 'defineMeasure', 'deserializeResamplingPlan',
+  'detectTask', 'encodeBundle', 'encodeJSON', 'evaluateMeasure',
+  'evaluateMetricSet', 'f1Score', 'getMeasureDef', 'getRegistry', 'getScorer',
+  'groupKFold', 'inferTaskKind', 'isPromiseLike', 'kFold', 'lift',
+  'listMeasures', 'load', 'loadSync', 'logLoss', 'makeDense', 'makeLCG',
+  'meanAbsoluteError', 'meanAggregator', 'meanSquaredError',
+  'normalizeTrialError', 'normalizeX', 'normalizeY', 'precisionScore',
+  'predictionField', 'predictionRows', 'r2Score', 'recallScore', 'register',
+  'registerBuiltinMeasures', 'registerMeasure', 'rocAuc',
+  'serializeResamplingPlan', 'sha256Sync', 'shuffle', 'slidingIndexSplit',
+  'slidingPeriodSplit', 'slidingWindowSplit', 'stratifiedKFold', 'taskRows',
+  'timeSeriesSplit', 'trainTestSplit', 'validateBundle',
+  'validateFeatureSchema', 'validateMatrix', 'validatePrediction',
+  'validateResamplingPlan', 'validateRowRoles', 'validateTask',
+  'validateTrialRecord'
+] as const satisfies readonly (keyof typeof core)[]
 void pipeline
 void pipelineFit
 void pipelineClasses
 void sync
 void pending
+void exhaustiveRuntimeNames

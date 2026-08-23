@@ -48,9 +48,17 @@ def _align_k(k):
 
 def _read_str(blob, pos):
     """Read a length-prefixed string (wasm32: u32 length prefix)."""
+    if pos > len(blob) - 4:
+        raise ValueError('xLearn model is truncated before a string length')
     length = struct.unpack_from('<I', blob, pos)[0]
     pos += 4
-    s = blob[pos:pos + length].decode('ascii')
+    if length < 1 or length > 64 or pos > len(blob) - length:
+        raise ValueError('xLearn model has an invalid string field')
+    try:
+        s = blob[pos:pos + length].decode('ascii')
+    except UnicodeDecodeError as error:
+        raise ValueError('xLearn model has a non-ASCII string field') \
+            from error
     pos += length
     return s, pos
 
@@ -73,16 +81,67 @@ def _parse_model(blob):
     score_func, pos = _read_str(blob, pos)
     loss_func, pos = _read_str(blob, pos)
 
-    num_feat = struct.unpack_from('<I', blob, pos)[0]; pos += 4
-    num_field = struct.unpack_from('<I', blob, pos)[0]; pos += 4
-    num_K = struct.unpack_from('<I', blob, pos)[0]; pos += 4
-    aux_size = struct.unpack_from('<I', blob, pos)[0]; pos += 4
+    def read_u32(name):
+        nonlocal pos
+        if pos > len(blob) - 4:
+            raise ValueError(f'xLearn model is truncated before {name}')
+        value = struct.unpack_from('<I', blob, pos)[0]
+        pos += 4
+        return value
 
-    param_num_w = struct.unpack_from('<I', blob, pos)[0]; pos += 4
+    num_feat = read_u32('feature count')
+    num_field = read_u32('field count')
+    num_K = read_u32('factor count')
+    aux_size = read_u32('auxiliary parameter count')
+    param_num_w = read_u32('linear weight count')
 
     param_num_v = 0
     if score_func != 'linear':
-        param_num_v = struct.unpack_from('<I', blob, pos)[0]; pos += 4
+        param_num_v = read_u32('latent factor count')
+
+    if (score_func not in ('linear', 'fm', 'ffm') or
+            loss_func not in ('cross-entropy', 'squared') or
+            num_feat < 1):
+        raise ValueError('xLearn model has unsupported identity fields')
+    if (aux_size < 1 or
+            score_func in ('linear', 'fm') and num_field != 0 or
+            score_func != 'linear' and num_K < 1 or
+            score_func == 'ffm' and num_field < 1):
+        raise ValueError('xLearn model has invalid dimensions')
+
+    max_u32 = 2**32 - 1
+
+    def checked_product(name, *values):
+        product = 1
+        for value in values:
+            if value < 1 or product > max_u32 // value:
+                raise ValueError(
+                    f'xLearn model {name} exceeds uint32 limits')
+            product *= value
+        return product
+
+    expected_w = checked_product('weight count', num_feat, aux_size)
+    if param_num_w != expected_w:
+        raise ValueError('xLearn model linear weight count is inconsistent')
+
+    expected_v = 0
+    if score_func != 'linear':
+        aligned_k = _align_k(num_K)
+        if score_func == 'fm':
+            expected_v = checked_product(
+                'latent factor count', num_feat, aligned_k, aux_size)
+        else:
+            expected_v = checked_product(
+                'latent factor count', num_feat, num_field, aligned_k,
+                aux_size)
+        if param_num_v != expected_v:
+            raise ValueError(
+                'xLearn model latent factor count is inconsistent')
+
+    expected_bytes = pos + 4 * (expected_w + aux_size + expected_v)
+    if expected_bytes != len(blob):
+        raise ValueError(
+            'xLearn model byte length is inconsistent with its parameter counts')
 
     w = np.frombuffer(blob, dtype='<f4', count=param_num_w, offset=pos).copy()
     pos += param_num_w * 4
@@ -174,6 +233,24 @@ def _compute_norm(X):
     return np.where(sq_sum > 0, 1.0 / sq_sum, 1.0)
 
 
+def _validate_matrix(X, expected_features):
+    try:
+        matrix = np.asarray(X, dtype=np.float32)
+    except (TypeError, ValueError) as error:
+        raise ValueError('X must be a rectangular numeric 2-D matrix') \
+            from error
+    if matrix.ndim != 2 or matrix.shape[0] < 1 or matrix.shape[1] < 1:
+        raise ValueError(
+            'X must be a non-empty rectangular numeric 2-D matrix')
+    if matrix.shape[1] != expected_features:
+        raise ValueError(
+            f'X has {matrix.shape[1]} features; model expects '
+            f'{expected_features}')
+    if not np.isfinite(matrix).all():
+        raise ValueError('X values must be finite')
+    return matrix
+
+
 def _predict_linear(X, w, bias, normalize):
     """Linear prediction: score = w^T x + b.
 
@@ -256,12 +333,15 @@ def _predict_ffm(X, w, bias, v, K, num_field, field_map, normalize):
 
 
 class XLearnModel:
-    def __init__(self, raw_model, params, metadata, raw_blob=None):
+    def __init__(self, raw_model, params, metadata, raw_blob=None,
+                 type_id=None, manifest_seed=None):
         self._raw_model = raw_model  # parsed model dict
         self._params = dict(params)
         self._disposed = False
         self._fitted = True
         self._raw_blob = raw_blob
+        self._type_id = type_id
+        self._manifest_seed = manifest_seed
 
         self._algo = metadata.get('algo', raw_model['score_func'])
         self._task = metadata.get('task', 'binary')
@@ -283,6 +363,8 @@ class XLearnModel:
         obj._disposed = False
         obj._fitted = False
         obj._raw_blob = None
+        obj._type_id = None
+        obj._manifest_seed = None
         obj._algo = obj._params.get('algo', 'fm')
         obj._task = 'binary'
         obj._num_features = 0
@@ -296,32 +378,93 @@ class XLearnModel:
 
     @staticmethod
     def _from_bundle(manifest, toc, blobs):
+        type_id = manifest.get('typeId')
+        spec = _bundle_spec(type_id)
+        metadata = manifest.get('metadata', {})
+        if metadata.get('algo') != spec['algo'] or \
+                metadata.get('task') != spec['task']:
+            raise ValueError(
+                f'{type_id} metadata does not match '
+                f'{spec["algo"]}/{spec["task"]}')
+        n_features = metadata.get('nFeatures')
+        if (isinstance(n_features, bool) or not isinstance(n_features, int) or
+                n_features < 1):
+            raise ValueError(f'{type_id} has invalid nFeatures metadata')
+        if spec['task'] == 'reg' and (
+                metadata.get('nClasses') != 0 or
+                metadata.get('classes') is not None):
+            raise ValueError(f'{type_id} has classifier metadata')
+
         entry = next((e for e in toc if e['id'] == 'model'), None)
-        if entry is None:
-            raise ValueError('Bundle missing "model" artifact')
+        field_entries = [e for e in toc if e['id'] == 'field_map']
+        ffm_with_map = (
+            spec['algo'] == 'ffm' and len(field_entries) == 1 and
+            len(toc) == 2)
+        if (entry is None or len([e for e in toc if e['id'] == 'model']) != 1 or
+                not (len(toc) == 1 or ffm_with_map) or
+                any(e.get('mediaType') != 'application/octet-stream'
+                    for e in toc) or
+                any(e['id'] not in ('model', 'field_map') for e in toc) or
+                (spec['algo'] != 'ffm' and field_entries)):
+            raise ValueError(f'{type_id} has an invalid artifact set')
 
         blob = bytes(blobs[entry['offset']:entry['offset'] + entry['length']])
         raw_model = _parse_model(blob)
 
-        params = manifest.get('params', {})
-        metadata = manifest.get('metadata', {})
-        obj = XLearnModel(raw_model, params, metadata, raw_blob=blob)
+        if raw_model['score_func'] != spec['algo']:
+            raise ValueError(
+                f'{type_id} model blob algorithm does not match its typeId')
+        expected_loss = (
+            'cross-entropy' if spec['task'] == 'binary' else 'squared')
+        if raw_model['loss_func'] != expected_loss:
+            raise ValueError(
+                f'{type_id} model loss does not match its task')
+        if raw_model['num_feat'] != n_features:
+            raise ValueError(
+                f'{type_id} model feature count does not match metadata')
+
+        params = dict(manifest.get('params', {}))
+        if 'seed' in manifest:
+            seed = manifest['seed']
+            if (not isinstance(seed, int) or isinstance(seed, bool) or
+                    seed < 1 or seed > 2147483647 or
+                    params.get('seed') != seed):
+                raise ValueError(f'{type_id} has invalid training seed metadata')
+        if spec['version'] == 2:
+            _validate_v2_classifier_metadata(type_id, metadata)
+            if 'seed' not in manifest:
+                raise ValueError(f'{type_id} is missing its training seed')
+        elif spec['task'] == 'binary':
+            _validate_legacy_classifier_metadata(type_id, metadata)
+
+        obj = XLearnModel(
+            raw_model, params, metadata, raw_blob=blob, type_id=type_id,
+            manifest_seed=manifest.get('seed'))
 
         # Load field_map if present (FFM)
-        field_entry = next((e for e in toc if e['id'] == 'field_map'), None)
+        field_entry = field_entries[0] if field_entries else None
         if field_entry is not None:
+            if spec['algo'] != 'ffm':
+                raise ValueError('Non-FFM bundle must not contain field_map')
             raw = blobs[field_entry['offset']:
                         field_entry['offset'] + field_entry['length']]
+            if len(raw) != obj._num_features * 4:
+                raise ValueError('field_map length must match nFeatures')
             obj._field_map = np.frombuffer(
                 bytes(raw), dtype='<i4').copy()
+            if (np.any(obj._field_map < 0) or
+                    np.any(obj._field_map >= raw_model['num_field'])):
+                raise ValueError('field_map contains an invalid field ID')
+        elif spec['algo'] == 'ffm':
+            if spec['version'] == 2:
+                raise ValueError('FFM @2 bundle missing field_map')
+            obj._field_map = np.zeros(obj._num_features, dtype=np.int32)
 
         return obj
 
-    def predict(self, X):
+    def decision_function(self, X):
         self._ensure_fitted()
-        X = np.asarray(X, dtype=np.float32)
-        if X.ndim == 1:
-            X = X.reshape(1, -1)
+        X = _validate_matrix(X, self._num_features)
 
         normalize = self._params.get('normalize', True)
         score_func = self._raw_model['score_func']
@@ -341,28 +484,43 @@ class XLearnModel:
         else:
             raise ValueError(f'Unknown score function: {score_func}')
 
+    def predict(self, X):
+        margins = self.decision_function(X)
+        if self._task != 'binary':
+            return margins
+        return np.where(
+            margins > 0, self._classes[1], self._classes[0]
+        ).astype(np.int32)
+
     def predict_proba(self, X):
         self._ensure_fitted()
         if self._task != 'binary':
             raise ValueError('predict_proba only for classification')
 
-        margins = self.predict(X)
+        margins = self.decision_function(X)
         n = len(margins)
         proba = np.empty(n * 2, dtype=np.float64)
         for i in range(n):
-            p1 = 1.0 / (1.0 + math.exp(-margins[i]))
+            margin = float(margins[i])
+            if margin >= 0:
+                exp_value = math.exp(-margin)
+                p1 = 1.0 / (1.0 + exp_value)
+            else:
+                exp_value = math.exp(margin)
+                p1 = exp_value / (1.0 + exp_value)
             proba[i * 2] = 1.0 - p1
             proba[i * 2 + 1] = p1
         return proba
 
     def score(self, X, y):
         preds = self.predict(X)
-        y = np.asarray(y, dtype=np.float64)
+        y = np.asarray(y)
+        if y.size != preds.size:
+            raise ValueError(
+                f'y length ({y.size}) does not match predictions '
+                f'({preds.size})')
         if self._task == 'binary':
-            # Accuracy: margin > 0 -> class 1
-            pred_labels = np.where(preds > 0, 1.0, 0.0)
-            true_labels = np.where(y > 0, 1.0, 0.0)
-            return float(np.mean(pred_labels == true_labels))
+            return float(np.mean(preds == y))
         # R-squared
         y_mean = y.mean()
         ss_res = np.sum((y - preds) ** 2)
@@ -385,7 +543,7 @@ class XLearnModel:
                 'data': self._field_map.astype('<i4').tobytes(),
             })
 
-        type_id = _type_id(self._algo, self._task)
+        type_id = self._type_id or _type_id(self._algo, self._task)
 
         metadata = {
             'algo': self._algo,
@@ -395,12 +553,17 @@ class XLearnModel:
             'classes': (self._classes.tolist()
                         if self._classes is not None else None),
         }
+        if type_id.endswith('@2'):
+            metadata['labelEncoding'] = 'sorted-int32-sign-v1'
 
-        bundle = encode_bundle(
-            {'typeId': type_id, 'params': self.get_params(),
-             'metadata': metadata},
-            artifacts,
-        )
+        manifest = {
+            'typeId': type_id,
+            'params': self.get_params(),
+            'metadata': metadata,
+        }
+        if self._manifest_seed is not None:
+            manifest['seed'] = self._manifest_seed
+        bundle = encode_bundle(manifest, artifacts)
         return write_bundle_output(bundle, path)
 
     def dispose(self):
@@ -431,6 +594,7 @@ class XLearnModel:
             classifier=classifier,
             regressor=not classifier,
             predict_proba=classifier,
+            decisionFunction=True,
         )
 
     @property
@@ -459,11 +623,54 @@ def _type_id(algo, task):
     algo_map = {'linear': 'lr', 'fm': 'fm', 'ffm': 'ffm'}
     algo_short = algo_map.get(algo, algo)
     task_str = 'classifier' if task == 'binary' else 'regressor'
-    return f'wlearn.xlearn.{algo_short}.{task_str}@1'
+    version = 2 if task == 'binary' else 1
+    return f'wlearn.xlearn.{algo_short}.{task_str}@{version}'
 
 
-# Register all six loaders
+def _bundle_spec(type_id):
+    specs = {}
+    for algo_short, algo in (('lr', 'linear'), ('fm', 'fm'), ('ffm', 'ffm')):
+        specs[f'wlearn.xlearn.{algo_short}.classifier@1'] = {
+            'algo': algo, 'task': 'binary', 'version': 1}
+        specs[f'wlearn.xlearn.{algo_short}.classifier@2'] = {
+            'algo': algo, 'task': 'binary', 'version': 2}
+        specs[f'wlearn.xlearn.{algo_short}.regressor@1'] = {
+            'algo': algo, 'task': 'reg', 'version': 1}
+    try:
+        return specs[type_id]
+    except KeyError as error:
+        raise ValueError(f'Unsupported xLearn bundle typeId: {type_id}') \
+            from error
+
+
+def _validated_classes(type_id, metadata):
+    classes = metadata.get('classes')
+    if (metadata.get('nClasses') != 2 or not isinstance(classes, list) or
+            len(classes) != 2 or
+            any(isinstance(value, bool) or not isinstance(value, int) or
+                value < -2147483648 or value > 2147483647
+                for value in classes) or
+            classes[0] >= classes[1]):
+        raise ValueError(f'{type_id} has invalid binary class metadata')
+    return classes
+
+
+def _validate_v2_classifier_metadata(type_id, metadata):
+    _validated_classes(type_id, metadata)
+    if metadata.get('labelEncoding') != 'sorted-int32-sign-v1':
+        raise ValueError(f'{type_id} has invalid label encoding')
+
+
+def _validate_legacy_classifier_metadata(type_id, metadata):
+    classes = _validated_classes(type_id, metadata)
+    if not classes[0] <= 0 < classes[1]:
+        raise ValueError(
+            f'{type_id} used an ambiguous same-sign label mapping; '
+            'retrain the model')
+
+
+# Register the three corrected classifier IDs plus legacy readers and regressors.
 for _algo in ('lr', 'fm', 'ffm'):
-    for _task in ('classifier', 'regressor'):
-        register(f'wlearn.xlearn.{_algo}.{_task}@1',
-                 XLearnModel._from_bundle)
+    register(f'wlearn.xlearn.{_algo}.classifier@1', XLearnModel._from_bundle)
+    register(f'wlearn.xlearn.{_algo}.classifier@2', XLearnModel._from_bundle)
+    register(f'wlearn.xlearn.{_algo}.regressor@1', XLearnModel._from_bundle)

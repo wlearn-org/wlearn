@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68.0"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,6 +8,7 @@ version = "0.2.0"
 description = "Portable ML computation primitives"
 readme = "README.md"
 license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.22"]
 authors = [
@@ -23,18 +24,15 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-xgboost = ["xgboost>=2.0", "numpy>=1.22"]
-sklearn = ["scikit-learn>=1.3", "numpy>=1.22"]
-liblinear = ["liblinear-official>=2.50", "numpy>=1.22"]
-libsvm = ["libsvm-official>=3.30", "numpy>=1.22"]
-nanoflann = ["pynanoflann>=0.10", "numpy>=1.22"]
-ebm = ["numpy>=1.22"]
-ebm-fit = ["interpret>=0.6", "numpy>=1.22"]
-xlearn = ["numpy>=1.22"]
-tsetlin = ["numpy>=1.22"]
-tsetlin-fit = ["tmu>=0.7", "numpy>=1.22"]
-lightgbm = ["lightgbm>=4.0", "numpy>=1.22"]
-stochtree = ["stochtree>=0.1", "numpy>=1.22"]
+xgboost = ["xgboost>=2.0"]
+sklearn = ["scikit-learn>=1.3"]
+liblinear = ["liblinear-official>=2.50"]
+libsvm = ["libsvm-official>=3.30"]
+nanoflann = ["pynanoflann>=0.10"]
+ebm-fit = ["interpret>=0.6"]
+tsetlin-fit = ["tmu>=0.7"]
+lightgbm = ["lightgbm>=4.0"]
+stochtree = ["stochtree>=0.1"]
 nn = ["numpy>=1.22"]
 bo = ["wlearn-bo>=0.1.0"]
 preprocess = ["tranfi>=0.2,<0.3"]
@@ -53,6 +51,7 @@ all = [
     "tranfi>=0.2,<0.3",
 ]
 test = ["pytest>=7.0", "hypothesis>=6.0"]
+solver = ["z3-solver>=4.12,<4.15.4"]
 
 [tool.setuptools.packages.find]
 include = ["wlearn*"]

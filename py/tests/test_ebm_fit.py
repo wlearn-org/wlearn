@@ -42,9 +42,39 @@ class TestBinaryClassification:
         model.fit(X, y)
         assert model.is_fitted
         preds = model.predict(X)
+        assert preds.dtype == np.int32
         assert len(preds) == len(y)
         accuracy = np.mean(preds == y)
         assert accuracy > 0.7
+
+    def test_arbitrary_int32_labels(self):
+        X, y = make_binary_data()
+        y = np.where(y == 1, 7, -3).astype(np.int32)
+        model = EBMModel.create({
+            'seed': 42, 'maxRounds': 100, 'maxInteractions': 0,
+            'objective': 'classification'})
+        model.fit(X, y)
+        assert model.predict(X).dtype == np.int32
+        np.testing.assert_array_equal(model.classes, [-3, 7])
+
+    @pytest.mark.parametrize('labels', [
+        np.zeros(100),
+        np.r_[0.5, np.zeros(99)],
+        np.r_[2147483648, np.zeros(99)],
+    ])
+    def test_invalid_classifier_labels(self, labels):
+        X, _ = make_binary_data()
+        model = EBMModel.create({'objective': 'classification'})
+        with pytest.raises(ValueError):
+            model.fit(X, labels)
+
+    def test_score_validates_label_length(self):
+        X, y = make_binary_data()
+        model = EBMModel.create({
+            'seed': 42, 'maxRounds': 50, 'maxInteractions': 0})
+        model.fit(X, y)
+        with pytest.raises(ValueError, match='y length'):
+            model.score(X, y[:-1])
 
     def test_predict_proba(self):
         X, y = make_binary_data()
@@ -263,3 +293,6 @@ class TestParams:
         assert mapped['max_interaction_bins'] == 128  # Matches max_bins
         assert mapped['random_state'] == 123
         assert 'objective' not in mapped
+
+    def test_portable_default_search_space_omits_outer_bags(self):
+        assert 'outerBags' not in EBMModel.default_search_space()

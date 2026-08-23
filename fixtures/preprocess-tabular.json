@@ -1,0 +1,108 @@
+{
+  "typeId": "wlearn.preprocess.tabular@1",
+  "requires": [],
+  "params": {
+    "impute": {
+      "numeric": "mean",
+      "categorical": "mode"
+    },
+    "encode": false,
+    "scale": "standard",
+    "maxCategories": 20,
+    "unknownCategory": null,
+    "allMissing": "zero",
+    "maxOutputColumns": 65536,
+    "maxOutputElements": 100000000,
+    "policyVersion": 1
+  },
+  "metadata": {
+    "inputSchema": [
+      {
+        "dtype": "float64",
+        "id": "x0",
+        "name": "x0"
+      },
+      {
+        "dtype": "float64",
+        "id": "x1",
+        "name": "x1"
+      }
+    ],
+    "outputSchema": [
+      {
+        "category": null,
+        "dtype": "float64",
+        "id": "x0",
+        "name": "x0",
+        "role": "value",
+        "sourceId": "x0"
+      },
+      {
+        "category": null,
+        "dtype": "float64",
+        "id": "x1",
+        "name": "x1",
+        "role": "value",
+        "sourceId": "x1"
+      }
+    ],
+    "tranfi": {
+      "abiVersion": 1,
+      "planFormatVersion": 1,
+      "recipeSha256": "9ba4c07d108d072cb58b33a8cbb1406e7a8f641a905fd1afdba58b1bcf207bae"
+    }
+  },
+  "toc": [
+    {
+      "id": "plan",
+      "length": 2391,
+      "sha256": "bb4f3dd4bf421f313e1adf92ee7f45b0d0da762e522f0f28ee76737af53d3a4c"
+    }
+  ],
+  "X": [
+    [
+      1,
+      10
+    ],
+    [
+      2,
+      20
+    ],
+    [
+      3,
+      30
+    ],
+    [
+      4,
+      40
+    ],
+    [
+      5,
+      50
+    ],
+    [
+      6,
+      60
+    ]
+  ],
+  "y": null,
+  "predictions": [
+    1,
+    10,
+    2,
+    20,
+    3,
+    30,
+    4,
+    40,
+    5,
+    50,
+    6,
+    60
+  ],
+  "operation": "transform",
+  "outputShape": [
+    6,
+    2
+  ]
+}

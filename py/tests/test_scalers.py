@@ -60,6 +60,19 @@ class TestStandardScaler:
         assert isinstance(loaded, StandardScaler)
         assert loaded.is_fitted
 
+    def test_save_path_and_registry_load_path(self, tmp_path):
+        X = np.array([[1, 2], [3, 4]], dtype=np.float64)
+        scaler = StandardScaler()
+        scaler.fit(X)
+        path = tmp_path / 'scaler.wlrn'
+
+        bundle = scaler.save(path)
+        assert path.read_bytes() == bundle
+
+        loaded = registry_load(path)
+        assert isinstance(loaded, StandardScaler)
+        assert np.allclose(loaded.transform(X), scaler.transform(X))
+
     def test_constant_column(self):
         X = np.array([[5, 1], [5, 2], [5, 3]], dtype=np.float64)
         scaler = StandardScaler()

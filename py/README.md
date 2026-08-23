@@ -36,6 +36,10 @@ pip install wlearn[bo]           # Bayesian AutoML strategy (wlearn-bo)
 pip install wlearn[all]          # All backends
 ```
 
+Random forests are now distributed separately: install `wlearn-rf` and import
+`RFModel` from `wlearn_rf`. The former `wlearn.rf` module is no longer included
+in the core `wlearn` distribution.
+
 ## Quick start
 
 ```python
@@ -57,14 +61,14 @@ model = XGBModel.create({
     'nthread': 1,
 })
 model.fit(X, y)
-print(model.predict(X_test).tolist())  # [0.0, 1.0]
+print(model.predict(X_test).tolist())  # [0, 1]
 
 # Save to .wlrn file (loadable from JS @wlearn/xgboost too)
 model.save('model.wlrn')
 
 # Load from bundle
 restored = wlearn.load('model.wlrn')
-print(restored.predict(X_test).tolist())  # [0.0, 1.0]
+print(restored.predict(X_test).tolist())  # [0, 1]
 ```
 
 Importing `wlearn.xgboost` registers its WLRN loaders. In a fresh process, import

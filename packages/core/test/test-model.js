@@ -73,6 +73,46 @@ class MockTaskAgnostic {
   static defaultSearchSpace() { return { depth: { type: 'int', low: 3, high: 10 } } }
 }
 
+class MockSelectorTaskAgnostic {
+  #params
+  #selectorInferred = false
+  #fitted = false
+  constructor(params) { this.#params = params }
+  static async create(params) { return new MockSelectorTaskAgnostic(params) }
+  fit() {
+    if (this.#params.selector == null) {
+      this.#params.selector = this.#params.task
+      this.#selectorInferred = true
+    }
+    this.#fitted = true
+    return this
+  }
+  predict() {
+    return this.#params.selector === 'classification'
+      ? new Int32Array(1)
+      : new Float64Array(1)
+  }
+  save() { return new Uint8Array([10]) }
+  dispose() { this.#fitted = false }
+  getParams() { return { ...this.#params } }
+  setParams(p) {
+    if (Object.prototype.hasOwnProperty.call(p, 'selector')) {
+      this.#selectorInferred = false
+    } else if (Object.prototype.hasOwnProperty.call(p, 'task') && this.#selectorInferred) {
+      delete this.#params.selector
+      this.#selectorInferred = false
+    }
+    Object.assign(this.#params, p)
+    return this
+  }
+  get isFitted() { return this.#fitted }
+  get capabilities() {
+    return this.#params.selector === 'classification'
+      ? { classifier: true, regressor: false }
+      : { classifier: false, regressor: true }
+  }
+}
+
 // --- Tests ---
 
 describe('detectTask', () => {
@@ -303,6 +343,32 @@ describe('createModelClass with single task-agnostic class', () => {
     m.dispose()
   })
 
+  it('does not turn a backend-inferred selector into an explicit wrapper param', async () => {
+    const SelectorModel = createModelClass(
+      MockSelectorTaskAgnostic,
+      MockSelectorTaskAgnostic,
+      { name: 'SelectorModel' }
+    )
+    const m = await SelectorModel.create({ depth: 3 })
+
+    m.fit([[1]], new Int32Array([0]))
+    assert.equal(m.task, 'classification')
+    assert.equal(m.getParams().selector, 'classification')
+
+    m.setParams({ task: 'regression' })
+    m.fit([[1]], new Float64Array([1.5]))
+    assert.equal(m.task, 'regression')
+    assert.equal(m.getParams().selector, 'regression')
+    assert.ok(m.predict([[1]]) instanceof Float64Array)
+
+    m.setParams({ task: 'classification' })
+    m.fit([[1]], new Int32Array([0]))
+    assert.equal(m.task, 'classification')
+    assert.equal(m.getParams().selector, 'classification')
+    assert.ok(m.predict([[1]]) instanceof Int32Array)
+    m.dispose()
+  })
+
   it('extra method (featureImportances) proxied', async () => {
     const m = await XGB.create({ task: 'classification' })
     await m.fit([[1, 2]], new Int32Array([0]))
@@ -450,6 +516,79 @@ describe('createModelClass edge cases', () => {
     releaseFit()
     assert.equal(await pending, m)
     assert.equal(m.isFitted, true)
+    m.dispose()
+  })
+
+  it('invalidates a fitted wrapper after destructive refit failures', async () => {
+    class TransactionalClassifier extends MockClassifier {
+      static async create(params) { return new TransactionalClassifier(params) }
+      fit(X, y, opts = {}) {
+        if (opts.failSync) {
+          super.dispose()
+          throw new Error('sync refit failed')
+        }
+        if (opts.failAsync) {
+          super.dispose()
+          return Promise.reject(new Error('async refit failed'))
+        }
+        return super.fit(X, y)
+      }
+      predict() { return new Int32Array([7]) }
+      save() { return new Uint8Array([7, 7]) }
+    }
+
+    const M = createModelClass(TransactionalClassifier, MockRegressor, {
+      name: 'TransactionalModel',
+    })
+    const m = await M.create({ task: 'classification' })
+    m.fit([[1]], new Int32Array([7]))
+
+    assert.throws(
+      () => m.fit([[2]], new Int32Array([7]), { failSync: true }),
+      /sync refit failed/
+    )
+    assert.equal(m.isFitted, false)
+    assert.throws(() => m.predict([[1]]), /not fitted/)
+    assert.throws(() => m.save(), /not fitted/)
+
+    m.fit([[1]], new Int32Array([7]))
+    assert.equal(m.isFitted, true)
+
+    await assert.rejects(
+      () => m.fit([[2]], new Int32Array([7]), { failAsync: true }),
+      /async refit failed/
+    )
+    assert.equal(m.isFitted, false)
+    assert.throws(() => m.predict([[1]]), /not fitted/)
+    assert.throws(() => m.save(), /not fitted/)
+    m.dispose()
+  })
+
+  it('preserves a fitted wrapper when a rejected refit leaves the inner fitted', async () => {
+    class NondestructiveClassifier extends MockClassifier {
+      static async create(params) { return new NondestructiveClassifier(params) }
+      fit(X, y, opts = {}) {
+        if (opts.reject) throw new Error('validation failed')
+        return super.fit(X, y)
+      }
+      predict() { return new Int32Array([9]) }
+      save() { return new Uint8Array([9, 9]) }
+    }
+
+    const M = createModelClass(NondestructiveClassifier, MockRegressor, {
+      name: 'NondestructiveModel',
+    })
+    const m = await M.create({ task: 'classification' })
+    m.fit([[1]], new Int32Array([9]))
+    const before = m.save()
+
+    assert.throws(
+      () => m.fit([[2]], new Int32Array([9]), { reject: true }),
+      /validation failed/
+    )
+    assert.equal(m.isFitted, true)
+    assert.deepEqual(m.predict([[1]]), new Int32Array([9]))
+    assert.deepEqual(m.save(), before)
     m.dispose()
   })
 })

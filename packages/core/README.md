@@ -237,4 +237,4 @@ Auto-detection rules: if `y` is `Int32Array`, task is classification. Otherwise,
 
 ## License
 
-MIT
+Apache-2.0

@@ -6,6 +6,8 @@ native Python xgboost, and saves back to WLRN bundles that JS can load.
 
 import tempfile
 import os
+import json
+from numbers import Integral
 
 import numpy as np
 import xgboost as xgb
@@ -22,7 +24,71 @@ CLASSIFIER_OBJECTIVES = frozenset([
 
 PROBA_OBJECTIVES = frozenset(['binary:logistic', 'multi:softprob'])
 
-WLEARN_PARAMS = frozenset(['numRound', 'coerce'])
+WLEARN_PARAMS = frozenset(['numRound', 'coerce', 'task'])
+
+
+def _validate_unified_objective(objective):
+    if not isinstance(objective, str) or not objective:
+        raise ValueError('objective must be a non-empty XGBoost objective string')
+    if objective.startswith(('rank:', 'survival:')):
+        raise ValueError(
+            f'The high-level XGBModel does not implement ranking groups or '
+            f'survival metrics for objective {objective!r}; use the native '
+            'low-level xgboost.Booster API.')
+
+
+def _resolve_fit_params(params, y):
+    resolved = dict(params)
+    objective = resolved.get('objective')
+    task = resolved.get('task')
+    if objective is not None:
+        _validate_unified_objective(objective)
+        return resolved
+    if task is None:
+        try:
+            numeric = np.asarray(y, dtype=np.float64)
+        except (TypeError, ValueError):
+            task = 'classification'
+        else:
+            integral = (numeric.ndim == 1 and np.isfinite(numeric).all() and
+                        np.equal(numeric, np.floor(numeric)).all())
+            task = ('classification'
+                    if integral and np.unique(numeric).size <= 20
+                    else 'regression')
+        resolved['task'] = task
+    if task == 'classification':
+        try:
+            n_classes = np.unique(np.asarray(y, dtype=np.float64)).size
+        except (TypeError, ValueError):
+            n_classes = 0
+        if n_classes > 2:
+            resolved['objective'] = 'multi:softprob'
+            resolved.setdefault('num_class', n_classes)
+        else:
+            resolved['objective'] = 'binary:logistic'
+    elif task == 'regression':
+        resolved['objective'] = 'reg:squarederror'
+    else:
+        raise ValueError(
+            f'Unknown task: {task!r}. Use "classification" or "regression".')
+    return resolved
+
+
+def _booster_identity(booster):
+    try:
+        config = json.loads(booster.save_config())
+        learner = config['learner']
+        model = learner['learner_model_param']
+        objective = learner['objective']['name']
+        return {
+            'objective': objective,
+            'nFeatures': int(model['num_feature']),
+            'nClasses': int(model['num_class']),
+            'nTargets': int(model['num_target']),
+        }
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        raise ValueError('XGBoost model has an unsupported identity config') \
+            from error
 
 
 class XGBModel:
@@ -56,64 +122,157 @@ class XGBModel:
             raise DisposedError('XGBModel has been disposed.')
 
         X = np.asarray(X, dtype=np.float32)
-        y = np.asarray(y, dtype=np.float64)
+        y = np.asarray(y)
         if X.ndim == 1:
             X = X.reshape(1, -1)
+        if y.ndim != 1 or len(y) != len(X):
+            raise ValueError(
+                f'y length ({y.size}) does not match X rows ({len(X)})')
 
-        obj = self._params.get('objective', 'reg:squarederror')
-        num_round = self._params.get('numRound', 100)
+        fit_params = _resolve_fit_params(self._params, y)
+        obj = fit_params['objective']
+        num_round = fit_params.get('numRound', 100)
+        if (isinstance(num_round, bool) or not isinstance(num_round, Integral) or
+                num_round < 1 or num_round > 2 ** 53 - 1):
+            raise ValueError('numRound must be a positive safe integer')
+        num_round = int(num_round)
 
         # Build xgboost params (exclude wlearn-only params)
-        xgb_params = {k: v for k, v in self._params.items()
+        xgb_params = {k: v for k, v in fit_params.items()
                       if k not in WLEARN_PARAMS}
         xgb_params.setdefault('objective', obj)
         xgb_params.setdefault('verbosity', 0)
 
         # Detect classes for classification
         if obj in CLASSIFIER_OBJECTIVES:
-            unique = np.unique(y)
-            classes = np.sort(unique).astype(np.int32)
-            self._classes = classes
-            self._nr_class = len(classes)
+            try:
+                y_numeric = y.astype(np.float64)
+            except (TypeError, ValueError) as error:
+                raise ValueError('Classifier labels must be int32 values') \
+                    from error
+            if (not np.isfinite(y_numeric).all() or
+                    not np.equal(y_numeric, np.floor(y_numeric)).all() or
+                    np.any(y_numeric < np.iinfo(np.int32).min) or
+                    np.any(y_numeric > np.iinfo(np.int32).max)):
+                raise ValueError('Classifier labels must be int32 values')
+            classes = np.unique(y_numeric).astype(np.int32)
+            nr_class = len(classes)
+            if nr_class < 2:
+                raise ValueError(
+                    f'Classification requires at least 2 classes, got '
+                    f'{nr_class}')
+            if obj.startswith('binary:') and nr_class != 2:
+                raise ValueError(
+                    f'Binary objective requires exactly 2 classes, got '
+                    f'{nr_class}')
 
             # Remap to 0-based contiguous for multi:softmax/softprob
             if obj in ('multi:softmax', 'multi:softprob'):
-                xgb_params['num_class'] = len(classes)
+                requested = xgb_params.get('num_class')
+                if requested is not None and requested != nr_class:
+                    raise ValueError(
+                        f'num_class ({requested}) does not match fitted '
+                        f'classes ({nr_class})')
+                xgb_params['num_class'] = nr_class
                 class_map = {int(c): i for i, c in enumerate(classes)}
-                y_train = np.array([class_map[int(v)] for v in y], dtype=np.float32)
+                y_train = np.array(
+                    [class_map[int(v)] for v in y_numeric], dtype=np.float32)
             else:
                 # Binary: remap to 0/1
                 class_map = {int(c): i for i, c in enumerate(classes)}
-                y_train = np.array([class_map[int(v)] for v in y], dtype=np.float32)
+                y_train = np.array(
+                    [class_map[int(v)] for v in y_numeric], dtype=np.float32)
         else:
-            self._classes = np.array([], dtype=np.int32)
-            self._nr_class = 0
-            y_train = y.astype(np.float32)
+            try:
+                y_numeric = y.astype(np.float64)
+            except (TypeError, ValueError) as error:
+                raise ValueError('Regression labels must be finite numbers') \
+                    from error
+            if not np.isfinite(y_numeric).all():
+                raise ValueError('Regression labels must be finite numbers')
+            classes = np.array([], dtype=np.int32)
+            nr_class = 0
+            y_train = y_numeric.astype(np.float32)
 
         dtrain = xgb.DMatrix(X, label=y_train)
-        self._booster = xgb.train(xgb_params, dtrain, num_boost_round=num_round)
+        booster = xgb.train(xgb_params, dtrain, num_boost_round=num_round)
+        self._booster = booster
+        self._params = fit_params
+        self._classes = classes
+        self._nr_class = nr_class
         self._fitted = True
         return self
 
     @staticmethod
     def _from_bundle(manifest, toc, blobs):
-        entry = next((e for e in toc if e['id'] == 'model'), None)
-        if entry is None:
-            raise ValueError('Bundle missing "model" artifact')
+        type_id = manifest.get('typeId')
+        classifier = type_id == 'wlearn.xgboost.classifier@1'
+        regressor = type_id == 'wlearn.xgboost.regressor@1'
+        if not classifier and not regressor:
+            raise ValueError(f'Unsupported XGBoost bundle typeId: {type_id}')
+
+        params = manifest.get('params', {})
+        objective = params.get('objective', 'reg:squarederror')
+        _validate_unified_objective(objective)
+        meta = manifest.get('metadata', {})
+        if meta.get('objective') != objective:
+            raise ValueError(
+                f'{type_id} objective metadata does not match params')
+        if classifier:
+            classes = meta.get('classes')
+            nr_class = meta.get('nrClass')
+            if (objective not in CLASSIFIER_OBJECTIVES or
+                    isinstance(nr_class, bool) or
+                    not isinstance(nr_class, int) or nr_class < 2 or
+                    not isinstance(classes, list) or
+                    len(classes) != nr_class or
+                    any(isinstance(value, bool) or
+                        not isinstance(value, int) or
+                        value < np.iinfo(np.int32).min or
+                        value > np.iinfo(np.int32).max
+                        for value in classes) or
+                    any(classes[index] <= classes[index - 1]
+                        for index in range(1, len(classes)))):
+                raise ValueError(f'{type_id} has invalid classifier metadata')
+        elif (objective in CLASSIFIER_OBJECTIVES or
+              meta.get('nrClass') != 0 or
+              meta.get('classes') not in (None, [])):
+            raise ValueError(f'{type_id} has invalid regressor metadata')
+
+        if (not isinstance(toc, list) or len(toc) != 1 or
+                toc[0].get('id') != 'model' or
+                toc[0].get('mediaType') != 'application/octet-stream'):
+            raise ValueError(
+                'XGBoost bundle must contain exactly one model artifact')
+        entry = toc[0]
 
         model_bytes = bytes(blobs[entry['offset']:entry['offset'] + entry['length']])
 
         fd, path = tempfile.mkstemp(suffix='.ubj')
         try:
-            os.write(fd, model_bytes)
-            os.close(fd)
+            with os.fdopen(fd, 'wb') as file:
+                file.write(model_bytes)
             booster = xgb.Booster()
             booster.load_model(path)
         finally:
             os.unlink(path)
 
-        params = manifest.get('params', {})
-        meta = manifest.get('metadata', {})
+        identity = _booster_identity(booster)
+        if identity['objective'] != objective:
+            raise ValueError(f'{type_id} model objective does not match manifest')
+        if identity['nTargets'] != 1:
+            raise ValueError(f'{type_id} model must contain exactly one target')
+        if (classifier and objective.startswith('multi:') and
+                identity['nClasses'] != meta['nrClass']):
+            raise ValueError(f'{type_id} model class count does not match manifest')
+        n_features = meta.get('nFeatures')
+        if n_features is not None and (
+                isinstance(n_features, bool) or
+                not isinstance(n_features, int) or n_features < 1 or
+                n_features != identity['nFeatures']):
+            raise ValueError(
+                f'{type_id} model feature count does not match manifest')
+
         return XGBModel(
             booster, params,
             nr_class=meta.get('nrClass', 0),
@@ -133,7 +292,7 @@ class XGBModel:
             return raw.astype(np.float64)
 
         rows = X.shape[0]
-        result = np.empty(rows, dtype=np.float64)
+        result = np.empty(rows, dtype=np.int32)
 
         if obj == 'binary:logistic':
             idx = (raw > 0.5).astype(int)
@@ -148,7 +307,11 @@ class XGBModel:
         elif obj == 'multi:softmax':
             for i in range(rows):
                 idx = int(round(raw[i]))
-                result[i] = self._classes[idx] if idx < len(self._classes) else raw[i]
+                if idx < 0 or idx >= len(self._classes):
+                    raise ValueError(
+                        f'XGBoost returned invalid class index {raw[i]} '
+                        f'at row {i}')
+                result[i] = self._classes[idx]
         else:
             # binary:logitraw, binary:hinge
             idx = (raw > 0).astype(int)
@@ -172,6 +335,11 @@ class XGBModel:
         rows = X.shape[0]
 
         if obj == 'binary:logistic':
+            if raw.size != rows:
+                raise ValueError(
+                    f'XGBoost returned {raw.size} binary probabilities for '
+                    f'{rows} rows')
+            raw = raw.reshape(-1)
             result = np.empty(rows * 2, dtype=np.float64)
             for i in range(rows):
                 result[i * 2] = 1 - raw[i]
@@ -179,17 +347,28 @@ class XGBModel:
             return result
 
         # multi:softprob
-        return raw.astype(np.float64)
+        expected = rows * self._nr_class
+        if raw.size != expected:
+            raise ValueError(
+                f'XGBoost returned {raw.size} multiclass probabilities; '
+                f'expected {expected} for {rows} rows and '
+                f'{self._nr_class} classes')
+        return raw.astype(np.float64, copy=False).reshape(-1)
 
     def score(self, X, y):
         preds = self.predict(X)
-        y = np.asarray(y, dtype=np.float64)
+        y = np.asarray(y)
+        if y.size != preds.size:
+            raise ValueError(
+                f'y length ({y.size}) does not match predictions '
+                f'({preds.size})')
         obj = self._params.get('objective', 'reg:squarederror')
 
         if obj in CLASSIFIER_OBJECTIVES:
             return float(np.mean(preds == y))
 
         # R-squared
+        y = y.astype(np.float64)
         y_mean = y.mean()
         ss_res = np.sum((y - preds) ** 2)
         ss_tot = np.sum((y - y_mean) ** 2)
@@ -220,6 +399,7 @@ class XGBModel:
                     'nrClass': self._nr_class,
                     'classes': self._classes.tolist(),
                     'objective': obj,
+                    'nFeatures': _booster_identity(self._booster)['nFeatures'],
                 },
             },
             [{'id': 'model', 'data': model_bytes}],
@@ -237,6 +417,9 @@ class XGBModel:
         return dict(self._params)
 
     def set_params(self, p):
+        if ('task' in p and p.get('task') != self._params.get('task') and
+                'objective' not in p):
+            self._params.pop('objective', None)
         self._params.update(p)
         return self
 

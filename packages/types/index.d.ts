@@ -8,21 +8,6 @@ export declare const DTYPE: {
   readonly INT32: 'int32'
 }
 
-export declare class WlearnError extends Error {
-  readonly code: string
-  readonly engine?: string
-  readonly engineCode?: number | null
-  readonly cause?: unknown
-}
-export declare class BundleError extends WlearnError {}
-export declare class RegistryError extends WlearnError {}
-export declare class ValidationError extends WlearnError {}
-export declare class NotFittedError extends WlearnError {}
-export declare class DisposedError extends WlearnError {}
-export declare class ResourceLimitError extends WlearnError {}
-export declare class CancelledError extends WlearnError {}
-export declare class BackendError extends WlearnError {}
-
 // Data types
 export type Dtype = 'float32' | 'float64' | 'int32'
 
@@ -111,11 +96,7 @@ export interface Transformer {
 
 export type PipelineStep = [name: string, estimator: Estimator | Transformer]
 
-export declare class Pipeline implements Estimator {
-  constructor(
-    steps: PipelineStep[],
-    options?: { provenance?: Record<string, unknown> | null }
-  )
+export interface Pipeline extends Estimator {
   fit(X: Matrix | number[][], y: Labels | number[]): MaybePromise<this>
   predict(X: Matrix | number[][]): MaybePromise<Labels>
   predictProba(X: Matrix | number[][]): MaybePromise<Float64Array>
@@ -128,10 +109,6 @@ export declare class Pipeline implements Estimator {
   readonly classes: Int32Array | null
   readonly isFitted: boolean
   readonly provenance: Record<string, unknown> | null
-  static load(
-    bytes: Uint8Array,
-    options?: { loaderOptions?: Record<string, unknown> }
-  ): Promise<Pipeline>
 }
 
 export type PreprocessNumericImpute = false | 'mean' | 'median' | 'zero'
@@ -464,91 +441,7 @@ export declare const MEASURE_RESPONSES: readonly MeasureResponse[]
 export declare const RESAMPLING_STRATEGIES: readonly string[]
 export declare const TRIAL_STATUSES: readonly TrialStatus[]
 
-export declare function inferTaskKind(y?: Labels | number[] | null): TaskKind
-export declare function createFeatureSchema(X: Matrix | number[][], opts?: {
-  names?: string[]
-  types?: string[]
-  roles?: string[]
-  metadata?: Record<string, unknown>
-}): FeatureSchema
-export declare function validateFeatureSchema(schema: FeatureSchema, cols?: number, rows?: number): FeatureSchema
-export declare function validateRowRoles(rowRoles: RowRoles, rows: number): RowRoles
-export declare function createTask(opts: {
-  id?: string
-  kind?: TaskKind
-  X: Matrix | number[][]
-  y?: Labels | number[]
-  featureSchema?: FeatureSchema
-  targetSchema?: TargetSchema
-  rowIds?: Int32Array | string[]
-  groups?: Labels | number[]
-  weights?: Labels | number[]
-  rowRoles?: RowRoles
-  provenance?: DataProvenance
-  metadata?: Record<string, unknown>
-}): Task
-export declare function validateTask(task: Task): Task
-export declare function taskRows(task: Task): number
-
-export declare function createPrediction(opts?: Prediction): Prediction
-export declare function validatePrediction(prediction: Prediction): Prediction
-export declare function predictionRows(prediction: Prediction): number
-export declare function predictionField(prediction: Prediction, field: string): unknown
-
-export declare function defineMeasure(def: MeasureDef): MeasureDef
-export declare function registerMeasure(def: MeasureDef): MeasureDef
-export declare function getMeasureDef(id: string): MeasureDef
-export declare function listMeasures(): string[]
-export declare function evaluateMeasure(measureOrId: string | MeasureDef, prediction: Prediction, opts?: Record<string, unknown>): number
-export declare function aggregateMeasure(measureOrId: string | MeasureDef, values: ArrayLike<number>): number
-export declare function evaluateMetricSet(measures: (string | MeasureDef)[], prediction: Prediction, opts?: Record<string, unknown>): Record<string, number>
-export declare function meanAggregator(values: ArrayLike<number>): number
-export declare function registerBuiltinMeasures(): void
-
-export declare function createResamplingPlan(opts?: {
-  id?: string
-  strategy?: string
-  n?: number
-  y?: Labels | number[]
-  groups?: Labels | number[]
-  k?: number
-  repeats?: number
-  testSize?: number
-  initialWindow?: number
-  horizon?: number
-  lookback?: number
-  assessStart?: number
-  assessStop?: number
-  complete?: boolean
-  index?: ArrayLike<number | string | Date>
-  period?: 'day' | 'week' | 'month' | 'quarter' | 'year' | number
-  skip?: number
-  step?: number
-  shuffle?: boolean
-  seed?: number
-  folds?: ResamplingFold[]
-  taskId?: string
-  metadata?: Record<string, unknown>
-}): ResamplingPlan
-export declare function validateResamplingPlan(plan: ResamplingPlan): ResamplingPlan
-export declare function serializeResamplingPlan(plan: ResamplingPlan): SerializedResamplingPlan
-export declare function deserializeResamplingPlan(plan: SerializedResamplingPlan): ResamplingPlan
-export declare function groupKFold(groups: Labels, k?: number, opts?: { shuffle?: boolean; seed?: number }): ResamplingFold[]
-export declare function timeSeriesSplit(n: number, opts?: { initialWindow?: number; horizon?: number; step?: number }): ResamplingFold[]
-export declare function slidingWindowSplit(n: number, opts?: SlidingResamplingOpts): ResamplingFold[]
-export declare function slidingIndexSplit(index: ArrayLike<number | string | Date>, opts?: SlidingResamplingOpts): ResamplingFold[]
-export declare function slidingPeriodSplit(index: ArrayLike<number | string | Date>, opts?: SlidingResamplingOpts & { period?: 'day' | 'week' | 'month' | 'quarter' | 'year' | number }): ResamplingFold[]
-
-export declare class Archive {
-  constructor(opts?: {
-    id?: string
-    taskId?: string
-    measures?: string[]
-    primaryMeasure?: string
-    direction?: MeasureDirection
-    metadata?: Record<string, unknown>
-    records?: TrialRecord[]
-  })
+export interface Archive {
   id: string
   taskId?: string
   measures: string[]
@@ -564,11 +457,7 @@ export declare class Archive {
   records(filter?: Record<string, unknown>): TrialRecord[]
   leaderboard(opts?: { metric?: string; direction?: MeasureDirection }): LeaderboardRow[]
   toJSON(): ArchiveJSON
-  static fromJSON(json: ArchiveJSON): Archive
 }
-export declare function createTrialRecord(record?: Partial<TrialRecord>): TrialRecord
-export declare function validateTrialRecord(record: TrialRecord): TrialRecord
-export declare function normalizeTrialError(error: Error | TrialError | string, phase?: string): TrialError | undefined
 
 // Loader
 export type LoaderFn = (
@@ -580,14 +469,8 @@ export type LoaderFn = (
   }>
 ) => Estimator | Transformer | Promise<Estimator | Transformer>
 
-// Promise-lifting utilities
-export declare function isPromiseLike(x: unknown): x is PromiseLike<unknown>
-export declare function lift<T, U>(x: MaybePromise<T>, f: (value: T) => U): MaybePromise<U>
-
 // RNG
 export type RngFn = () => number
-export declare function makeLCG(seed?: number): RngFn
-export declare function shuffle<T extends ArrayLike<number> & { [i: number]: number }>(arr: T, rng: RngFn): T
 
 // Metrics
 export type AveragingMethod = 'binary' | 'micro' | 'macro' | 'weighted' | 'macro_weighted'
@@ -624,17 +507,6 @@ export interface ConfusionMatrixResult {
   labels: Int32Array
 }
 
-export declare function accuracy(yTrue: Labels, yPred: Labels, opts?: MetricOpts): number
-export declare function r2Score(yTrue: Labels, yPred: Labels, opts?: MetricOpts): number
-export declare function meanSquaredError(yTrue: Labels, yPred: Labels, opts?: MetricOpts): number
-export declare function meanAbsoluteError(yTrue: Labels, yPred: Labels, opts?: MetricOpts): number
-export declare function confusionMatrix(yTrue: Labels, yPred: Labels, opts?: MetricOpts): ConfusionMatrixResult
-export declare function precisionScore(yTrue: Labels, yPred: Labels, opts?: MetricOpts): number
-export declare function recallScore(yTrue: Labels, yPred: Labels, opts?: MetricOpts): number
-export declare function f1Score(yTrue: Labels, yPred: Labels, opts?: MetricOpts): number
-export declare function logLoss(yTrue: Labels, yProba: Float64Array, opts?: MetricOpts & { nClasses?: number; n_classes?: number; eps?: number }): number
-export declare function rocAuc(yTrue: Labels, yScore: Float64Array, opts?: MetricOpts & { multiClass?: 'raise' | 'ovr' | 'ovo'; multi_class?: 'raise' | 'ovr' | 'ovo' }): number
-
 // Cross-validation
 export interface CVFold {
   train: Int32Array
@@ -643,11 +515,6 @@ export interface CVFold {
 
 export type ScoringName = 'accuracy' | 'r2' | 'neg_mse' | 'neg_mae'
 export type ScoringFn = (yTrue: Labels, yPred: Labels) => number
-
-export declare function kFold(n: number, k?: number, opts?: { shuffle?: boolean; seed?: number }): CVFold[]
-export declare function stratifiedKFold(y: Labels, k?: number, opts?: { shuffle?: boolean; seed?: number }): CVFold[]
-export declare function trainTestSplit(n: number, opts?: { testSize?: number; shuffle?: boolean; seed?: number }): CVFold
-export declare function getScorer(scoring: ScoringName | ScoringFn): ScoringFn
 
 export interface CrossValScoreOpts {
   cv?: number | CVFold[]
@@ -662,13 +529,6 @@ export interface EstimatorClass {
   defaultSearchSpace?(task?: TaskType): SearchSpace
   budgetSpec?(): { roundsParam?: string }
 }
-
-export declare function crossValScore(
-  EstimatorClass: EstimatorClass,
-  X: Matrix | number[][],
-  y: Labels | number[],
-  opts?: CrossValScoreOpts
-): Promise<Float64Array>
 
 // Ensemble types
 export type TaskType = 'classification' | 'regression'
@@ -760,20 +620,6 @@ export interface WeightOptimizationOpts {
   classes?: ArrayLike<number>
 }
 
-export declare function projectSimplex(values: ArrayLike<number>): Float64Array
-export declare function optimizeWeights(
-  oofPredictions: Float64Array[],
-  yTrue: Labels | number[],
-  initWeights: ArrayLike<number>,
-  opts?: WeightOptimizationOpts
-): Float64Array
-
-export declare function caruanaSelect(
-  oofPredictions: Float64Array[],
-  yTrue: Labels,
-  opts?: CaruanaOpts
-): CaruanaResult
-
 export interface OofOpts {
   cv?: number
   seed?: number
@@ -784,13 +630,6 @@ export interface OofResult {
   oofPreds: Float64Array[]
   classes: Int32Array | null
 }
-
-export declare function getOofPredictions(
-  estimatorSpecs: EstimatorSpec[],
-  X: Matrix | number[][],
-  y: Labels | number[],
-  opts?: OofOpts
-): Promise<OofResult>
 
 // AutoML types
 export interface ModelSpecBase {
@@ -872,31 +711,3 @@ export interface AutoFitResult {
   bestModelName: string
   bestScore: number
 }
-
-export declare function sampleParam(param: SearchParam, rng: RngFn): unknown
-export declare function sampleConfig(space: SearchSpace, rng: RngFn): Record<string, unknown>
-export declare function randomConfigs(space: SearchSpace, n: number, opts?: { seed?: number }): Record<string, unknown>[]
-export declare function gridConfigs(space: SearchSpace, opts?: { steps?: number }): Record<string, unknown>[]
-export declare function createCandidate(
-  model: {
-    name?: string
-    displayName?: string
-    classId: string
-  },
-  params: Record<string, unknown>,
-  preprocess?: CandidatePreprocess | null
-): CandidateTemplate
-export declare function candidateCanonicalBytes(candidate: CandidateTemplate): Uint8Array
-export declare function candidateHash(candidate: CandidateTemplate): string
-export declare function makeCandidateId(candidate: CandidateTemplate): string
-export declare function seedFor(candidate: CandidateTemplate, foldIdx: number, baseSeed: number): number
-export declare function normalizeModelSpecs(
-  models: (ModelSpec | AutoMLEstimatorSpec)[],
-  label?: string
-): ReadonlyArray<ModelSpec & { classId: string; displayName: string }>
-export declare function autoFit(
-  models: (ModelSpec | AutoMLEstimatorSpec)[],
-  X: Matrix | number[][],
-  y: Labels | number[],
-  opts?: AutoFitOpts
-): Promise<AutoFitResult>

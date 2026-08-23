@@ -4,22 +4,30 @@
     "packages/*"
   ],
   "scripts": {
-    "test": "npm test --workspaces"
+    "test": "npm run test:js",
+    "test:js": "npm test --workspaces --if-present",
+    "test:browser": "npm run test:browser --workspace @wlearn/ensemble && npm run test:browser --workspace @wlearn/automl",
+    "test:all": "npm run test:js && npm run test:py-core && npm run test:browser",
+    "test:py-core": "PYTHONPATH=py python3 -m pytest py/tests/test_ecosystem.py py/tests/test_properties.py py/tests/test_automl.py py/tests/test_bundle.py py/tests/test_registry.py py/tests/test_scalers.py py/tests/test_ensemble.py py/tests/test_composite_load_hardening.py py/tests/test_pipeline_fit.py -q",
+    "test:z3": "PYTHONPATH=py ${Z3_PY:-python3} py/tests/external/resampling_z3.py",
+    "test:py": "PYTHONPATH=py python3 -m pytest py/tests -q",
+    "test:ecosystem:task": "node scripts/verify-unified-model-tasks.mjs",
+    "test:interop:js": "node fixtures/verify.mjs",
+    "test:interop:py": "PYTHONPATH=py python3 -m pytest py/tests/test_compat.py -q",
+    "test:interop:py:full": "WLEARN_INTEROP_REQUIRE_ALL=1 PYTHONPATH=py python3 -m pytest py/tests/test_compat.py -q",
+    "test:interop:reverse": "node fixtures/verify-py-bundles.mjs",
+    "test:interop:reverse:full": "WLEARN_INTEROP_REQUIRE_ALL=1 node fixtures/verify-py-bundles.mjs",
+    "test:interop:guards": "node fixtures/test-verify-utils.mjs",
+    "test:interop:minimal": "npm run test:interop:guards && npm run test:interop:js && npm run test:interop:py && npm run test:interop:reverse",
+    "test:interop:full": "npm run test:interop:guards && npm run test:interop:js && npm run test:interop:py:full && npm run test:interop:reverse:full",
+    "test:interop": "npm run test:interop:full",
+    "dev:link": "node scripts/link-local-wlearn.js",
+    "dev:link:force": "node scripts/link-local-wlearn.js --force",
+    "dev:unlink": "node scripts/link-local-wlearn.js --unlink"
   },
-  "dependencies": {
-    "@wlearn/cluster": "file:../../../../../tmp/wlearn-packs/wlearn-cluster-0.1.0.tgz",
-    "@wlearn/ebm": "file:../../../../../tmp/wlearn-packs/wlearn-ebm-0.1.0.tgz",
-    "@wlearn/gam": "file:../../../../../tmp/wlearn-packs/wlearn-gam-0.1.0.tgz",
-    "@wlearn/liblinear": "file:../../../../../tmp/wlearn-packs/wlearn-liblinear-0.1.0.tgz",
-    "@wlearn/libsvm": "file:../../../../../tmp/wlearn-packs/wlearn-libsvm-0.1.0.tgz",
-    "@wlearn/lightgbm": "file:../../../../../tmp/wlearn-packs/wlearn-lightgbm-0.1.0.tgz",
-    "@wlearn/mitra": "file:../../../../../tmp/wlearn-packs/wlearn-mitra-0.1.0.tgz",
-    "@wlearn/nanoflann": "file:../../../../../tmp/wlearn-packs/wlearn-nanoflann-0.1.0.tgz",
-    "@wlearn/nn": "file:../../../../../tmp/wlearn-packs/wlearn-nn-0.1.0.tgz",
-    "@wlearn/rf": "file:../../../../../tmp/wlearn-packs/wlearn-rf-0.1.0.tgz",
-    "@wlearn/stochtree": "file:../../../../../tmp/wlearn-packs/wlearn-stochtree-0.1.0.tgz",
-    "@wlearn/tsetlin": "file:../../../../../tmp/wlearn-packs/wlearn-tsetlin-0.1.0.tgz",
-    "@wlearn/xgboost": "file:../../../../../tmp/wlearn-packs/wlearn-xgboost-0.1.1.tgz",
-    "@wlearn/xlearn": "file:../../../../../tmp/wlearn-packs/wlearn-xlearn-0.1.0.tgz"
+  "devDependencies": {
+    "esbuild": "^0.27.7",
+    "playwright": "^1.60.0",
+    "playwright-core": "^1.60.0"
   }
 }

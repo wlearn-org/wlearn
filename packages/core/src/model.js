@@ -129,7 +129,7 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
       if (sameClass) {
         // Task-agnostic backend: one asynchronously prepared instance can be
         // configured once labels reveal the task.
-        s.inner = await ClassifierCls.create(task ? { ...p, task } : p)
+        s.inner = await ClassifierCls.create(task ? { ...p, task } : { ...p })
         s.instances.set('shared', s.inner)
       } else {
         // Task-specific classes cannot be constructed synchronously from fit().
@@ -194,20 +194,23 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
       if (s.disposed) throw new Error(`${modelName} has been disposed.`)
       if (s.fitInProgress) throw new Error(`${modelName} fit is already in progress`)
 
-      // Auto-detect task if not set
-      if (!s.task) {
-        s.task = detectTask(y)
+      const previous = {
+        task: s.task,
+        inner: s.inner,
+        fitted: s.fitted,
       }
-
-      s.inner = s.instances.get(sameClass ? 'shared' : s.task) || null
-      if (!s.inner) {
+      const fitTask = s.task || detectTask(y)
+      const fitInner = s.instances.get(sameClass ? 'shared' : fitTask) || null
+      if (!fitInner) {
         throw new Error(`${modelName}: task cannot be changed on a loaded model; create a new model`)
       }
 
-      if (typeof s.inner.setParams === 'function') {
-        s.inner.setParams({ ...s.params, task: s.task })
+      if (typeof fitInner.setParams === 'function') {
+        fitInner.setParams({ ...s.params, task: fitTask })
       }
 
+      s.task = fitTask
+      s.inner = fitInner
       s.fitted = false
       s.fitInProgress = true
       const commit = () => {
@@ -215,16 +218,23 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
         if (s.disposed) throw new Error(`${modelName} has been disposed.`)
         // Explicit backend selectors (for example objective/solver/family) are
         // authoritative. Keep the wrapper task aligned with the fitted backend.
-        s.task = _taskFromInner(s.inner, s.task)
+        s.task = _taskFromInner(fitInner, fitTask)
         s.fitted = true
         return this
       }
       const fail = error => {
         s.fitInProgress = false
+        s.task = previous.task
+        s.inner = previous.inner
+        // Preserve the fitted wrapper only when the backend explicitly reports
+        // that its prior model survived. A missing/false isFitted signal is not
+        // enough evidence after a possibly destructive native refit.
+        s.fitted = previous.fitted && fitInner === previous.inner &&
+          fitInner.isFitted === true
         throw error
       }
       try {
-        const result = s.inner.fit(X, y, fitOpts)
+        const result = fitInner.fit(X, y, fitOpts)
         return result != null && typeof result.then === 'function'
           ? Promise.resolve(result).then(commit, fail)
           : commit()

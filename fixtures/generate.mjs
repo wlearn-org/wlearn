@@ -3,8 +3,8 @@
 // Fixture generator for wlearn cross-language compatibility tests.
 //
 // Generates .wlrn bundles + .json sidecars. Deterministic (LCG PRNG with
-// fixed seeds), so output is always identical. Fixtures are gitignored;
-// regenerate locally before running cross-language tests.
+// fixed seeds), so output is deterministic. The canonical bundles and sidecars
+// are committed; regenerate and review their diffs when writers change.
 //
 // Import modes:
 //   normal:  import @wlearn/* from node_modules (npm install)
@@ -33,6 +33,9 @@ const PORTS_DIR = process.env.WLEARN_PORTS_DIR
 async function importPort(name) {
   if (PORTS_DIR) {
     // dev mode: absolute path to sibling repo
+    if (name === 'preprocess') {
+      return import(`${__dirname}/../packages/preprocess/src/index.js`)
+    }
     const map = { liblinear: 'liblinear-wasm', libsvm: 'libsvm-wasm', xgboost: 'xgboost-wasm', nanoflann: 'nanoflann-wasm', ebm: 'ebm-wasm', lightgbm: 'lightgbm-wasm', stochtree: 'stochtree-wasm', xlearn: 'xlearn-wasm' }
     const dir = map[name]
     if (!dir) throw new Error(`Unknown port: ${name}`)
@@ -100,6 +103,7 @@ function makeSidecar(bundle, params, X, y, predictions, extra = {}) {
   const { manifest, toc } = decodeBundle(bundle)
   return {
     typeId: manifest.typeId,
+    requires: manifest.requires || [],
     params,
     metadata: manifest.metadata || {},
     toc: toc.map(e => ({ id: e.id, length: e.length, sha256: e.sha256 })),
@@ -256,7 +260,7 @@ async function main() {
   {
     const { EBMModel } = await importPort('ebm')
     const rng = makeLCG(1000)
-    const { X, y } = makeRegressionData(rng, 100, 2)
+    const { X, y } = makeRegressionData(rng, 200, 2)
     const params = { objective: 'regression', maxRounds: 100, earlyStoppingRounds: 20, maxInteractions: 0, seed: 42 }
     const model = await EBMModel.create(params)
     model.fit(X, y)
@@ -347,7 +351,7 @@ async function main() {
     const { XLearnFMClassifier } = await importPort('xlearn')
     const rng = makeLCG(1600)
     const { X, y } = makeClassificationData(rng, 50, 2)
-    const params = { epoch: 10, k: 4, lr: 0.2 }
+    const params = { epoch: 10, k: 4, lr: 0.2, seed: 42 }
     const model = await XLearnFMClassifier.create(params)
     model.fit(X, y)
     const preds = model.predict(X)
@@ -362,7 +366,7 @@ async function main() {
     const { XLearnFMRegressor } = await importPort('xlearn')
     const rng = makeLCG(1700)
     const { X, y } = makeRegressionData(rng, 50, 2)
-    const params = { epoch: 10, k: 4, lr: 0.2 }
+    const params = { epoch: 10, k: 4, lr: 0.2, seed: 42 }
     const model = await XLearnFMRegressor.create(params)
     model.fit(X, y)
     const preds = model.predict(X)
@@ -370,6 +374,72 @@ async function main() {
     writeFixture('xlearn-regressor', bundle,
       makeSidecar(bundle, model.getParams(), X, y, preds))
     model.dispose()
+  }
+
+  // 18. preprocess-tabular (standalone fitted Tranfi plan)
+  {
+    const preprocessModule = await importPort('preprocess')
+    const { Preprocessor } = preprocessModule.default || preprocessModule
+    const X = [
+      [1, 10],
+      [2, 20],
+      [3, 30],
+      [4, 40],
+      [5, 50],
+      [6, 60]
+    ]
+    const preprocessor = await Preprocessor.create({
+      impute: 'mean',
+      encode: false,
+      scale: 'standard'
+    })
+    preprocessor.fit(X)
+    const transformed = preprocessor.transform(X)
+    const bundle = preprocessor.save()
+    writeFixture('preprocess-tabular', bundle,
+      makeSidecar(
+        bundle,
+        preprocessor.getParams(),
+        X,
+        null,
+        transformed.data,
+        {
+          operation: 'transform',
+          outputShape: [transformed.rows, transformed.cols]
+        }
+      ))
+    preprocessor.dispose()
+  }
+
+  // 19. pipeline-preprocess-liblinear (nested cross-language lifecycle)
+  {
+    const preprocessModule = await importPort('preprocess')
+    const { Preprocessor } = preprocessModule.default || preprocessModule
+    const rng = makeLCG(1900)
+    const { X, y } = makeClassificationData(rng, 60, 3)
+    const preprocessor = await Preprocessor.create({
+      impute: 'mean',
+      encode: false,
+      scale: 'standard'
+    })
+    const model = await LinearModel.create({ solver: 0, C: 1.0, eps: 0.01 })
+    const pipeline = new Pipeline([
+      ['preprocess', preprocessor],
+      ['classifier', model]
+    ])
+    pipeline.fit(X, y)
+    const predictions = pipeline.predict(X)
+    const bundle = pipeline.save()
+    writeFixture('pipeline-preprocess-liblinear', bundle,
+      makeSidecar(
+        bundle,
+        pipeline.getParams(),
+        X,
+        y,
+        predictions,
+        { operation: 'predict', classes: Array.from(pipeline.classes || []) }
+      ))
+    pipeline.dispose()
   }
 
   console.log('\nDone. All fixtures generated.')

@@ -57,6 +57,21 @@ describe('normalizeX', () => {
     assert.throws(() => normalizeX('foo'), ValidationError)
     assert.throws(() => normalizeX(null), ValidationError)
   })
+
+  it('rejects invalid typed shapes and ragged nested matrices', () => {
+    assert.throws(
+      () => normalizeX({ data: new Float64Array(3), rows: 2, cols: 2 }),
+      ValidationError
+    )
+    assert.throws(
+      () => normalizeX({ data: new Float64Array(4), rows: 2.5, cols: 2 }),
+      ValidationError
+    )
+    assert.throws(() => normalizeX([]), ValidationError)
+    assert.throws(() => normalizeX([[]]), ValidationError)
+    assert.throws(() => normalizeX([[1, 2], [3]]), ValidationError)
+    assert.throws(() => normalizeX([[1, 2], [3, '4']]), ValidationError)
+  })
 })
 
 describe('normalizeY', () => {
@@ -127,6 +142,10 @@ describe('validateMatrix', () => {
   it('throws on bad dimensions', () => {
     assert.throws(
       () => validateMatrix({ data: new Float64Array(4), rows: 0, cols: 4 }),
+      ValidationError
+    )
+    assert.throws(
+      () => validateMatrix({ data: new Float64Array(4), rows: 2.5, cols: 2 }),
       ValidationError
     )
   })

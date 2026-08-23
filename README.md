@@ -118,27 +118,27 @@ rather than exposing a pandas-style in-memory DataFrame.
 
 ### Model ports
 
-| Package | Upstream | What it does | Tests |
-|---------|----------|--------------|-------|
-| `@wlearn/liblinear` | LIBLINEAR v2.50 | Linear SVM and logistic regression. Fast on large sparse datasets. | 23 |
-| `@wlearn/libsvm` | LIBSVM v3.37 | Kernel SVM (RBF, polynomial, sigmoid). Classification, regression, one-class novelty detection. | 27 |
-| `@wlearn/xgboost` | XGBoost v3.2.0 | Gradient-boosted trees, random forests. Classification, regression, ranking. | 51 |
-| `@wlearn/lightgbm` | LightGBM | Gradient-boosted trees, fast histogram-based. Classification, regression. | 34 |
-| `@wlearn/nanoflann` | nanoflann v1.6.3 | k-nearest neighbors via KD-trees. Classification and regression. | 27 |
-| `@wlearn/ebm` | InterpretML v0.7.5 | Explainable boosting machines (GAM). Per-feature shape functions with interpretability. | 27 |
-| `@wlearn/xlearn` | xLearn v0.44 | Factorization machines (LR, FM, FFM). Tuned for sparse CTR/recommender data. | 44 |
-| `@wlearn/stochtree` | StochTree | Bayesian additive regression trees (BART). Uncertainty-aware predictions. | 27 |
-| `@wlearn/tsetlin` | TMU | Tsetlin machine. Interpretable propositional logic classifier. | 26 |
-| `@wlearn/mitra` | Mitra Tab2D | Pretrained ONNX tabular models. Zero-shot and fine-tuned inference via ONNX Runtime. | 26 |
+| Package | Upstream | What it does |
+|---------|----------|--------------|
+| `@wlearn/liblinear` | LIBLINEAR v2.50 | Linear SVM and logistic regression. Fast on large sparse datasets. |
+| `@wlearn/libsvm` | LIBSVM v3.37 | Kernel SVM (RBF, polynomial, sigmoid). Classification, regression, one-class novelty detection. |
+| `@wlearn/xgboost` | XGBoost v3.2.0 | Gradient-boosted trees and random forests for classification and regression. |
+| `@wlearn/lightgbm` | LightGBM | Gradient-boosted trees, fast histogram-based. Classification, regression. |
+| `@wlearn/nanoflann` | nanoflann v1.6.3 | k-nearest neighbors via KD-trees. Classification and regression. |
+| `@wlearn/ebm` | InterpretML v0.7.5 | Explainable boosting machines (GAM). Per-feature shape functions with interpretability. |
+| `@wlearn/xlearn` | xLearn v0.44 | Factorization machines (LR, FM, FFM). Tuned for sparse CTR/recommender data. |
+| `@wlearn/stochtree` | StochTree | Bayesian additive regression trees (BART). Uncertainty-aware predictions. |
+| `@wlearn/tsetlin` | TMU | Tsetlin machine. Interpretable propositional logic classifier. |
+| `@wlearn/mitra` | Mitra Tab2D | Pretrained ONNX tabular model with in-context support rows. |
 
 ### Native implementations
 
 Built from scratch (not WASM ports of existing libraries):
 
-| Package | Backend | What it does | Tests |
-|---------|---------|--------------|-------|
-| `@wlearn/rf` | C11 | Random forest, ExtraTrees, linear leaves, Hellinger/entropy criteria, pruning, OOB weighting. | 151 |
-| `@wlearn/nn` | polygrad (C11) | Neural tabular models: MLP, TabM (BatchEnsemble), NAM (Neural Additive Models). | 117 |
+| Package | Backend | What it does |
+|---------|---------|--------------|
+| `@wlearn/rf` | C11 | Random forest, ExtraTrees, linear leaves, Hellinger/entropy criteria, pruning, OOB weighting. |
+| `@wlearn/nn` | polygrad (C11) | Neural tabular models: MLP, TabM (BatchEnsemble), NAM (Neural Additive Models). |
 
 ## API overview
 
@@ -344,7 +344,7 @@ clf.classes    // Int32Array of class labels
 
 ### @wlearn/xgboost
 
-Gradient-boosted trees for classification, regression, and ranking. Includes random forest mode.
+Gradient-boosted trees for classification and regression. Includes random forest mode.
 
 ```js
 const { XGBModel } = require('@wlearn/xgboost')
@@ -354,7 +354,7 @@ const clf = await XGBModel.create({
   objective: 'binary:logistic',
   max_depth: 6,
   eta: 0.3,
-  nRounds: 100
+  numRound: 100
 })
 clf.fit(X, y)
 clf.predict(X)        // class labels (0 or 1)
@@ -364,13 +364,13 @@ clf.predictProba(X)   // probabilities, shape: rows * 2
 const mc = await XGBModel.create({
   objective: 'multi:softprob',
   num_class: 3,
-  nRounds: 50
+  numRound: 50
 })
 
 // Regression
 const reg = await XGBModel.create({
   objective: 'reg:squarederror',
-  nRounds: 100
+  numRound: 100
 })
 reg.fit(X, y)
 reg.predict(X)
@@ -379,16 +379,19 @@ reg.score(X, y)  // R-squared
 // Random forest mode
 const rf = await XGBModel.create({
   objective: 'binary:logistic',
-  nRounds: 100,
+  numRound: 100,
   num_parallel_tree: 10,
   subsample: 0.8,
   colsample_bynode: 0.8
 })
 ```
 
-**Objectives:** `binary:logistic`, `multi:softprob`, `multi:softmax`, `reg:squarederror`, `reg:logistic`, `rank:pairwise`, and others.
+**Tested high-level objectives:** `binary:logistic`, `multi:softprob`,
+`multi:softmax`, and `reg:squarederror`. Ranking and survival remain low-level
+`Booster` tasks because the unified estimator does not yet define their group,
+label, and metric contracts.
 
-**Key parameters:** `max_depth`, `eta` (learning rate), `nRounds` (number of boosting rounds), `subsample`, `colsample_bytree`, `lambda` (L2 reg), `alpha` (L1 reg), `num_parallel_tree` (for RF mode)
+**Key parameters:** `max_depth`, `eta` (learning rate), `numRound` (number of boosting rounds), `subsample`, `colsample_bytree`, `lambda` (L2 reg), `alpha` (L1 reg), `num_parallel_tree` (for RF mode)
 
 ### @wlearn/lightgbm
 
@@ -517,13 +520,13 @@ const ort = require('onnxruntime-node')
 
 // Classification
 const clfSession = await ort.InferenceSession.create('mitra-classifier.onnx')
-const clf = await MitraClassifier.create(clfSession, { maxSupport: 512 }, { ort })
+const clf = await MitraClassifier.create(clfSession, { maxSupport: 50 }, { ort })
 clf.fit(X, y)
 const preds = await clf.predict(Xtest)  // async (ONNX inference)
 
 // Regression
 const regSession = await ort.InferenceSession.create('mitra-regressor.onnx')
-const reg = await MitraRegressor.create(regSession, { maxSupport: 512 }, { ort })
+const reg = await MitraRegressor.create(regSession, { maxSupport: 50 }, { ort })
 reg.fit(X, y)
 const rPreds = await reg.predict(Xtest)
 ```
@@ -591,12 +594,14 @@ const { LinearModel } = require('@wlearn/liblinear')
 const { XGBModel } = require('@wlearn/xgboost')
 
 const models = [
-  ['linear', LinearModel, { task: 'classification' }],
-  ['xgb', XGBModel, { task: 'classification' }]
+  { name: 'linear', classId: 'wlearn.liblinear.classifier@1',
+    portfolioKey: 'linear', cls: LinearModel, params: { task: 'classification' } },
+  { name: 'xgb', classId: 'wlearn.xgboost.classifier@1',
+    portfolioKey: 'xgb', cls: XGBModel, params: { task: 'classification' } }
 ]
 
 const result = await autoFit(models, X, y, {
-  strategy: 'random',    // 'random' | 'halving' | 'portfolio' | 'progressive'
+  strategy: 'random',    // 'random' | 'halving' | 'portfolio' | 'progressive' | 'bayesian'
   ensemble: true,         // build Caruana ensemble from top candidates
   ensembleSize: 20,
   refit: true,            // refit best model on full data
@@ -605,12 +610,28 @@ const result = await autoFit(models, X, y, {
 
 result.model           // best fitted estimator (or ensemble)
 result.leaderboard     // ranked candidate results
+result.archive         // structured Archive of ok/failed trials
 result.bestScore       // best CV score
 result.bestModelName   // e.g. 'xgb'
 result.bestParams      // winning hyperparameters
 ```
 
+For the simple path, stop there: use `result.model` to predict, `result.leaderboard` to inspect candidates, and ignore `result.archive` unless you need run provenance, failed-candidate inspection, or an agent-readable ledger.
+
 `@wlearn/automl` requires at least one model package (e.g. `@wlearn/xgboost`) to do anything useful.
+
+### Structured task/prediction/archive API
+
+`@wlearn/core` also exposes structured primitives for apps and agents. These are optional; they are not required to train a model, run `autoFit()`, save a `.wlrn` bundle, or make predictions.
+
+- `createTask()` records dataset shape, labels, groups, row roles, feature schema, and provenance.
+- `createPrediction()` records responses/probabilities with explicit class order.
+- `listMeasures()` and `evaluateMetricSet()` expose metric names, directions, sample-weight support, multiclass AUC, and undefined-metric handling without guessing.
+- `createResamplingPlan()` creates deterministic holdout/k-fold/group/time-series plus sliding row/index/period splits.
+- `Archive` records candidate params, scores, timings, failed runs, and leaderboards.
+
+See the structured API sections in [@wlearn/core](packages/core/README.md) and
+[Python wlearn](py/README.md) for the concrete contracts.
 
 ## Python
 
@@ -646,7 +667,31 @@ pip install wlearn[bo]           # + Bayesian AutoML strategy support
 pip install wlearn[all]          # everything
 ```
 
-Requires Python 3.9+.
+Requires Python 3.10+.
+
+## Testing
+
+Use the Makefile for repo-level checks:
+
+```bash
+make test          # JS workspaces + focused Python core/AutoML suite
+make test-browser  # rebuild browser bundles, then run Playwright smoke tests
+make test-py       # full Python suite; requires optional backend deps
+make test-z3       # optional Z3 proof smoke for resampling index arithmetic
+```
+
+`npm test` is JS-only. Browser checks use the core repo Playwright install and Chromium cache, which standalone model packages also reuse; if Chromium is missing, install it once from this repo or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`. `make test-z3` follows Polygrad's external-solver pattern and requires `z3-solver<4.15.4`; it is not part of the default test path.
+
+For multi-repo development, keep package manifests on real semver dependencies and overlay local sibling repos with:
+
+```bash
+npm run dev:link        # symlink sibling @wlearn packages into node_modules/@wlearn
+npm run dev:link:force  # replace installed package dirs with local symlinks
+npm run dev:unlink      # remove symlinks created by the linker
+```
+
+`dev:link` does not edit `package.json`; publishing metadata remains the same as a registry install.
+The linker uses only Node built-ins, so it can be run before `npm install` when testing unreleased sibling package versions.
 
 ## Cross-language interop
 
@@ -661,6 +706,16 @@ Golden fixture tests verify all three directions:
 - `fixtures/verify.mjs` validates JS-produced bundles
 - `py/tests/test_compat.py` loads JS fixtures in Python, verifies format and predictions
 - `fixtures/verify-py-bundles.mjs` validates Python-produced bundles back in JS
+
+The fixture generators and verifiers define an explicit expected set. Before a
+release, every expected bundle and sidecar must be tracked and
+`npm run test:interop` must pass with every Python backend installed and no skipped
+fixture. `npm run test:interop:minimal` is the explicit developer lane for a partial
+backend environment; its output index records every skipped backend and must never
+be reported as full interoperability. Python writes an indexed
+`fixtures/py-produced/` result set; the reverse verifier fails if the index or any
+declared output is missing. Prediction checks reject empty, NaN, and infinite
+outputs before applying tolerances.
 
 ## Bundle format
 
@@ -677,6 +732,23 @@ wlearn uses a compact binary format (WLRN v1) for model persistence. Every bundl
 ```
 
 The `typeId` field (e.g., `wlearn.liblinear.classifier@1`, `wlearn.xgboost.regressor@1`) tells the loader registry which deserializer to use. This makes bundles portable across languages and runtimes.
+
+Canonical v1 requires manifest fields `typeId`, `bundleVersion`, `requires`,
+`params`, and `artifacts`. TOC records contain exactly `id`, `offset`, `length`,
+`sha256`, and `mediaType`; artifact declarations omit only `offset`. Canonical
+writers reject legacy nested bundles, so every writer output passes strict
+recursive validation.
+
+Default decoders retain compatibility with historical v1 artifacts that omit
+`requires`, `params`, `artifacts`, or TOC `mediaType`, use non-canonical TOC order,
+or carry fixed-record extensions. Safety checks—bounds, portable JSON, blob
+coverage, hashes, and recursion budgets—still apply. Use
+`validateBundle(bytes, { allowLegacyManifest: false })` in JS or
+`validate_bundle(data, allow_legacy_manifest=False)` in Python for a canonical
+conformance gate. Legacy inputs may lack complete dependency-preflight metadata;
+writers never reproduce that shape. This read compatibility remains for the
+current major release and can only be removed with a major-version migration and
+advance deprecation notice.
 
 ```js
 const { encodeBundle, decodeBundle } = require('@wlearn/core')
@@ -786,8 +858,10 @@ const { LinearModel } = require('@wlearn/liblinear')
 
 Website: [wlearn.org](https://wlearn.org)
 
-WASM port repos carry upstream C/C++ source as git submodules. C11 repos (rf, gam, cluster) are written from scratch. All depend on `@wlearn/core` from the core monorepo. Python wrappers live in the core repo.
+WASM port repos carry upstream C/C++ source as git submodules. C11 repos (rf, gam, cluster, bo) are written from scratch with canonical C in root `src/`, JS packages in `js/`, and standalone Python packages in `py/`. Python wrappers for upstream-native packages live in the core repo.
 
 ## License
 
-MIT. Model packages carry their upstream licenses: BSD for LIBLINEAR, LIBSVM, and nanoflann; Apache-2.0 for XGBoost and xLearn; MIT for LightGBM, InterpretML, StochTree, TMU, and Mitra.
+Packages in this core repository are Apache-2.0. Each model repository carries
+its own package license, notices, and upstream attribution; consult its `LICENSE`
+and `NOTICE` files before redistribution.

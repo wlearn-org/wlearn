@@ -25,6 +25,147 @@ from ._capabilities import estimator_capabilities
 from .bundle import encode_bundle, write_bundle_output
 from .registry import register
 
+MAX_C_INT = 2147483647
+
+
+def _positive_c_int(value, name):
+    if (isinstance(value, bool) or not isinstance(value, int) or
+            value < 1 or value > MAX_C_INT):
+        raise ValueError(f'{name} must be a positive int32 value')
+
+
+def _finite_number(value):
+    return (not isinstance(value, bool) and isinstance(value, (int, float)) and
+            np.isfinite(value))
+
+
+def _validate_task_params(params, expected_task):
+    if not isinstance(params, dict):
+        raise ValueError('EBM params must be an object')
+    for key in ('objective', 'task'):
+        value = params.get(key)
+        if value is not None and value != expected_task:
+            raise ValueError(
+                f'EBM {key} {value!r} does not match fitted '
+                f'{expected_task} task')
+    return params
+
+
+def _validate_model_data(model_data, expected_task, n_classes):
+    if (not isinstance(model_data, dict) or
+            model_data.get('format') != 'ebm-json-v1' or
+            model_data.get('task') != expected_task):
+        raise ValueError(
+            f'EBM model task/format does not match {expected_task}')
+
+    for key in ('nFeatures', 'nTerms', 'nScores'):
+        _positive_c_int(model_data.get(key), f'model {key}')
+    n_features = model_data['nFeatures']
+    n_terms = model_data['nTerms']
+    n_scores = model_data['nScores']
+    expected_scores = 1 if (
+        expected_task == 'regression' or n_classes == 2) else n_classes
+    if n_scores != expected_scores:
+        raise ValueError('model nScores does not match task/classes')
+
+    intercept = model_data.get('intercept')
+    if (not isinstance(intercept, list) or len(intercept) != n_scores or
+            not all(_finite_number(value) for value in intercept)):
+        raise ValueError(
+            'model intercept must contain one finite value per score')
+
+    features = model_data.get('features')
+    if not isinstance(features, list) or len(features) != n_features:
+        raise ValueError('model features length does not match nFeatures')
+    for index, feature in enumerate(features):
+        if (not isinstance(feature, dict) or
+                feature.get('type') not in ('continuous', 'nominal')):
+            raise ValueError(f'model feature {index} has an invalid type')
+        if feature['type'] == 'continuous':
+            cuts = feature.get('cuts')
+            if (not isinstance(cuts, list) or
+                    not all(_finite_number(value) for value in cuts) or
+                    any(cuts[i] <= cuts[i - 1]
+                        for i in range(1, len(cuts))) or
+                    len(cuts) > MAX_C_INT - 2):
+                raise ValueError(
+                    f'model feature {index} cuts must be finite and '
+                    'strictly increasing')
+        else:
+            _positive_c_int(
+                feature.get('nBins'), f'model feature {index} nBins')
+
+    terms = model_data.get('terms')
+    if not isinstance(terms, list) or len(terms) != n_terms:
+        raise ValueError('model terms length does not match nTerms')
+    for term_index, term in enumerate(terms):
+        term_features = term.get('features') if isinstance(term, dict) else None
+        bin_counts = term.get('binCounts') if isinstance(term, dict) else None
+        if (not isinstance(term_features, list) or
+                not 1 <= len(term_features) <= n_features or
+                not isinstance(bin_counts, list) or
+                len(bin_counts) != len(term_features)):
+            raise ValueError(f'model term {term_index} has invalid dimensions')
+        flat_size = 1
+        seen_features = set()
+        for dimension, (feature_index, bin_count) in enumerate(
+                zip(term_features, bin_counts)):
+            if (isinstance(feature_index, bool) or
+                    not isinstance(feature_index, int) or
+                    not 0 <= feature_index < n_features):
+                raise ValueError(
+                    f'model term {term_index} has an invalid feature index')
+            if feature_index in seen_features:
+                raise ValueError(
+                    f'model term {term_index} has a duplicate feature index')
+            seen_features.add(feature_index)
+            _positive_c_int(
+                bin_count,
+                f'model term {term_index} binCounts[{dimension}]')
+            feature = features[feature_index]
+            if (feature['type'] == 'continuous' and
+                    bin_count != len(feature['cuts']) + 2):
+                raise ValueError(
+                    f'model term {term_index} bin count disagrees with '
+                    f'feature {feature_index}')
+            if (feature['type'] == 'nominal' and
+                    bin_count != feature['nBins']):
+                raise ValueError(
+                    f'model term {term_index} bin count disagrees with '
+                    f'feature {feature_index}')
+            if flat_size > MAX_C_INT // bin_count:
+                raise ValueError(
+                    f'model term {term_index} bin product exceeds int32 limits')
+            flat_size *= bin_count
+        if flat_size > MAX_C_INT // n_scores:
+            raise ValueError(
+                f'model term {term_index} score count exceeds int32 limits')
+        score_count = flat_size * n_scores
+        scores = term.get('scores')
+        if (not isinstance(scores, list) or len(scores) != score_count or
+                not all(_finite_number(value) for value in scores)):
+            raise ValueError(
+                f'model term {term_index} must contain exactly '
+                f'{score_count} finite scores')
+
+    return model_data
+
+
+def _validate_matrix(X, expected_features=None):
+    try:
+        matrix = np.asarray(X, dtype=np.float64)
+    except (TypeError, ValueError) as error:
+        raise ValueError('X must be a rectangular numeric 2-D matrix') from error
+    if matrix.ndim != 2 or matrix.shape[0] < 1 or matrix.shape[1] < 1:
+        raise ValueError('X must be a non-empty rectangular numeric 2-D matrix')
+    if expected_features is not None and matrix.shape[1] != expected_features:
+        raise ValueError(
+            f'X has {matrix.shape[1]} features; model expects '
+            f'{expected_features}')
+    if np.isinf(matrix).any():
+        raise ValueError('X values must be finite or NaN')
+    return matrix
+
 
 def _find_bins(edges, vals):
     """Find bin indices matching the C find_bin() behavior.
@@ -41,6 +182,24 @@ def _find_bins(edges, vals):
     nan_mask = np.isnan(vals)
     if np.any(nan_mask):
         bins[nan_mask] = len(edges)
+    return bins
+
+
+def _find_feature_bins(feature, edges, vals, bin_count):
+    if feature['type'] == 'continuous':
+        return _find_bins(edges, vals)
+
+    # Match the C/JS nominal path: integer-coded values select their bin;
+    # missing or out-of-range values use the final term bin.
+    bins = np.full(vals.shape, bin_count - 1, dtype=np.intp)
+    finite_positions = np.flatnonzero(np.isfinite(vals))
+    if finite_positions.size == 0:
+        return bins
+    finite_values = vals[finite_positions]
+    valid = ((finite_values >= 0) & (finite_values < bin_count) &
+             (finite_values == np.floor(finite_values)))
+    positions = finite_positions[valid]
+    bins[positions] = finite_values[valid].astype(np.intp)
     return bins
 
 
@@ -110,6 +269,15 @@ class EBMModel:
         if self._disposed:
             raise DisposedError('EBMModel has been disposed.')
 
+        objective = self._params.get('objective')
+        if objective not in (None, 'classification', 'regression'):
+            raise ValueError(
+                "objective must be 'classification' or 'regression'")
+        task = self._params.get('task')
+        if task not in (None, 'classification', 'regression'):
+            raise ValueError(
+                "task must be 'classification' or 'regression'")
+
         try:
             from interpret.glassbox import (
                 ExplainableBoostingClassifier,
@@ -121,19 +289,47 @@ class EBMModel:
                 'Install with: pip install interpret'
             )
 
-        X = np.asarray(X, dtype=np.float64)
+        X = _validate_matrix(X)
         y = np.asarray(y)
-        if X.ndim == 1:
-            X = X.reshape(1, -1)
+        if y.ndim != 1 or len(y) != len(X):
+            raise ValueError(
+                f'y length ({y.size}) does not match X rows ({len(X)})')
 
         # Determine task
-        objective = self._params.get('objective')
         if objective == 'regression':
             is_regressor = True
         elif objective == 'classification':
             is_regressor = False
+        elif task == 'regression':
+            is_regressor = True
+        elif task == 'classification':
+            is_regressor = False
         else:
             is_regressor = not np.all(y == np.floor(y.astype(np.float64)))
+
+        if is_regressor:
+            try:
+                y_numeric = y.astype(np.float64)
+            except (TypeError, ValueError) as error:
+                raise ValueError('Regression labels must be finite numbers') \
+                    from error
+            if not np.isfinite(y_numeric).all():
+                raise ValueError('Regression labels must be finite numbers')
+            y = y_numeric
+        else:
+            try:
+                y_numeric = y.astype(np.float64)
+            except (TypeError, ValueError) as error:
+                raise ValueError('Classifier labels must be int32 values') \
+                    from error
+            if (not np.isfinite(y_numeric).all() or
+                    not np.equal(y_numeric, np.floor(y_numeric)).all() or
+                    np.any(y_numeric < np.iinfo(np.int32).min) or
+                    np.any(y_numeric > np.iinfo(np.int32).max)):
+                raise ValueError('Classifier labels must be int32 values')
+            if np.unique(y_numeric).size < 2:
+                raise ValueError('Classification requires at least 2 classes')
+            y = y_numeric.astype(np.int32)
 
         interpret_params = self._map_params(self._params)
 
@@ -183,7 +379,7 @@ class EBMModel:
             'innerBags': 'inner_bags',
             'seed': 'random_state',
         }
-        skip = {'objective'}
+        skip = {'objective', 'task'}
         out = {}
         for k, v in params.items():
             if k in skip:
@@ -274,22 +470,66 @@ class EBMModel:
 
     @staticmethod
     def _from_bundle(manifest, toc, blobs):
-        entry = next((e for e in toc if e['id'] == 'model'), None)
-        if entry is None:
-            raise ValueError('Bundle missing "model" artifact')
+        type_id = manifest.get('typeId')
+        if type_id not in {
+                'wlearn.ebm.classifier@1',
+                'wlearn.ebm.regressor@1'}:
+            raise ValueError(f'Unsupported EBM bundle typeId: {type_id}')
+        if (not isinstance(toc, list) or len(toc) != 1 or
+                toc[0].get('id') != 'model' or
+                toc[0].get('mediaType') != 'application/octet-stream'):
+            raise ValueError(
+                'EBM bundle must contain exactly one model artifact')
+        entry = toc[0]
 
         blob = bytes(blobs[entry['offset']:entry['offset'] + entry['length']])
         model_data = json.loads(blob.decode('utf-8'))
 
         params = manifest.get('params', {})
         metadata = manifest.get('metadata', {})
+        expected_task = ('classification'
+                         if type_id == 'wlearn.ebm.classifier@1'
+                         else 'regression')
+        _validate_task_params(params, expected_task)
+        if expected_task == 'classification':
+            classes = metadata.get('classes')
+            n_classes = metadata.get('nClasses')
+            if (isinstance(n_classes, bool) or
+                    not isinstance(n_classes, int) or n_classes < 2 or
+                    not isinstance(classes, list) or
+                    len(classes) != n_classes or
+                    any(isinstance(value, bool) or
+                        not isinstance(value, int) or
+                        value < np.iinfo(np.int32).min or
+                        value > np.iinfo(np.int32).max
+                        for value in classes) or
+                    any(classes[index] <= classes[index - 1]
+                        for index in range(1, len(classes)))):
+                raise ValueError(f'{type_id} has invalid class metadata')
+        elif (metadata.get('nClasses') != 0 or
+              metadata.get('classes') not in (None, [])):
+            raise ValueError(f'{type_id} regressor has classifier metadata')
+        _validate_model_data(
+            model_data, expected_task,
+            metadata.get('nClasses', 0) if expected_task == 'classification'
+            else 0)
+        term_names = metadata.get('termNames')
+        if (term_names is not None and
+                (not isinstance(term_names, list) or
+                 len(term_names) != model_data['nTerms'] or
+                 not all(isinstance(value, str) for value in term_names))):
+            raise ValueError(f'{type_id} has invalid termNames metadata')
+        feature_names = metadata.get('featureNames')
+        if (feature_names is not None and
+                (not isinstance(feature_names, list) or
+                 len(feature_names) != model_data['nFeatures'] or
+                 not all(isinstance(value, str) for value in feature_names))):
+            raise ValueError(f'{type_id} has invalid featureNames metadata')
         return EBMModel(model_data, params, metadata, raw_blob=blob)
 
     def _predict_scores(self, X):
         """Compute raw scores (before link function)."""
-        X = np.asarray(X, dtype=np.float64)
-        if X.ndim == 1:
-            X = X.reshape(1, -1)
+        X = _validate_matrix(X, self._n_features)
         n_samples, n_features = X.shape
 
         ns = self._n_scores
@@ -307,7 +547,9 @@ class EBMModel:
                 fi = features[d]
                 cuts = self._cuts[fi]
                 vals = X[:, fi]
-                bins = _find_bins(cuts, vals)
+                bins = _find_feature_bins(
+                    self._model_data['features'][fi], cuts, vals,
+                    bin_counts[d])
                 # Clamp to valid range
                 np.clip(bins, 0, bin_counts[d] - 1, out=bins)
                 dim_bins.append(bins)
@@ -330,32 +572,26 @@ class EBMModel:
 
     def predict(self, X):
         self._ensure_fitted()
-        X = np.asarray(X, dtype=np.float64)
-        if X.ndim == 1:
-            X = X.reshape(1, -1)
-
         scores = self._predict_scores(X)
         n_samples = scores.shape[0]
         ns = self._n_scores
 
         if self._task == 'regression':
-            preds = scores[:, 0]
+            return scores[:, 0]
         elif ns == 1:
             # Binary classification: sigmoid + threshold
             proba = 1.0 / (1.0 + np.exp(-scores[:, 0]))
-            preds = np.where(proba > 0.5, 1.0, 0.0)
+            indexes = np.where(proba > 0.5, 1, 0)
         else:
             # Multiclass: argmax
-            preds = np.argmax(scores, axis=1).astype(np.float64)
+            indexes = np.argmax(scores, axis=1)
 
         # Remap to original class labels
-        if self._task != 'regression' and self._classes is not None:
-            for i in range(n_samples):
-                idx = int(round(preds[i]))
-                if 0 <= idx < len(self._classes):
-                    preds[i] = float(self._classes[idx])
-
-        return preds
+        if self._classes is None:
+            raise ValueError('Classifier is missing class metadata')
+        if np.any(indexes < 0) or np.any(indexes >= len(self._classes)):
+            raise ValueError('Classifier produced an invalid class index')
+        return self._classes[indexes].astype(np.int32, copy=False)
 
     def predict_proba(self, X):
         self._ensure_fitted()
@@ -380,9 +616,7 @@ class EBMModel:
     def explain(self, X):
         """Per-term additive contributions for each sample."""
         self._ensure_fitted()
-        X = np.asarray(X, dtype=np.float64)
-        if X.ndim == 1:
-            X = X.reshape(1, -1)
+        X = _validate_matrix(X, self._n_features)
         n_samples = X.shape[0]
         ns = self._n_scores
         nt = self._n_terms
@@ -400,7 +634,9 @@ class EBMModel:
                 fi = features[d]
                 cuts = self._cuts[fi]
                 vals = X[:, fi]
-                bins = _find_bins(cuts, vals)
+                bins = _find_feature_bins(
+                    self._model_data['features'][fi], cuts, vals,
+                    bin_counts[d])
                 np.clip(bins, 0, bin_counts[d] - 1, out=bins)
                 dim_bins.append(bins)
 
@@ -436,8 +672,13 @@ class EBMModel:
 
     def score(self, X, y):
         preds = self.predict(X)
-        y = np.asarray(y, dtype=np.float64)
+        y = np.asarray(y)
+        if y.size != preds.size:
+            raise ValueError(
+                f'y length ({y.size}) does not match predictions '
+                f'({preds.size})')
         if self._task == 'regression':
+            y = y.astype(np.float64)
             y_mean = y.mean()
             ss_res = np.sum((y - preds) ** 2)
             ss_tot = np.sum((y - y_mean) ** 2)
@@ -446,6 +687,7 @@ class EBMModel:
 
     def save(self, path=None):
         self._ensure_fitted()
+        params = _validate_task_params(self.get_params(), self._task)
         # Reuse original blob bytes for round-trip identity
         if self._raw_blob is not None:
             json_bytes = self._raw_blob
@@ -467,7 +709,7 @@ class EBMModel:
             metadata['featureNames'] = self._feature_names
 
         bundle = encode_bundle(
-            {'typeId': type_id, 'params': self.get_params(),
+            {'typeId': type_id, 'params': params,
              'metadata': metadata},
             [{'id': 'model', 'data': json_bytes}],
         )
@@ -525,7 +767,6 @@ class EBMModel:
             'maxLeaves': {'type': 'int_uniform', 'low': 2, 'high': 5},
             'maxInteractions': {'type': 'int_uniform', 'low': 0, 'high': 20},
             'maxBins': {'type': 'categorical', 'values': [128, 256, 512]},
-            'outerBags': {'type': 'int_uniform', 'low': 4, 'high': 16},
             'minSamplesLeaf': {'type': 'int_uniform', 'low': 1, 'high': 10},
         }
 
