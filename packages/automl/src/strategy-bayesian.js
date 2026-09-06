@@ -1,3 +1,4 @@
+const { effectiveSearchSpace } = require('./conditions.js')
 const { makeLCG, ValidationError } = require('@wlearn/core')
 const { BayesianOptimizer, countFreeParams } = require('@wlearn/bo')
 const { sampleConfig } = require('./sampler.js')
@@ -178,11 +179,7 @@ class BayesianStrategy {
   #getEffectiveSpace(model) {
     const task = this.#opts.task || model.task || null
     const space = model.searchSpace || model.cls.defaultSearchSpace?.(task) || {}
-    const effective = { ...space }
-    if (model.params) {
-      for (const key of Object.keys(model.params)) delete effective[key]
-    }
-    return effective
+    return effectiveSearchSpace(space, model.params || {})
   }
 
   #assertReady() {

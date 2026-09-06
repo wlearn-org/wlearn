@@ -45,6 +45,25 @@ def make_multiclass_data(seed=42, n=150, n_classes=3):
 
 @pytest.mark.skipif(not HAS_XGBOOST, reason='xgboost not installed')
 class TestXGBoost:
+    def test_loaded_bytes_survive_save_but_not_refit(self):
+        from pathlib import Path
+        from wlearn.xgboost import XGBModel
+        fixture = Path(__file__).parents[2] / 'fixtures' / 'xgboost-regressor.wlrn'
+        parts = decode_bundle(fixture.read_bytes())
+        model = XGBModel._from_bundle(*parts)
+        try:
+            assert decode_bundle(model.save())[2] == parts[2]
+            X, y = make_regression_data(n=40, n_features=2)
+            model.fit(X, y + 100)
+            assert decode_bundle(model.save())[2] != parts[2]
+            restored = XGBModel._from_bundle(*decode_bundle(model.save()))
+            try:
+                np.testing.assert_array_equal(restored.predict(X), model.predict(X))
+            finally:
+                restored.dispose()
+        finally:
+            model.dispose()
+
     def test_task_resolution_matches_unified_api(self):
         from wlearn.xgboost import XGBModel
         X, y = make_binary_data(n=40)

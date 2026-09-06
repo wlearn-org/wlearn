@@ -4,6 +4,7 @@ import math
 
 from ._rng import make_lcg
 from ._sampler import sample_config
+from ._conditions import effective_search_space
 from ._candidate import (
     create_candidate_task, normalize_model_specs, preprocess_choices,
 )
@@ -27,10 +28,8 @@ class HalvingStrategy:
             if not space and hasattr(model['cls'], 'default_search_space'):
                 space = model['cls'].default_search_space()
 
-            effective_space = dict(space)
             fixed_params = model.get('params') or {}
-            for key in fixed_params:
-                effective_space.pop(key, None)
+            effective_space = effective_search_space(space, fixed_params)
 
             config_rng = make_lcg(int(rng() * 0x7fffffff))
             for _ in range(n_iter):

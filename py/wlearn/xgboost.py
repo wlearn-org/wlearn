@@ -94,6 +94,7 @@ def _booster_identity(booster):
 class XGBModel:
     def __init__(self, booster, params, nr_class=0, classes=None):
         self._booster = booster
+        self._loaded_model_bytes = None
         self._params = dict(params)
         self._nr_class = nr_class
         self._classes = np.array(classes, dtype=np.int32) if classes else np.array([], dtype=np.int32)
@@ -105,6 +106,7 @@ class XGBModel:
         """Create an unfitted XGBoost model."""
         obj = cls.__new__(cls)
         obj._booster = None
+        obj._loaded_model_bytes = None
         obj._params = dict(params) if params else {}
         obj._nr_class = 0
         obj._classes = np.array([], dtype=np.int32)
@@ -197,6 +199,7 @@ class XGBModel:
         dtrain = xgb.DMatrix(X, label=y_train)
         booster = xgb.train(xgb_params, dtrain, num_boost_round=num_round)
         self._booster = booster
+        self._loaded_model_bytes = None
         self._params = fit_params
         self._classes = classes
         self._nr_class = nr_class
@@ -273,11 +276,15 @@ class XGBModel:
             raise ValueError(
                 f'{type_id} model feature count does not match manifest')
 
-        return XGBModel(
+        model = XGBModel(
             booster, params,
             nr_class=meta.get('nrClass', 0),
             classes=meta.get('classes'),
         )
+        # Native XGBoost can rewrite UBJ version metadata even without training.
+        # Preserve the validated loaded artifact until a successful fit replaces it.
+        model._loaded_model_bytes = model_bytes
+        return model
 
     def predict(self, X):
         self._ensure_fitted()
@@ -377,14 +384,16 @@ class XGBModel:
     def save(self, path=None):
         self._ensure_fitted()
         output_path = path
-        fd, tmp_path = tempfile.mkstemp(suffix='.ubj')
-        try:
-            os.close(fd)
-            self._booster.save_model(tmp_path)
-            with open(tmp_path, 'rb') as f:
-                model_bytes = f.read()
-        finally:
-            os.unlink(tmp_path)
+        model_bytes = self._loaded_model_bytes
+        if model_bytes is None:
+            fd, tmp_path = tempfile.mkstemp(suffix='.ubj')
+            try:
+                os.close(fd)
+                self._booster.save_model(tmp_path)
+                with open(tmp_path, 'rb') as f:
+                    model_bytes = f.read()
+            finally:
+                os.unlink(tmp_path)
 
         obj = self._params.get('objective', 'reg:squarederror')
         type_id = ('wlearn.xgboost.classifier@1'
@@ -411,6 +420,7 @@ class XGBModel:
             return
         self._disposed = True
         self._booster = None
+        self._loaded_model_bytes = None
         self._fitted = False
 
     def get_params(self):

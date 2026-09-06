@@ -1,3 +1,4 @@
+const { effectiveSearchSpace } = require('./conditions.js')
 const { makeLCG } = require('@wlearn/core')
 const { sampleConfig } = require('./sampler.js')
 const {
@@ -25,13 +26,7 @@ class RandomStrategy {
 
     for (const model of normalizeModelSpecs(models)) {
       const space = model.searchSpace || model.cls.defaultSearchSpace?.() || {}
-      // Remove fixed params from search space
-      const effectiveSpace = { ...space }
-      if (model.params) {
-        for (const key of Object.keys(model.params)) {
-          delete effectiveSpace[key]
-        }
-      }
+      const effectiveSpace = effectiveSearchSpace(space, model.params || {})
 
       const configRng = makeLCG((rng() * 0x7fffffff) | 0)
       for (let i = 0; i < nIter; i++) {

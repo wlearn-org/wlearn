@@ -712,10 +712,15 @@ release, every expected bundle and sidecar must be tracked and
 `npm run test:interop` must pass with every Python backend installed and no skipped
 fixture. `npm run test:interop:minimal` is the explicit developer lane for a partial
 backend environment; its output index records every skipped backend and must never
-be reported as full interoperability. Python writes an indexed
-`fixtures/py-produced/` result set; the reverse verifier fails if the index or any
-declared output is missing. Prediction checks reject empty, NaN, and infinite
-outputs before applying tolerances.
+be reported as full interoperability. The combined runner creates a fresh output
+directory and prints its path. Set `WLEARN_INTEROP_OUTPUT_DIR` to an empty directory
+to retain results at a chosen location, and `WLEARN_PYTHON` to select the Python
+executable. Standalone Python tests use a temporary directory by default; standalone
+reverse verification requires the matching `WLEARN_INTEROP_OUTPUT_DIR`. Reusing a
+nonempty output directory fails without deleting it. An exclusive ownership marker
+also rejects overlapping writers targeting the same empty directory. The reverse verifier rejects
+missing indexes or declared outputs, and prediction checks reject empty, NaN, and
+infinite outputs before applying tolerances.
 
 ## Bundle format
 

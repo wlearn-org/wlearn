@@ -3,6 +3,7 @@
 import math
 
 from ._rng import make_lcg
+from ._conditions import condition_order, condition_satisfied
 
 
 def sample_param(param, rng):
@@ -29,24 +30,8 @@ def sample_param(param, rng):
 def sample_config(space, rng):
     """Sample a complete config from a SearchSpace, respecting conditions."""
     config = {}
-    keys = list(space.keys())
-
-    # First pass: non-conditional params
-    for key in keys:
-        if 'condition' not in space[key] or space[key]['condition'] is None:
-            config[key] = sample_param(space[key], rng)
-
-    # Second pass: conditional params
-    for key in keys:
-        cond = space[key].get('condition')
-        if not cond:
-            continue
-        satisfied = True
-        for ck, cv in cond.items():
-            if config.get(ck) != cv:
-                satisfied = False
-                break
-        if satisfied:
+    for key in condition_order(space):
+        if condition_satisfied(space[key].get('condition'), config):
             config[key] = sample_param(space[key], rng)
 
     return config
@@ -63,37 +48,12 @@ def random_configs(space, n, seed=42):
 
 def grid_configs(space, steps=5):
     """Enumerate grid points from a SearchSpace."""
-    keys = list(space.keys())
-    if not keys:
-        return [{}]
-
-    non_cond = [k for k in keys if not space[k].get('condition')]
-    cond_keys = [k for k in keys if space[k].get('condition')]
-
-    value_arrays = [_discretize(space[k], steps) for k in non_cond]
-
-    # Cartesian product of non-conditional params
     combos = [{}]
-    for i, key in enumerate(non_cond):
-        vals = value_arrays[i]
-        new_combos = []
-        for combo in combos:
-            for v in vals:
-                new_combos.append({**combo, key: v})
-        combos = new_combos
-
-    # Add conditional params where conditions are met
-    for combo in combos:
-        for key in cond_keys:
-            cond = space[key]['condition']
-            satisfied = True
-            for ck, cv in cond.items():
-                if combo.get(ck) != cv:
-                    satisfied = False
-                    break
-            if satisfied:
-                vals = _discretize(space[key], steps)
-                combo[key] = vals[len(vals) // 2]
+    for key in condition_order(space):
+        vals = _discretize(space[key], steps)
+        combos = [expanded for combo in combos for expanded in (
+            [{**combo, key: value} for value in vals]
+            if condition_satisfied(space[key].get('condition'), combo) else [combo])]
 
     return combos
 

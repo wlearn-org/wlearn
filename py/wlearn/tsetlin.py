@@ -148,7 +148,7 @@ _tmu_patched = False
 def _patch_tmu_numpy_compat():
     """Patch tmu's use of np.uint32(~0) for numpy >= 2.0 compatibility.
 
-    tmu 0.7.1 uses ``np.uint32(~0)`` and ``array | ~0`` which fail with
+    tmu 0.8.3 uses ``np.uint32(~0)`` which fails with
     numpy >= 2.0 because negative Python ints can no longer be cast to
     unsigned numpy types.  We replace those patterns with the equivalent
     ``np.uint32(0xFFFFFFFF)`` / ``np.full(..., 0xFFFFFFFF, np.uint32)``.
@@ -167,7 +167,7 @@ def _patch_tmu_numpy_compat():
     import importlib
     import re
 
-    pkg_names = ['tmu.clause_bank', 'tmu.tsetlin_machine']
+    pkg_names = ['tmu.clause_bank.clause_bank']
     for name in pkg_names:
         try:
             mod = importlib.import_module(name)
@@ -256,7 +256,7 @@ class TsetlinModel:
     def fit(self, X, y):
         """Train a Tsetlin Machine using the tmu package.
 
-        Requires the ``tmu`` package (``pip install tmu>=0.7``).
+        Requires the ``tmu`` package (``pip install 'tmu>=0.8.3,<0.9'``).
         Predict/save/load only need numpy.
         """
         if self._disposed:
@@ -264,11 +264,12 @@ class TsetlinModel:
 
         try:
             _patch_tmu_numpy_compat()
-            from tmu.tsetlin_machine import TMClassifier, TMRegressor
+            from tmu.models.classification.vanilla_classifier import TMClassifier
+            from tmu.models.regression.vanilla_regressor import TMRegressor
         except ImportError:
             raise ImportError(
                 'tmu package required for fit(). '
-                'Install with: pip install tmu>=0.7'
+                "Install with: pip install 'tmu>=0.8.3,<0.9'"
             )
 
         X = np.asarray(X, dtype=np.float64)
@@ -324,9 +325,6 @@ class TsetlinModel:
                 Xi_unpacked[:, bit_pos] = (X[:, f] > thresh_val).astype(np.uint32)
                 bit_pos += 1
 
-        # Set numpy random seed for reproducibility (tmu uses numpy PRNG)
-        np.random.seed(seed)
-
         # Use tmu for training (tmu does its own bit-packing internally)
         Xi_uint = Xi_unpacked
 
@@ -338,6 +336,7 @@ class TsetlinModel:
                 platform='CPU',
                 boost_true_positive_feedback=1 if boost else 0,
                 number_of_state_bits_ta=state_bits,
+                seed=seed,
             )
             y_float = y.astype(np.float32)
             for ep in range(n_epochs):
@@ -361,13 +360,14 @@ class TsetlinModel:
                 platform='CPU',
                 boost_true_positive_feedback=1 if boost else 0,
                 number_of_state_bits_ta=state_bits,
+                seed=seed,
             )
-            y_int = y.astype(np.uint32)
+            unique_labels, encoded = np.unique(y.astype(np.int32), return_inverse=True)
+            y_int = encoded.astype(np.uint32)
             for ep in range(n_epochs):
                 tm.fit(Xi_uint, y_int)
 
             self._task = 0
-            unique_labels = np.sort(np.unique(y.astype(np.int32)))
             self._class_labels = unique_labels.tolist()
             self._classes = unique_labels
             self._n_classes = len(unique_labels)
@@ -375,7 +375,7 @@ class TsetlinModel:
             self._y_max = 0.0
 
             # TMClassifier: one clause_bank per class
-            banks = tm.clause_banks
+            banks = [tm.clause_banks[c] for c in range(self._n_classes)]
 
         # Extract TA state from tmu internals
         clause_state_size = n_clauses * la_chunks * state_bits
@@ -385,8 +385,9 @@ class TsetlinModel:
         for c_idx, bank in enumerate(banks):
             bank_ta = np.asarray(bank.clause_bank, dtype=np.uint32).ravel()
             start = c_idx * clause_state_size
-            copy_len = min(len(bank_ta), clause_state_size)
-            ta_state[start:start + copy_len] = bank_ta[:copy_len]
+            if len(bank_ta) != clause_state_size:
+                raise ValueError('tmu clause state layout does not match the portable Tsetlin format')
+            ta_state[start:start + clause_state_size] = bank_ta
 
         self._ta_state = ta_state
         self._thresholds = all_thresholds

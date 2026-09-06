@@ -35,6 +35,22 @@ def make_multiclass_data(seed=42, n=150, n_classes=3):
 
 
 class TestBinaryClassification:
+    def test_public_labels_and_rng_ownership(self):
+        X, y = make_binary_data(n=40)
+        y = np.where(y, 17, -3)
+        np.random.seed(912)
+        before = np.random.get_state()
+        model = TsetlinModel.create({'nClauses': 40, 'nEpochs': 5, 'seed': 7})
+        try:
+            model.fit(X, y)
+            after = np.random.get_state()
+            assert before[0] == after[0] and before[2:] == after[2:]
+            np.testing.assert_array_equal(before[1], after[1])
+            np.testing.assert_array_equal(model.classes, [-3, 17])
+            assert set(model.predict(X)).issubset({-3, 17})
+        finally:
+            model.dispose()
+
     def test_fit_predict(self):
         X, y = make_binary_data()
         model = TsetlinModel.create({

@@ -1,4 +1,5 @@
 const { makeLCG } = require('@wlearn/core')
+const { conditionOrder, conditionSatisfied } = require('./conditions.js')
 
 const { floor, round, log, exp, min, max } = Math
 
@@ -28,24 +29,8 @@ function sampleParam(param, rng) {
  */
 function sampleConfig(space, rng) {
   const config = {}
-  const keys = Object.keys(space)
-
-  // First pass: non-conditional params
-  for (const key of keys) {
-    if (!space[key].condition) {
-      config[key] = sampleParam(space[key], rng)
-    }
-  }
-
-  // Second pass: conditional params
-  for (const key of keys) {
-    const { condition } = space[key]
-    if (!condition) continue
-    let satisfied = true
-    for (const [ck, cv] of Object.entries(condition)) {
-      if (config[ck] !== cv) { satisfied = false; break }
-    }
-    if (satisfied) {
+  for (const key of conditionOrder(space)) {
+    if (conditionSatisfied(space[key].condition, config)) {
       config[key] = sampleParam(space[key], rng)
     }
   }
@@ -70,44 +55,12 @@ function randomConfigs(space, n, { seed = 42 } = {}) {
  * Continuous params discretized to `steps` values.
  */
 function gridConfigs(space, { steps = 5 } = {}) {
-  const keys = Object.keys(space)
-  if (keys.length === 0) return [{}]
-
-  // Build value arrays for non-conditional params
-  const nonCond = keys.filter(k => !space[k].condition)
-  const condKeys = keys.filter(k => space[k].condition)
-
-  const valueArrays = nonCond.map(k => _discretize(space[k], steps))
-
-  // Cartesian product of non-conditional params
   let combos = [{}]
-  for (let i = 0; i < nonCond.length; i++) {
-    const key = nonCond[i]
-    const vals = valueArrays[i]
-    const next = []
-    for (const combo of combos) {
-      for (const v of vals) {
-        next.push({ ...combo, [key]: v })
-      }
-    }
-    combos = next
-  }
-
-  // Add conditional params where conditions are met
-  for (const combo of combos) {
-    for (const key of condKeys) {
-      const { condition } = space[key]
-      let satisfied = true
-      for (const [ck, cv] of Object.entries(condition)) {
-        if (combo[ck] !== cv) { satisfied = false; break }
-      }
-      if (satisfied) {
-        // For grid, take all discrete values and expand
-        // But that would multiply combos -- for simplicity, take midpoint
-        const vals = _discretize(space[key], steps)
-        combo[key] = vals[floor(vals.length / 2)]
-      }
-    }
+  for (const key of conditionOrder(space)) {
+    const vals = _discretize(space[key], steps)
+    combos = combos.flatMap(combo => conditionSatisfied(space[key].condition, combo)
+      ? vals.map(value => ({ ...combo, [key]: value }))
+      : [combo])
   }
 
   return combos

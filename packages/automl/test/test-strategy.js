@@ -41,6 +41,25 @@ function assertTwoTemplates(tasks) {
 }
 
 describe('preprocessing candidate crossing', () => {
+  it('conditions tunable children on fixed model parameters', () => {
+    const searchSpace = {
+      kernel: { type: 'categorical', values: ['linear', 'poly'] },
+      degree: { type: 'categorical', values: [2, 3], condition: { kernel: 'poly' } },
+      extra: { type: 'categorical', values: [true], condition: { degree: 2 } },
+    }
+    for (const kernel of ['poly', 'linear']) {
+      const strategy = new RandomStrategy([{
+        name: 'fixed', cls: SearchableMock, searchSpace, params: { kernel },
+      }], { nIter: 1, seed: 7 })
+      const task = strategy.next()
+      assert.equal(task.params.kernel, kernel)
+      if (kernel === 'poly') assert.ok([2, 3].includes(task.params.degree))
+      else {
+        assert.equal(Object.hasOwn(task.params, 'degree'), false)
+        assert.equal(Object.hasOwn(task.params, 'extra'), false)
+      }
+    }
+  })
   it('crosses random, halving, progressive, portfolio, and Bayesian strategies', async () => {
     const model = modelWithPreprocessChoices()
 

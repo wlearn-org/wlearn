@@ -91,9 +91,16 @@ FIXTURE_LOADER_PREFIXES = (
 )
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent / 'fixtures'
-PY_PRODUCED_DIR = FIXTURES_DIR / 'py-produced'
+PY_PRODUCED_DIR = None
 PRODUCED_BUNDLES = set()
 REQUIRE_ALL_BACKENDS = os.environ.get('WLEARN_INTEROP_REQUIRE_ALL') == '1'
+
+
+def test_roundtrip_output_is_run_owned():
+    configured = os.environ.get('WLEARN_INTEROP_OUTPUT_DIR')
+    if configured:
+        assert PY_PRODUCED_DIR.resolve() == Path(configured).resolve()
+    assert PY_PRODUCED_DIR.resolve() != (FIXTURES_DIR / 'py-produced').resolve()
 
 
 def assert_prediction_parity(actual, expected, *, atol, message):
@@ -121,9 +128,22 @@ def model_fixture_names():
     return fixture_names()
 
 
+def _prepare_output_dir(directory):
+    assert directory != (FIXTURES_DIR / 'py-produced').resolve(), (
+        'Use a fresh WLEARN_INTEROP_OUTPUT_DIR, not the shared legacy directory')
+    directory.mkdir(parents=True, exist_ok=True)
+    # Never erase another run's output, including when a caller reuses a path.
+    assert not any(directory.iterdir()), 'Interop output directory must be empty'
+    # Reserve before yielding: concurrent callers can observe the same empty
+    # directory, but only one may become its writer. Keep the marker for audit.
+    with (directory / '.wlearn-interop-owner').open('x') as marker:
+        marker.write(str(os.getpid()))
+
+
 @pytest.fixture(scope='session', autouse=True)
-def roundtrip_output_index():
+def roundtrip_output_index(tmp_path_factory):
     """Declare exactly which Python round-trip bundles this environment produced."""
+    global PY_PRODUCED_DIR
     if REQUIRE_ALL_BACKENDS:
         missing = sorted(set(LOADER_MODULES) - AVAILABLE_LOADERS)
         assert not missing, (
@@ -133,12 +153,11 @@ def roundtrip_output_index():
                 f'{name}={LOADER_IMPORT_ERRORS[name]}'
                 for name in missing if name in LOADER_IMPORT_ERRORS))
 
-    PY_PRODUCED_DIR.mkdir(parents=True, exist_ok=True)
-    for path in PY_PRODUCED_DIR.glob('*.wlrn'):
-        path.unlink()
+    configured = os.environ.get('WLEARN_INTEROP_OUTPUT_DIR')
+    PY_PRODUCED_DIR = (Path(configured).resolve() if configured
+                       else tmp_path_factory.mktemp('wlearn-interop'))
+    _prepare_output_dir(PY_PRODUCED_DIR)
     index_path = PY_PRODUCED_DIR / 'index.json'
-    if index_path.exists():
-        index_path.unlink()
 
     yield
 
@@ -421,3 +440,20 @@ def test_prediction_parity_rejects_nonfinite_and_empty_values():
     with pytest.raises(AssertionError, match='NaN or infinity'):
         assert_prediction_parity(
             [float('nan')], [float('nan')], atol=1e-5, message='nan')
+
+
+def test_output_reservation_rejects_overlapping_runs(tmp_path):
+    directory = tmp_path / 'shared'
+    _prepare_output_dir(directory)
+    with pytest.raises((AssertionError, FileExistsError)):
+        _prepare_output_dir(directory)
+
+
+def test_output_reservation_preserves_existing_data(tmp_path):
+    directory = tmp_path / 'existing'
+    directory.mkdir()
+    sentinel = directory / 'sentinel'
+    sentinel.write_text('owned by another run')
+    with pytest.raises(AssertionError, match='empty'):
+        _prepare_output_dir(directory)
+    assert sentinel.read_text() == 'owned by another run'

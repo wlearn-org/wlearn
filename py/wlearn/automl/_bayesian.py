@@ -15,6 +15,7 @@ from ._cv import stratified_k_fold, k_fold
 from ._executor import Executor
 from ._rng import make_lcg
 from ._sampler import sample_config
+from ._conditions import effective_search_space
 
 
 def _load_optimizer_cls():
@@ -218,10 +219,7 @@ class BayesianStrategy:
 
     def _effective_space(self, model):
         space = model.get('searchSpace') or _default_search_space(model['cls'])
-        effective = dict(space)
-        for key in (model.get('params') or {}):
-            effective.pop(key, None)
-        return effective
+        return effective_search_space(space, model.get('params') or {})
 
 
 def _variant_id(class_id, preprocess):

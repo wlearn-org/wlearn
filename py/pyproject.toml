@@ -30,7 +30,7 @@ liblinear = ["liblinear-official>=2.50"]
 libsvm = ["libsvm-official>=3.30"]
 nanoflann = ["pynanoflann>=0.10"]
 ebm-fit = ["interpret>=0.6"]
-tsetlin-fit = ["tmu>=0.7"]
+tsetlin-fit = ["tmu>=0.8.3,<0.9"]
 lightgbm = ["lightgbm>=4.0"]
 stochtree = ["stochtree>=0.1"]
 nn = ["numpy>=1.22"]
@@ -43,7 +43,7 @@ all = [
     "libsvm-official>=3.30",
     "pynanoflann>=0.10",
     "interpret>=0.6",
-    "tmu>=0.7",
+    "tmu>=0.8.3,<0.9",
     "lightgbm>=4.0",
     "stochtree>=0.1",
     "numpy>=1.22",

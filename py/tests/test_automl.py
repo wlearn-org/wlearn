@@ -249,6 +249,67 @@ class TestRNG:
 # ===========================================================================
 
 class TestSampler:
+    def test_strategy_conditions_on_fixed_params(self):
+        space = {
+            'kernel': {'type': 'categorical', 'values': ['linear', 'poly']},
+            'degree': {'type': 'categorical', 'values': [2, 3], 'condition': {'kernel': 'poly'}},
+            'extra': {'type': 'categorical', 'values': [True], 'condition': {'degree': 2}},
+        }
+        for kernel in ['poly', 'linear']:
+            strategy = RandomStrategy([{
+                'name': 'fixed', 'classId': 'test.fixed', 'cls': MockModel,
+                'searchSpace': space, 'params': {'kernel': kernel},
+            }], n_iter=1, seed=7)
+            params = strategy.next()['params']
+            assert params['kernel'] == kernel
+            if kernel == 'poly':
+                assert params['degree'] in (2, 3)
+            else:
+                assert 'degree' not in params and 'extra' not in params
+
+    def test_conditional_dependency_order_and_full_grid(self):
+        space = {
+            'c': {'type': 'categorical', 'values': ['x', 'y'], 'condition': {'b': 2}},
+            'b': {'type': 'int_uniform', 'low': 2, 'high': 3, 'condition': {'a': 'on'}},
+            'a': {'type': 'categorical', 'values': ['on', 'off']},
+        }
+        assert sample_config(space, lambda: 0) == {'a': 'on', 'b': 2, 'c': 'x'}
+        assert sample_config(space, lambda: 0.99) == {'a': 'off'}
+        assert grid_configs(space) == [
+            {'a': 'on', 'b': 2, 'c': 'x'}, {'a': 'on', 'b': 2, 'c': 'y'},
+            {'a': 'on', 'b': 3}, {'a': 'off'},
+        ]
+
+    def test_portable_conditions_and_empty_condition(self):
+        space = {
+            'value': {'type': 'categorical', 'values': [{'a': 1, 'b': True}]},
+            'yes': {'type': 'categorical', 'values': [1], 'condition': {'value': {'b': True, 'a': 1}}},
+            'no': {'type': 'categorical', 'values': [1], 'condition': {'value': {'b': 1, 'a': 1}}},
+            'empty': {'type': 'categorical', 'values': [None], 'condition': {}},
+        }
+        assert sample_config(space, lambda: 0) == {'value': {'a': 1, 'b': True}, 'empty': None, 'yes': 1}
+
+    def test_absent_parent_is_not_null(self):
+        space = {
+            'a': {'type': 'categorical', 'values': [False]},
+            'b': {'type': 'categorical', 'values': [None], 'condition': {'a': True}},
+            'c': {'type': 'categorical', 'values': [1], 'condition': {'b': None}},
+        }
+        assert sample_config(space, lambda: 0) == {'a': False}
+
+    @pytest.mark.parametrize('space', [
+        {'a': {'type': 'categorical', 'values': [1], 'condition': {'missing': 1}}},
+        {'a': {'type': 'categorical', 'values': [1], 'condition': {'b': 1}},
+         'b': {'type': 'categorical', 'values': [1], 'condition': {'a': 1}}},
+    ])
+    def test_invalid_condition_graph(self, space):
+        def rng():
+            pytest.fail('invalid spaces must not consume randomness')
+        with pytest.raises(ValueError, match='[Uu]nknown|[Cc]ycl'):
+            sample_config(space, rng)
+        with pytest.raises(ValueError, match='[Uu]nknown|[Cc]ycl'):
+            grid_configs(space)
+
     def test_categorical(self):
         rng = make_lcg(42)
         param = {'type': 'categorical', 'values': ['a', 'b', 'c']}

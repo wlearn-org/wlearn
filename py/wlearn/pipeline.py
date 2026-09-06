@@ -39,6 +39,9 @@ class Pipeline:
         The last step is only fitted (not transformed).
         """
         self._ensure_alive()
+        # Child fits mutate in place; a failed refit cannot expose the old
+        # pipeline as fitted with a mixture of old and newly learned state.
+        self._fitted = False
         current = X
         for i, (_, est) in enumerate(self._steps[:-1]):
             if hasattr(est, 'fit_transform'):

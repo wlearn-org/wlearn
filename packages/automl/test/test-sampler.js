@@ -60,6 +60,45 @@ describe('sampleParam', () => {
 })
 
 describe('sampleConfig', () => {
+  it('resolves reversed dependency chains and ignores inactive parents', () => {
+    const space = {
+      c: { type: 'categorical', values: ['x'], condition: { b: 2 } },
+      b: { type: 'int_uniform', low: 2, high: 2, condition: { a: 'on' } },
+      a: { type: 'categorical', values: ['on', 'off'] },
+    }
+    assert.deepEqual(sampleConfig(space, () => 0), { a: 'on', b: 2, c: 'x' })
+    assert.deepEqual(sampleConfig(space, () => 0.99), { a: 'off' })
+  })
+
+  it('matches portable values without conflating booleans and numbers', () => {
+    const space = {
+      value: { type: 'categorical', values: [{ a: 1, b: true }] },
+      yes: { type: 'categorical', values: [1], condition: { value: { b: true, a: 1 } } },
+      no: { type: 'categorical', values: [1], condition: { value: { b: 1, a: 1 } } },
+      empty: { type: 'categorical', values: [null], condition: {} },
+    }
+    assert.deepEqual(sampleConfig(space, () => 0), { value: { a: 1, b: true }, empty: null, yes: 1 })
+  })
+
+  it('does not satisfy a null condition with an absent parent', () => {
+    const space = {
+      a: { type: 'categorical', values: [false] },
+      b: { type: 'categorical', values: [null], condition: { a: true } },
+      c: { type: 'categorical', values: [1], condition: { b: null } },
+    }
+    assert.deepEqual(sampleConfig(space, () => 0), { a: false })
+  })
+
+  it('rejects unknown parents and cycles before consuming randomness', () => {
+    for (const space of [
+      { a: { type: 'categorical', values: [1], condition: { missing: 1 } } },
+      { a: { type: 'categorical', values: [1], condition: { b: 1 } }, b: { type: 'categorical', values: [1], condition: { a: 1 } } },
+    ]) {
+      const rng = () => { assert.fail('invalid spaces must not consume randomness') }
+      assert.throws(() => sampleConfig(space, rng), /unknown|cycl/i)
+      assert.throws(() => gridConfigs(space), /unknown|cycl/i)
+    }
+  })
   it('samples all non-conditional params', () => {
     const rng = makeLCG(7)
     const space = {
@@ -129,6 +168,18 @@ describe('randomConfigs', () => {
 })
 
 describe('gridConfigs', () => {
+  it('expands every active branch in a reversed, multi-parent grid', () => {
+    const space = {
+      degree: { type: 'categorical', values: [2, 3], condition: { kernel: 'poly', enabled: true } },
+      kernel: { type: 'categorical', values: ['linear', 'poly'] },
+      enabled: { type: 'categorical', values: [true, false] },
+    }
+    assert.deepEqual(gridConfigs(space), [
+      { kernel: 'linear', enabled: true }, { kernel: 'linear', enabled: false },
+      { kernel: 'poly', enabled: true, degree: 2 },
+      { kernel: 'poly', enabled: true, degree: 3 }, { kernel: 'poly', enabled: false },
+    ])
+  })
   it('enumerates all combinations for categorical', () => {
     const space = {
       a: { type: 'categorical', values: ['x', 'y'] },

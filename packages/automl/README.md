@@ -1,5 +1,14 @@
 # @wlearn/automl
 
+The source benchmark runs with
+`node bench/bench-automl.mjs --smoke --output results.json` from this package.
+It requires all six configured WASM families; `--models linear,svm` selects an
+explicit subset. The full profile uses 500/2000 rows and seeds 42/43/44; smoke
+uses 128 rows and seed 42. JSON records include source/WASM hashes, environment,
+fit/predict timings, scores, and saved bundle sizes. JS heap deltas are best-effort
+snapshots, and unavailable peak WASM memory is `null`. Candidate, inference, or
+serialization failures produce a failed report and a nonzero exit status.
+
 Automated model selection for wlearn. Searches over model families and hyperparameters, runs cross-validation, and optionally builds a Caruana ensemble from top candidates.
 
 Part of [wlearn](https://wlearn.org) ([GitHub](https://github.com/wlearn-org), [all packages](https://github.com/wlearn-org/wlearn#repository-structure)).

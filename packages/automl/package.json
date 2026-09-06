@@ -29,7 +29,7 @@
     "@wlearn/types": "^0.2.0"
   },
   "scripts": {
-    "test": "node --test test/mock-model.js test/test-auto-fit.js test/test-candidate-pipeline.js test/test-common.js test/test-executor.js test/test-halving.js test/test-leaderboard.js test/test-portfolio.js test/test-regression.js test/test-sampler.js test/test-search.js test/test-strategy.js",
+    "test": "node --test test/mock-model.js test/test-auto-fit.js test/test-bench.js test/test-candidate-pipeline.js test/test-common.js test/test-executor.js test/test-halving.js test/test-leaderboard.js test/test-portfolio.js test/test-regression.js test/test-sampler.js test/test-search.js test/test-strategy.js",
     "test:browser": "npm run build:browser && node test/test-browser.js",
     "test:types": "tsc --project test/tsconfig.json",
     "build:browser": "bash scripts/build-browser.sh",

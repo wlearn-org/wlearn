@@ -7,9 +7,6 @@ from wlearn.pipeline import Pipeline
 from wlearn.errors import NotFittedError, DisposedError, ValidationError
 from wlearn.bundle import decode_bundle
 
-liblinear = pytest.importorskip('liblinear', reason='liblinear-official not installed')
-
-
 def make_binary_data(seed=42, n=100, n_features=3):
     rng = np.random.RandomState(seed)
     X = rng.randn(n, n_features)
@@ -78,9 +75,50 @@ class MockTransformer:
 
 
 class TestPipelineFit:
+    @pytest.mark.parametrize('fail_at', ['transform', 'model'])
+    def test_failed_refit_invalidates_pipeline_until_recovery(self, fail_at):
+        class Step:
+            fail = False
+            offset = 0
+
+            def fit(self, X, y=None):
+                self.offset += 1
+                if self.fail:
+                    raise ValueError('refit failed')
+                return self
+
+            def transform(self, X):
+                return np.asarray(X) + self.offset
+
+            def predict(self, X):
+                return np.asarray(X).ravel()
+
+            def score(self, X, y):
+                return 1.0
+
+            def save(self):
+                from wlearn.bundle import encode_bundle
+                return encode_bundle({'typeId': 'test.refit@1'}, [])
+
+        transform, model = Step(), Step()
+        pipe = Pipeline([('transform', transform), ('model', model)])
+        pipe.fit([[0]], [0])
+        np.testing.assert_array_equal(pipe.predict([[0]]), [1])
+        failing = transform if fail_at == 'transform' else model
+        failing.fail = True
+        with pytest.raises(ValueError, match='refit failed'):
+            pipe.fit([[0]], [0])
+        for operation in [lambda: pipe.predict([[0]]), lambda: pipe.score([[0]], [0]), pipe.save]:
+            with pytest.raises(NotFittedError):
+                operation()
+        failing.fail = False
+        pipe.fit([[0]], [0])
+        np.testing.assert_array_equal(pipe.predict([[0]]), [3])
+
     """Test Pipeline fit/predict with a single estimator (no transformer)."""
 
     def test_fit_predict_single_step(self):
+        pytest.importorskip('liblinear', reason='liblinear-official not installed')
         from wlearn.liblinear import LinearModel
         X, y = make_binary_data()
         model = LinearModel.create({'solver': 0, 'C': 1.0})
@@ -91,6 +129,7 @@ class TestPipelineFit:
         assert len(preds) == len(y)
 
     def test_score_single_step(self):
+        pytest.importorskip('liblinear', reason='liblinear-official not installed')
         from wlearn.liblinear import LinearModel
         X, y = make_binary_data()
         model = LinearModel.create({'solver': 0, 'C': 1.0})
@@ -100,6 +139,7 @@ class TestPipelineFit:
         assert acc > 0.7
 
     def test_predict_proba_single_step(self):
+        pytest.importorskip('liblinear', reason='liblinear-official not installed')
         from wlearn.liblinear import LinearModel
         X, y = make_binary_data()
         model = LinearModel.create({'solver': 0, 'C': 1.0})
@@ -110,6 +150,7 @@ class TestPipelineFit:
         assert np.all(proba >= 0)
 
     def test_capabilities_forwarded_as_defensive_copy(self):
+        pytest.importorskip('liblinear', reason='liblinear-official not installed')
         from wlearn.liblinear import LinearModel
         model = LinearModel.create({'solver': 0})
         pipe = Pipeline([('model', model)])
@@ -120,6 +161,7 @@ class TestPipelineFit:
         assert pipe.capabilities['predictProba'] is True
 
     def test_not_fitted_errors(self):
+        pytest.importorskip('liblinear', reason='liblinear-official not installed')
         from wlearn.liblinear import LinearModel
         model = LinearModel.create({'solver': 0})
         pipe = Pipeline([('model', model)])
@@ -135,6 +177,7 @@ class TestPipelineWithTransformer:
     """Test Pipeline with transformer + estimator chain."""
 
     def test_fit_predict_with_transformer(self):
+        pytest.importorskip('liblinear', reason='liblinear-official not installed')
         from wlearn.liblinear import LinearModel
         X, y = make_binary_data()
         scaler = MockTransformer()
@@ -148,6 +191,7 @@ class TestPipelineWithTransformer:
         assert acc > 0.7
 
     def test_transformer_is_fitted(self):
+        pytest.importorskip('liblinear', reason='liblinear-official not installed')
         from wlearn.liblinear import LinearModel
         X, y = make_binary_data()
         scaler = MockTransformer()
@@ -157,6 +201,7 @@ class TestPipelineWithTransformer:
         assert scaler.is_fitted
 
     def test_set_params_invalidates_before_child_mutation(self):
+        pytest.importorskip('liblinear', reason='liblinear-official not installed')
         from wlearn.liblinear import LinearModel
         X, y = make_binary_data()
         scaler = MockTransformer()
@@ -210,6 +255,7 @@ class TestPipelineWithTransformer:
 
     def test_fit_transform_used(self):
         """Verify fit_transform is preferred over separate fit + transform."""
+        pytest.importorskip('liblinear', reason='liblinear-official not installed')
         from wlearn.liblinear import LinearModel
         X, y = make_binary_data()
 
@@ -242,6 +288,7 @@ class TestPipelineWithTransformer:
         assert calls == ['fit_transform']
 
     def test_regression_pipeline(self):
+        pytest.importorskip('liblinear', reason='liblinear-official not installed')
         from wlearn.liblinear import LinearModel
         X, y = make_regression_data()
         scaler = MockTransformer()
@@ -270,6 +317,7 @@ class TestPipelineWithTransformer:
 
 class TestPipelineDispose:
     def test_dispose_propagates(self):
+        pytest.importorskip('liblinear', reason='liblinear-official not installed')
         from wlearn.liblinear import LinearModel
         X, y = make_binary_data()
         model = LinearModel.create({'solver': 0})
@@ -281,6 +329,7 @@ class TestPipelineDispose:
             pipe.predict(X)
 
     def test_double_dispose_safe(self):
+        pytest.importorskip('liblinear', reason='liblinear-official not installed')
         from wlearn.liblinear import LinearModel
         model = LinearModel.create({'solver': 0})
         pipe = Pipeline([('model', model)])
@@ -290,6 +339,7 @@ class TestPipelineDispose:
 
 class TestPipelineSaveLoad:
     def test_save_load_roundtrip(self):
+        pytest.importorskip('liblinear', reason='liblinear-official not installed')
         from wlearn.liblinear import LinearModel
         X, y = make_binary_data()
         model = LinearModel.create({'solver': 0, 'C': 1.0})

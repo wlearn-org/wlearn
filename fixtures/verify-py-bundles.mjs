@@ -11,7 +11,7 @@ import { decodeBundle, validateBundle, load } from '@wlearn/core'
 import { assertPredictionParity } from './verify-utils.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const PY_DIR = join(__dirname, 'py-produced')
+const PY_DIR = process.env.WLEARN_INTEROP_OUTPUT_DIR
 const PORTS_DIR = process.env.WLEARN_PORTS_DIR
 const REQUIRE_ALL_BACKENDS = process.env.WLEARN_INTEROP_REQUIRE_ALL === '1'
 
@@ -45,8 +45,11 @@ async function tryLoadModels() {
 }
 
 async function main() {
+  if (!PY_DIR) {
+    throw new Error('Set WLEARN_INTEROP_OUTPUT_DIR to the Python run output, or run npm run test:interop.')
+  }
   if (!existsSync(PY_DIR)) {
-    throw new Error('Missing py-produced/ directory. Run the Python round-trip test first.')
+    throw new Error(`Missing interop output directory: ${PY_DIR}`)
   }
 
   const indexPath = join(PY_DIR, 'index.json')
