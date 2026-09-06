@@ -205,6 +205,24 @@ describe('optimizeWeights', () => {
     assert(Math.abs(sum - 1) < 1e-10)
   })
 
+  it('regression: refinement reaches an interior optimum at different target scales', () => {
+    for (const scale of [1, 100]) {
+      const predictions = [new Float64Array([scale, 0]), new Float64Array([-3 * scale, 0])]
+      const w = optimizeWeights(predictions, new Float64Array(2), new Float64Array([0.5, 0.5]), { task: 'regression' })
+      // 3/4 of the first predictor cancels 1/4 of the second exactly. A fixed
+      // step instead oscillates between the simplex vertices at scale 100.
+      assert(Math.abs(w[0] - 0.75) < 1e-6, `scale=${scale}, weight=${w[0]}`)
+      assert(Math.abs(w[1] - 0.25) < 1e-6)
+    }
+  })
+
+  it('classification: backtracks a step that would increase log loss', () => {
+    const predictions = [new Float64Array([0.9, 0.1, 0.9, 0.1]), new Float64Array([0.1, 0.9, 0.1, 0.9])]
+    const w = optimizeWeights(predictions, new Int32Array([0, 1]), new Float64Array([0.9, 0.1]), { lr: 100 })
+    assert(Math.abs(w[0] - 0.5) < 1e-6)
+    assert(Math.abs(w[1] - 0.5) < 1e-6)
+  })
+
   it('single model returns [1.0]', () => {
     const m = new Float64Array([1, 2, 3])
     const yTrue = new Float64Array([1, 2, 3])

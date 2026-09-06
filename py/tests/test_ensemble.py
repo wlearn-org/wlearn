@@ -1441,6 +1441,18 @@ class TestProjectSimplex:
 
 
 class TestOptimizeWeights:
+    def test_classification_backtracks_loss_increase(self):
+        predictions = [np.array([.9, .1, .9, .1]), np.array([.1, .9, .1, .9])]
+        refined = optimize_weights(predictions, np.array([0, 1]), np.array([.9, .1]), lr=100)
+        np.testing.assert_allclose(refined, [.5, .5], atol=1e-6)
+
+    @pytest.mark.parametrize('scale', [1., 100.])
+    def test_regression_interior_optimum_across_target_scales(self, scale):
+        predictions = [np.array([scale, 0.]), np.array([-3*scale, 0.])]
+        refined = optimize_weights(predictions, np.zeros(2), np.array([.5, .5]), task='regression')
+        # The optimum cancels both predictors, independently of target units.
+        np.testing.assert_allclose(refined, [.75, .25], atol=1e-6)
+
     def test_classification(self):
         n = 50
         n_classes = 2

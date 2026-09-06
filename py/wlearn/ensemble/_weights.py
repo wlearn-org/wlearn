@@ -42,6 +42,22 @@ def project_simplex(v):
     return np.maximum(v - theta, 0.0)
 
 
+def _projected_step(w, grad, lr, loss):
+    # Projection alone cannot prevent overshooting when targets/gradients are
+    # large. Retain the feasible iterate if Armijo backtracking finds no descent.
+    initial = loss(w)
+    step = lr
+    for _ in range(40):
+        proposal = project_simplex(w - step * grad)
+        direction = float(np.dot(grad, proposal - w))
+        value = loss(proposal)
+        # Avoid nearly undamped steps at a scaled quadratic's stability boundary.
+        if np.isfinite(value) and value <= initial + .5 * min(direction, 0):
+            return proposal
+        step *= .5
+    return w
+
+
 def optimize_weights(oof_predictions, y_true, init_weights,
                      task='classification', lr=0.05, n_iter=100,
                      classes=None):
@@ -105,6 +121,12 @@ def optimize_weights(oof_predictions, y_true, init_weights,
         if m == 1:
             return np.array([1.0])
 
+        def loss(weights):
+            probability = np.zeros(n, dtype=np.float64)
+            for j in range(m):
+                probability += weights[j] * oof_predictions[j].reshape(n, n_classes)[np.arange(n), y_columns]
+            return float(-np.log(np.maximum(probability, eps)).mean())
+
         for _ in range(n_iter):
             # Compute ensemble proba for true class: p_i = sum(w_m * oof_m[i*nc + y_i])
             p_true = np.zeros(n, dtype=np.float64)
@@ -126,7 +148,7 @@ def optimize_weights(oof_predictions, y_true, init_weights,
                     g += oof[i * n_classes + y_columns[i]] / p_true[i]
                 grad[j] = -g / n
 
-            w = project_simplex(w - lr * grad)
+            w = _projected_step(w, grad, lr, loss)
 
     else:
         # Regression: minimize MSE
@@ -138,6 +160,12 @@ def optimize_weights(oof_predictions, y_true, init_weights,
         ]
         if m == 1:
             return np.array([1.0])
+
+        def loss(weights):
+            prediction = np.zeros(n, dtype=np.float64)
+            for j in range(m):
+                prediction += weights[j] * oof_predictions[j]
+            return float(np.mean((np.asarray(y_true) - prediction)**2))
         for _ in range(n_iter):
             # Compute ensemble prediction: p_i = sum(w_m * oof_m[i])
             p = np.zeros(n, dtype=np.float64)
@@ -159,6 +187,6 @@ def optimize_weights(oof_predictions, y_true, init_weights,
                     g += resid[i] * float(oof[i])
                 grad[j] = -2.0 * g / n
 
-            w = project_simplex(w - lr * grad)
+            w = _projected_step(w, grad, lr, loss)
 
     return w

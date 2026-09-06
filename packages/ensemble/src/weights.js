@@ -47,6 +47,23 @@ function projectSimplex(v) {
   return out
 }
 
+// Projection alone does not make a gradient step safe: regression units and
+// tiny class probabilities can make a fixed step overshoot. Armijo backtracking
+// keeps the previous feasible weights if no finite descent step is found.
+function projectedStep(w, grad, lr, loss) {
+  const initial = loss(w)
+  for (let attempt = 0, step = lr; attempt < 40; attempt++, step *= 0.5) {
+    const proposal = projectSimplex(Float64Array.from(w, (value, i) => value - step * grad[i]))
+    let direction = 0
+    for (let i = 0; i < w.length; i++) direction += grad[i] * (proposal[i] - w[i])
+    const value = loss(proposal)
+    // Conservative sufficient decrease avoids nearly undamped oscillation at
+    // the stability boundary of a scaled quadratic objective.
+    if (Number.isFinite(value) && value <= initial + 0.5 * Math.min(direction, 0)) return proposal
+  }
+  return w
+}
+
 /**
  * Optimize ensemble weights via projected gradient descent on the simplex.
  */
@@ -63,7 +80,7 @@ function optimizeWeights(oofPredictions, yTrue, initWeights, {
     throw new ValidationError('optimizeWeights: need at least 1 model')
   }
 
-  const w = new Float64Array(initWeights)
+  const w = projectSimplex(new Float64Array(initWeights))
   const eps = 1e-15
 
   if (task === 'classification') {
@@ -97,6 +114,16 @@ function optimizeWeights(oofPredictions, yTrue, initWeights, {
     }
     if (nModels === 1) return new Float64Array([1.0])
 
+    const loss = weights => {
+      let value = 0
+      for (let i = 0; i < n; i++) {
+        let p = 0
+        for (let m = 0; m < nModels; m++) p += weights[m] * oofPredictions[m][i * nc + yColumns[i]]
+        value -= Math.log(Math.max(p, eps))
+      }
+      return value / n
+    }
+
     for (let iter = 0; iter < nIter; iter++) {
       const grad = new Float64Array(nModels)
 
@@ -119,11 +146,7 @@ function optimizeWeights(oofPredictions, yTrue, initWeights, {
         grad[m] /= n
       }
 
-      // Gradient step + project
-      for (let m = 0; m < nModels; m++) {
-        w[m] -= lr * grad[m]
-      }
-      const proj = projectSimplex(w)
+      const proj = projectedStep(w, grad, lr, loss)
       for (let m = 0; m < nModels; m++) w[m] = proj[m]
     }
   } else {
@@ -135,6 +158,16 @@ function optimizeWeights(oofPredictions, yTrue, initWeights, {
       )
     }
     if (nModels === 1) return new Float64Array([1.0])
+    const loss = weights => {
+      let value = 0
+      for (let i = 0; i < n; i++) {
+        let p = 0
+        for (let m = 0; m < nModels; m++) p += weights[m] * oofPredictions[m][i]
+        const residual = yTrue[i] - p
+        value += residual * residual
+      }
+      return value / n
+    }
     for (let iter = 0; iter < nIter; iter++) {
       const grad = new Float64Array(nModels)
 
@@ -153,10 +186,7 @@ function optimizeWeights(oofPredictions, yTrue, initWeights, {
         grad[m] /= n
       }
 
-      for (let m = 0; m < nModels; m++) {
-        w[m] -= lr * grad[m]
-      }
-      const proj = projectSimplex(w)
+      const proj = projectedStep(w, grad, lr, loss)
       for (let m = 0; m < nModels; m++) w[m] = proj[m]
     }
   }
