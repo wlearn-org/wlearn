@@ -354,7 +354,12 @@ class PortfolioStrategy {
         ?? model.classId
       const fixed = model.params || {}
 
-      const configs = portfolio[portfolioKey] || [{}]
+      // New families own their warm starts; the built-in table retains existing
+      // portfolioKey behavior. Explicit caller data takes precedence.
+      const configs = model.portfolio ?? model.cls.defaultPortfolio?.(task) ?? portfolio[portfolioKey] ?? [{}]
+      if (!Array.isArray(configs) || configs.length === 0 || configs.some(config => !config || typeof config !== 'object' || Array.isArray(config))) {
+        throw new ValidationError(`Portfolio for ${model.name} must be a nonempty array of parameter objects`)
+      }
 
       for (const config of configs) {
         const params = { ...config, ...fixed }

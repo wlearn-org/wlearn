@@ -2111,3 +2111,23 @@ class TestAutoFitPortfolio:
             assert result['archive'].size == 3
         finally:
             BayesianStrategy.optimizer_cls = old
+
+
+def test_package_owned_portfolio_configurations():
+    class Custom(MockModel):
+        class_id = 'test.custom-portfolio'
+
+        @classmethod
+        def default_portfolio(cls, task):
+            return [{'bias': 2 if task == 'regression' else 3}, {'bias': 4}]
+
+    strategy = PortfolioStrategy([dict(name='custom', cls=Custom)], task='regression')
+    assert strategy.next()['params']['bias'] == 2
+    assert strategy.next()['params']['bias'] == 4
+    assert strategy.next() is None
+    override = PortfolioStrategy([dict(name='custom', cls=Custom, portfolio=[{'bias': 9}], params={'bias': 5})])
+    assert override.next()['params']['bias'] == 5
+    assert override.next() is None
+    for portfolio in [[], [None], [3], 'bad']:
+        with pytest.raises(ValidationError):
+            PortfolioStrategy([dict(name='custom', cls=Custom, portfolio=portfolio)])

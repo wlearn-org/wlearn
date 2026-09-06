@@ -680,7 +680,13 @@ make test-py       # full Python suite; requires optional backend deps
 make test-z3       # optional Z3 proof smoke for resampling index arithmetic
 ```
 
-`npm test` is JS-only. Browser checks use the core repo Playwright install and Chromium cache, which standalone model packages also reuse; if Chromium is missing, install it once from this repo or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`. `make test-z3` follows Polygrad's external-solver pattern and requires `z3-solver<4.15.4`; it is not part of the default test path.
+`npm test` delegates to `make test`; `npm run test:js` runs JavaScript only.
+`npm run test:py-core` delegates to the same focused Python check as Make,
+including nested-bundle hardening. Select Python with `WLEARN_PYTHON` or Make's
+`PYTHON` override. `npm run test:all` delegates to `make test-all`, including
+ecosystem composition fixtures. Browser checks reuse this repo's Playwright
+install and Chromium cache; set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` when needed.
+`make test-z3` requires `z3-solver<4.15.4` and is optional.
 
 For multi-repo development, keep package manifests on real semver dependencies and overlay local sibling repos with:
 
@@ -688,10 +694,15 @@ For multi-repo development, keep package manifests on real semver dependencies a
 npm run dev:link        # symlink sibling @wlearn packages into node_modules/@wlearn
 npm run dev:link:force  # replace installed package dirs with local symlinks
 npm run dev:unlink      # remove symlinks created by the linker
+npm run dev:check       # check local dependency ranges and installed core identity
 ```
 
 `dev:link` does not edit `package.json`; publishing metadata remains the same as a registry install.
 The linker uses only Node built-ins, so it can be run before `npm install` when testing unreleased sibling package versions.
+`dev:check` reads local source versions and resolves installed core paths without
+importing models, changing links or contacting registries. It detects stale pins
+even when source symlinks mask them. Isolated packed consumers remain the final
+check of installation behavior.
 
 ## Cross-language interop
 

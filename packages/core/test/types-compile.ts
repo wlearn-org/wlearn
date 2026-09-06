@@ -27,7 +27,7 @@ const exhaustiveRuntimeNames = [
   'Archive', 'BackendError', 'BundleError', 'CancelledError',
   'DEFAULT_BUNDLE_LIMITS', 'DisposedError', 'MEASURE_DIRECTIONS',
   'MEASURE_RESPONSES', 'MinMaxScaler', 'NotFittedError', 'PREDICTION_FIELDS',
-  'Pipeline', 'Preprocessor', 'RESAMPLING_STRATEGIES', 'RegistryError',
+  'Pipeline', 'RESAMPLING_STRATEGIES', 'RegistryError',
   'ResourceLimitError', 'StandardScaler', 'Step', 'TASK_KINDS',
   'TRIAL_STATUSES', 'ValidationError', 'WlearnError', 'accuracy',
   'aggregateMeasure', 'assertRequiredLoaders', 'confusionMatrix',

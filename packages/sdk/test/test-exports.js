@@ -42,6 +42,22 @@ test('preprocessing exports', () => {
 
 test('automl export', () => {
   assert.equal(typeof sdk.autoFit, 'function')
+  assert.equal(typeof sdk.registerBayesianSearch, 'function')
+})
+
+test('ecosystem primitive exports', () => {
+  assert(Array.isArray(sdk.TASK_KINDS))
+  assert.equal(typeof sdk.createTask, 'function')
+  assert.equal(typeof sdk.createPrediction, 'function')
+  assert.equal(typeof sdk.listMeasures, 'function')
+  assert.equal(typeof sdk.evaluateMetricSet, 'function')
+  assert.equal(typeof sdk.createResamplingPlan, 'function')
+  assert.equal(typeof sdk.groupKFold, 'function')
+  assert.equal(typeof sdk.timeSeriesSplit, 'function')
+  assert.equal(typeof sdk.slidingWindowSplit, 'function')
+  assert.equal(typeof sdk.slidingIndexSplit, 'function')
+  assert.equal(typeof sdk.slidingPeriodSplit, 'function')
+  assert.equal(typeof sdk.Archive, 'function')
 })
 
 test('ensemble exports', () => {
@@ -95,6 +111,17 @@ test('cluster exports', () => {
   assert.equal(typeof sdk.loadCluster, 'function')
 })
 
+test('bo exports', () => {
+  assert.equal(typeof sdk.BayesianOptimizer, 'function')
+  assert.equal(typeof sdk.BayesianStrategy, 'function')
+  assert.equal(typeof sdk.BayesianSearch, 'function')
+  assert.equal(typeof sdk.compileSpace, 'function')
+  assert.equal(typeof sdk.encodeParams, 'function')
+  assert.equal(typeof sdk.decodeParams, 'function')
+  assert.equal(typeof sdk.countFreeParams, 'function')
+  assert.equal(typeof sdk.loadBO, 'function')
+})
+
 test('mitra exports (optional, requires onnxruntime peer dep)', () => {
   // MitraClassifier/MitraRegressor may be defined if @wlearn/mitra is installed,
   // or undefined if not. Both states are valid.
@@ -103,4 +130,5 @@ test('mitra exports (optional, requires onnxruntime peer dep)', () => {
     assert.equal(typeof sdk.MitraRegressor, 'function')
     assert.equal(typeof sdk.registerMitraLoaders, 'function')
   }
+  assert.equal(Object.hasOwn(sdk, 'MitraModel'), false)
 })

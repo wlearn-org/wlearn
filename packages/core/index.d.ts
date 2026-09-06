@@ -11,6 +11,7 @@ import type {
   Estimator,
   EstimatorClass,
   FeatureSchema,
+  FitOptions,
   Labels,
   Matrix,
   MeasureDef,
@@ -66,7 +67,7 @@ export declare class Pipeline implements Estimator {
     steps: PipelineStep[],
     options?: { provenance?: Record<string, unknown> | null }
   )
-  fit(X: Matrix | number[][], y: Labels | number[]): MaybePromise<this>
+  fit(X: Matrix | number[][], y: Labels | number[], opts?: FitOptions): MaybePromise<this>
   predict(X: Matrix | number[][]): MaybePromise<Labels>
   predictProba(X: Matrix | number[][]): MaybePromise<Float64Array>
   score(X: Matrix | number[][], y: Labels | number[]): MaybePromise<number>
@@ -417,29 +418,6 @@ export declare class Step {
   readonly estimator: Estimator | Transformer
   readonly isFitted: boolean
   readonly isTransformer: boolean
-}
-
-export interface LegacyPreprocessorConfig {
-  impute?: 'auto' | 'mean' | 'median' | 'zero' | false
-  encode?: 'auto' | 'onehot' | 'label' | false
-  scale?: 'standard' | 'minmax' | false
-  maxCategories?: number
-  [key: string]: unknown
-}
-
-export declare class Preprocessor {
-  constructor(config?: LegacyPreprocessorConfig)
-  fit(X: Matrix | number[][], y?: Labels | number[]): this
-  transform(X: Matrix | number[][]): DenseMatrix
-  fitTransform(X: Matrix | number[][], y?: Labels | number[]): DenseMatrix
-  getState(): Record<string, unknown>
-  static fromState(state: Record<string, unknown>): Preprocessor
-  getParams(): LegacyPreprocessorConfig
-  setParams(params: LegacyPreprocessorConfig): this
-  dispose(): void
-  readonly isFitted: boolean
-  readonly outputCols: number
-  readonly capabilities: Readonly<{ transformer: true }>
 }
 
 export declare class StandardScaler implements Transformer {

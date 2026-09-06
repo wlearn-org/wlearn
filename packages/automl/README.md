@@ -153,6 +153,14 @@ returns the fitted base model directly.
 
 ## Portfolio
 
+New model packages can own warm starts through static
+`defaultPortfolio(task)` (Python: `default_portfolio(task)`). It returns a
+nonempty array/list of parameter objects. A model spec's `portfolio` overrides
+that provider; fixed `params` override each warm start. Existing families retain
+the built-in `portfolioKey` fallback. Families with neither provider nor built-in
+data get one default configuration. `defaultSearchSpace()` remains the source
+for sampled searches.
+
 The portfolio contains pre-tuned hyperparameter configs for these model families:
 
 | Model | Package |

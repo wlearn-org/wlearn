@@ -258,3 +258,22 @@ describe('autoFit with strategy=portfolio', () => {
     result.model.dispose()
   })
 })
+
+describe('package-owned portfolio configurations', () => {
+  it('uses model configurations and lets callers override them without engine registration', () => {
+    class Custom extends SearchableMock {
+      static classId = 'test.custom-portfolio'
+      static defaultPortfolio(task) { return [{ bias: task === 'regression' ? 2 : 3 }, { bias: 4 }] }
+    }
+    const strategy = new PortfolioStrategy([{ name: 'custom', cls: Custom }], { task: 'regression' })
+    assert.equal(strategy.next().params.bias, 2)
+    assert.equal(strategy.next().params.bias, 4)
+    assert.equal(strategy.next(), null)
+    const override = new PortfolioStrategy([{ name: 'custom', cls: Custom, portfolio: [{ bias: 9 }], params: { bias: 5 } }])
+    assert.equal(override.next().params.bias, 5)
+    assert.equal(override.next(), null)
+    for (const portfolio of [[], [null], [3], 'bad']) {
+      assert.throws(() => new PortfolioStrategy([{ name: 'custom', cls: Custom, portfolio }]), ValidationError)
+    }
+  })
+})

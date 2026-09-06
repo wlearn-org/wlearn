@@ -62,11 +62,12 @@ class Pipeline {
     return current
   }
 
-  #fitIntermediate(estimator, X, y) {
+  #fitIntermediate(estimator, X, y, opts) {
+    const args = opts && estimator.capabilities?.sampleWeight ? [X, y, opts] : [X, y]
     if (typeof estimator.fitTransform === 'function') {
-      return estimator.fitTransform(X, y)
+      return estimator.fitTransform(...args)
     }
-    const fitted = estimator.fit(X, y)
+    const fitted = estimator.fit(...args)
     return isPromiseLike(fitted)
       ? Promise.resolve(fitted).then(() => estimator.transform(X))
       : estimator.transform(X)
@@ -92,10 +93,34 @@ class Pipeline {
    * composite child has asynchronous fit semantics.
    * @returns {this|Promise<this>}
    */
-  fit(X, y) {
+  fit(X, y, opts = {}) {
     this.#ensureAlive()
     if (this.#fitInProgress) {
       throw new ValidationError('Pipeline fit is already in progress')
+    }
+    if (!opts || typeof opts !== 'object' || Array.isArray(opts) ||
+        Object.keys(opts).some(key => key !== 'sampleWeight')) {
+      throw new ValidationError('Pipeline fit options support only sampleWeight')
+    }
+    let weighted = null
+    if (opts.sampleWeight != null) {
+      const weights = opts.sampleWeight
+      if (!(Array.isArray(weights) || ArrayBuffer.isView(weights)) || weights.length !== y?.length || !weights.length) {
+        throw new ValidationError('sampleWeight must have one entry per target')
+      }
+      let total = 0
+      for (const weight of weights) {
+        if (typeof weight !== 'number' || !Number.isFinite(weight) || weight < 0) {
+          throw new ValidationError('sampleWeight must be finite and nonnegative')
+        }
+        total += weight
+      }
+      if (!(total > 0) || !Number.isFinite(total)) throw new ValidationError('sampleWeight must have a finite positive sum')
+      const last = this.#steps[this.#steps.length - 1]
+      if (!last.estimator.capabilities?.sampleWeight) {
+        throw new ValidationError(`Pipeline step "${last.name}" does not support sampleWeight`)
+      }
+      weighted = { sampleWeight: weights }
     }
     this.#fitInProgress = true
     this.#fitted = false
@@ -105,14 +130,14 @@ class Pipeline {
         const estimator = this.#steps[i].estimator
         current = isPromiseLike(current)
           ? Promise.resolve(current).then(
-            value => this.#fitIntermediate(estimator, value, y)
+            value => this.#fitIntermediate(estimator, value, y, weighted)
           )
-          : this.#fitIntermediate(estimator, current, y)
+          : this.#fitIntermediate(estimator, current, y, weighted)
       }
 
       const last = this.#steps[this.#steps.length - 1].estimator
       const finish = value => {
-        const fitted = last.fit(value, y)
+        const fitted = weighted ? last.fit(value, y, weighted) : last.fit(value, y)
         return isPromiseLike(fitted)
           ? Promise.resolve(fitted).then(() => this.#commitFit())
           : this.#commitFit()
@@ -174,6 +199,14 @@ class Pipeline {
    */
   save() {
     this.#ensureFitted()
+    // Validate every child before invoking any serializer.
+    for (const step of this.#steps) {
+      for (const method of ['getParams', 'save']) {
+        if (typeof step.estimator[method] !== 'function') {
+          throw new ValidationError(`Pipeline step "${step.name}" does not support ${method}()`)
+        }
+      }
+    }
     const manifest = {
       typeId: PIPELINE_TYPE_ID,
       steps: this.#steps.map(s => ({

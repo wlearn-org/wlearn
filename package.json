@@ -4,13 +4,13 @@
     "packages/*"
   ],
   "scripts": {
-    "test": "npm run test:js",
-    "test:js": "npm test --workspaces --if-present",
+    "test": "make test",
+    "test:js": "node --test scripts/test-*.js && npm test --workspaces --if-present",
     "test:browser": "npm run test:browser --workspace @wlearn/ensemble && npm run test:browser --workspace @wlearn/automl",
-    "test:all": "npm run test:js && npm run test:py-core && npm run test:browser",
-    "test:py-core": "PYTHONPATH=py python3 -m pytest py/tests/test_ecosystem.py py/tests/test_properties.py py/tests/test_automl.py py/tests/test_bundle.py py/tests/test_registry.py py/tests/test_scalers.py py/tests/test_ensemble.py py/tests/test_composite_load_hardening.py py/tests/test_pipeline_fit.py -q",
-    "test:z3": "PYTHONPATH=py ${Z3_PY:-python3} py/tests/external/resampling_z3.py",
-    "test:py": "PYTHONPATH=py python3 -m pytest py/tests -q",
+    "test:all": "make test-all",
+    "test:py-core": "make test-py-core",
+    "test:z3": "make test-z3",
+    "test:py": "make test-py",
     "test:ecosystem:task": "node scripts/verify-unified-model-tasks.mjs",
     "test:interop:js": "node fixtures/verify.mjs",
     "test:interop:py": "PYTHONPATH=py python3 -m pytest py/tests/test_compat.py -q",
@@ -23,7 +23,9 @@
     "test:interop": "npm run test:interop:full",
     "dev:link": "node scripts/link-local-wlearn.js",
     "dev:link:force": "node scripts/link-local-wlearn.js --force",
-    "dev:unlink": "node scripts/link-local-wlearn.js --unlink"
+    "dev:unlink": "node scripts/link-local-wlearn.js --unlink",
+    "dev:check": "node scripts/link-local-wlearn.js --check",
+    "test:integration": "node --test fixtures/test-*.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.27.7",

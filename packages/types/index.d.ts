@@ -59,8 +59,12 @@ export interface Capabilities {
  */
 export type MaybePromise<T> = T | Promise<T>
 
+export interface FitOptions {
+  sampleWeight?: Labels | number[]
+}
+
 export interface Estimator {
-  fit(X: Matrix | number[][], y: Labels | number[]): MaybePromise<this>
+  fit(X: Matrix | number[][], y: Labels | number[], opts?: FitOptions): MaybePromise<this>
   predict(X: Matrix | number[][]): MaybePromise<Labels>
   score(X: Matrix | number[][], y: Labels | number[]): MaybePromise<number>
   save(): Uint8Array
@@ -83,9 +87,9 @@ export interface TransformerCapabilities {
 }
 
 export interface Transformer {
-  fit(X: Matrix | number[][], y?: Labels | number[]): this
+  fit(X: Matrix | number[][], y?: Labels | number[], opts?: FitOptions): this
   transform(X: Matrix | number[][]): DenseMatrix
-  fitTransform(X: Matrix | number[][], y?: Labels | number[]): DenseMatrix
+  fitTransform(X: Matrix | number[][], y?: Labels | number[], opts?: FitOptions): DenseMatrix
   save(): Uint8Array
   dispose(): void
   getParams(): Record<string, unknown>
@@ -97,7 +101,7 @@ export interface Transformer {
 export type PipelineStep = [name: string, estimator: Estimator | Transformer]
 
 export interface Pipeline extends Estimator {
-  fit(X: Matrix | number[][], y: Labels | number[]): MaybePromise<this>
+  fit(X: Matrix | number[][], y: Labels | number[], opts?: FitOptions): MaybePromise<this>
   predict(X: Matrix | number[][]): MaybePromise<Labels>
   predictProba(X: Matrix | number[][]): MaybePromise<Float64Array>
   score(X: Matrix | number[][], y: Labels | number[]): MaybePromise<number>
@@ -527,6 +531,7 @@ export interface EstimatorClass {
   create(params?: Record<string, unknown>): Promise<Estimator>
   readonly classId?: string
   defaultSearchSpace?(task?: TaskType): SearchSpace
+  defaultPortfolio?(task?: TaskType): ReadonlyArray<Record<string, unknown>>
   budgetSpec?(): { roundsParam?: string }
 }
 
@@ -637,6 +642,8 @@ export interface ModelSpecBase {
   displayName?: string
   /** Stable key selecting a built-in zero-shot portfolio family. */
   portfolioKey?: string
+  /** Caller warm starts override class.defaultPortfolio() and legacy tables. */
+  portfolio?: ReadonlyArray<Record<string, unknown>>
   searchSpace?: SearchSpace
   params?: Record<string, unknown>
 }

@@ -439,7 +439,16 @@ class PortfolioStrategy:
                     getattr(model['cls'], 'portfolioKey', model['classId']))
             fixed = model.get('params') or {}
 
-            configs = portfolio.get(portfolio_key, [{}])
+            # Package-owned warm starts precede the legacy table; callers can
+            # supply an explicit portfolio without registering another family.
+            configs = model.get('portfolio')
+            if configs is None:
+                provider = getattr(model['cls'], 'default_portfolio', None)
+                configs = provider(task) if provider is not None else None
+            if configs is None:
+                configs = portfolio.get(portfolio_key, [{}])
+            if not isinstance(configs, list) or not configs or any(not isinstance(config, dict) for config in configs):
+                raise ValidationError(f'Portfolio for {model["name"]} must be a nonempty list of parameter mappings')
 
             for config in configs:
                 params = {**config, **fixed}

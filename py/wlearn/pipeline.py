@@ -1,4 +1,6 @@
 from copy import deepcopy
+import math
+import numbers
 
 from .errors import ValidationError, NotFittedError, DisposedError
 from .bundle import encode_bundle, validate_bundle, write_bundle_output
@@ -30,7 +32,7 @@ class Pipeline:
         self._fitted = False
         self._disposed = False
 
-    def fit(self, X, y):
+    def fit(self, X, y, sample_weight=None):
         """Fit the pipeline: transform through intermediates, fit last step.
 
         For intermediate steps that have a transform method:
@@ -39,19 +41,35 @@ class Pipeline:
         The last step is only fitted (not transformed).
         """
         self._ensure_alive()
+        if sample_weight is not None:
+            try:
+                valid = len(sample_weight) == len(y) and len(sample_weight) > 0
+                valid = valid and all(isinstance(w, numbers.Real) and not isinstance(w, bool) and math.isfinite(w) and w >= 0 for w in sample_weight)
+                total = math.fsum(float(w) for w in sample_weight) if valid else 0
+                valid = valid and total > 0 and math.isfinite(total)
+            except (TypeError, ValueError, OverflowError):
+                valid = False
+            if not valid:
+                raise ValidationError('sample_weight must have one finite nonnegative entry per target and positive finite sum')
+            name, final = self._steps[-1]
+            if not _capabilities(final).get('sampleWeight', False):
+                raise ValidationError(f'Pipeline step "{name}" does not support sample_weight')
         # Child fits mutate in place; a failed refit cannot expose the old
         # pipeline as fitted with a mixture of old and newly learned state.
         self._fitted = False
         current = X
         for i, (_, est) in enumerate(self._steps[:-1]):
+            # Unweighted transforms retain their ordinary fit semantics.
+            kwargs = {'sample_weight': sample_weight} if sample_weight is not None and _capabilities(est).get('sampleWeight', False) else {}
             if hasattr(est, 'fit_transform'):
-                current = est.fit_transform(current, y)
+                current = est.fit_transform(current, y, **kwargs)
             else:
-                est.fit(current, y)
+                est.fit(current, y, **kwargs)
                 current = est.transform(current)
         # Last step: fit only
         _, last = self._steps[-1]
-        last.fit(current, y)
+        kwargs = {'sample_weight': sample_weight} if sample_weight is not None else {}
+        last.fit(current, y, **kwargs)
         self._fitted = True
         return self
 
@@ -143,6 +161,11 @@ class Pipeline:
             bytes
         """
         self._ensure_fitted()
+        # Reject incomplete children before invoking any serializer.
+        for name, estimator in self._steps:
+            if not callable(getattr(estimator, 'save', None)):
+                raise ValidationError(
+                    f'Pipeline step "{name}" does not support save()')
         manifest = {
             'typeId': PIPELINE_TYPE_ID,
             'steps': [
@@ -249,6 +272,11 @@ class Pipeline:
 def _pipeline_loader(manifest, toc, blobs, context):
     """Registry loader for wlearn.pipeline@1 bundles."""
     return Pipeline._load_from_parts(manifest, toc, blobs, context)
+
+
+def _capabilities(estimator):
+    value = getattr(estimator, 'capabilities', {})
+    return value() if callable(value) else value or {}
 
 
 def _dispose_loaded(estimators):

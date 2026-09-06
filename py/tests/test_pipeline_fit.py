@@ -351,3 +351,58 @@ class TestPipelineSaveLoad:
         loaded = Pipeline.load(bundle_bytes)
         preds_loaded = loaded.predict(X)
         assert np.array_equal(preds_orig, preds_loaded)
+
+
+def test_save_reports_missing_step_serializer_before_serializing_children():
+    class First:
+        saves = 0
+
+        def fit_transform(self, X, y):
+            return X
+
+        def save(self):
+            self.saves += 1
+            return b''
+
+    class Last:
+        def fit(self, X, y):
+            return self
+
+    first = First()
+    pipe = Pipeline([('first', first), ('broken', Last())])
+    pipe.fit([[0], [1]], [0, 1])
+    with pytest.raises(ValidationError, match='broken.*save'):
+        pipe.save()
+    assert first.saves == 0
+
+
+def test_pipeline_routes_weights_and_validates_before_mutation():
+    calls = []
+    weights = np.array([1.0, 3.0])
+
+    class Map:
+        capabilities = dict(transformer=True, sampleWeight=True)
+
+        def fit_transform(self, X, y, sample_weight=None):
+            calls.append(('map', sample_weight))
+            return X
+
+    class Model:
+        capabilities = dict(sampleWeight=True)
+
+        def fit(self, X, y, sample_weight=None):
+            calls.append(('model', sample_weight))
+            return self
+
+    pipe = Pipeline([('map', Map()), ('model', Model())])
+    pipe.fit([[0], [1]], [0, 1], sample_weight=weights)
+    assert calls[0][0] == 'map' and calls[1][0] == 'model'
+    np.testing.assert_array_equal(calls[0][1], weights)
+    np.testing.assert_array_equal(calls[1][1], weights)
+    for bad in [[1], [0, 0], [-1, 2], [float('nan'), 1]]:
+        with pytest.raises(ValidationError):
+            pipe.fit([[0], [1]], [0, 1], sample_weight=bad)
+    Model.capabilities['sampleWeight'] = False
+    with pytest.raises(ValidationError, match='sample_weight'):
+        pipe.fit([[0], [1]], [0, 1], sample_weight=weights)
+    assert len(calls) == 2

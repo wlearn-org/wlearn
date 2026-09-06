@@ -1,43 +1,49 @@
 {
   "name": "@wlearn/sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Convenience barrel: re-exports all wlearn model classes, automl, ensemble, pipeline, and core utilities",
   "type": "commonjs",
   "main": "index.js",
+  "types": "index.d.ts",
   "exports": {
     ".": {
+      "types": "./index.d.ts",
       "require": "./index.js",
       "default": "./index.js"
     }
   },
   "files": [
     "index.js",
+    "index.d.ts",
     "LICENSE",
     "NOTICE",
-    "README.md",
-    "CHANGELOG.md"
+    "README.md"
   ],
   "sideEffects": false,
   "dependencies": {
-    "@wlearn/core": "0.2.0",
-    "@wlearn/automl": "0.2.0",
-    "@wlearn/ensemble": "0.2.0",
-    "@wlearn/liblinear": "0.2.0",
-    "@wlearn/libsvm": "0.2.0",
-    "@wlearn/xgboost": "0.2.0",
-    "@wlearn/lightgbm": "0.2.0",
-    "@wlearn/nanoflann": "0.2.0",
-    "@wlearn/ebm": "0.2.0",
-    "@wlearn/xlearn": "0.2.0",
-    "@wlearn/stochtree": "0.2.0",
-    "@wlearn/tsetlin": "0.2.0",
+    "@wlearn/core": "^0.3.0",
+    "@wlearn/automl": "^0.3.0",
+    "@wlearn/ensemble": "^0.3.0",
+    "@wlearn/liblinear": "^0.3.0",
+    "@wlearn/libsvm": "^0.3.0",
+    "@wlearn/xgboost": "^0.3.0",
+    "@wlearn/lightgbm": "^0.3.0",
+    "@wlearn/nanoflann": "^0.3.0",
+    "@wlearn/ebm": "^0.3.0",
+    "@wlearn/xlearn": "^0.3.0",
+    "@wlearn/stochtree": "^0.3.0",
+    "@wlearn/tsetlin": "^0.3.0",
     "@wlearn/nn": "0.2.0",
-    "@wlearn/rf": "0.4.1",
-    "@wlearn/gam": "0.2.0",
-    "@wlearn/cluster": "0.1.0"
+    "@wlearn/rf": "^0.5.0",
+    "@wlearn/gam": "^0.3.0",
+    "@wlearn/cluster": "^0.1.1",
+    "@wlearn/bo": "^0.2.0",
+    "@wlearn/preprocess": "^0.1.0",
+    "@wlearn/types": "^0.2.0",
+    "@wlearn/basis": "^0.1.0"
   },
   "peerDependencies": {
-    "@wlearn/mitra": "0.2.0"
+    "@wlearn/mitra": "^0.3.0"
   },
   "peerDependenciesMeta": {
     "@wlearn/mitra": {
@@ -45,7 +51,8 @@
     }
   },
   "scripts": {
-    "test": "node --test test/*.js"
+    "test": "node --test test/*.js",
+    "test:types": "tsc -p test/tsconfig.json"
   },
   "publishConfig": {
     "access": "public"
@@ -65,5 +72,8 @@
   "bugs": {
     "url": "https://github.com/wlearn-org/wlearn/issues"
   },
-  "homepage": "https://wlearn.org"
+  "homepage": "https://wlearn.org",
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
 }

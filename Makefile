@@ -12,6 +12,7 @@ PY_CORE_TESTS = \
 	py/tests/test_registry.py \
 	py/tests/test_scalers.py \
 	py/tests/test_ensemble.py \
+	py/tests/test_composite_load_hardening.py \
 	py/tests/test_pipeline_fit.py
 
 .PHONY: test test-js test-browser test-py-core test-py test-z3 test-all
@@ -19,11 +20,10 @@ PY_CORE_TESTS = \
 test: test-js test-py-core
 
 test-js:
-	$(NPM) test --workspaces --if-present
+	$(NPM) run test:js
 
 test-browser:
-	$(NPM) run test:browser --workspace @wlearn/ensemble
-	$(NPM) run test:browser --workspace @wlearn/automl
+	$(NPM) run test:browser
 
 test-py-core:
 	PYTHONPATH=py $(PYTHON) -m pytest $(PY_CORE_TESTS) -q
@@ -34,4 +34,8 @@ test-py:
 test-z3:
 	PYTHONPATH=py $(Z3_PY) py/tests/external/resampling_z3.py
 
-test-all: test test-browser test-py
+test-all: test-js test-browser test-py test-integration
+
+.PHONY: test-integration
+test-integration:
+	$(NPM) run test:integration

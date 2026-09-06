@@ -32,7 +32,9 @@ main().catch(error => {
 })
 ```
 
-## What is included
+This simple path is still the default. The task/prediction/archive helpers are exported for apps, AutoML provenance, and agents; they are not required for ordinary model usage.
+
+## API
 
 Models:
 
@@ -49,15 +51,19 @@ Models:
 | `XLearnLR`, `XLearnFM`, `XLearnFFM` | `@wlearn/xlearn` |
 | `MLPModel`, `TabMModel`, `NAMModel` | `@wlearn/nn` |
 | `RFModel`, `loadRF` | `@wlearn/rf` |
+| `BasisClassifier`, `BasisRegressor`, `BasisTransformer`, `loadBasis` | `@wlearn/basis` |
 | `GAMModel`, `loadGAM` | `@wlearn/gam` |
 | `ClusterModel`, `silhouette`, `calinskiHarabasz`, `daviesBouldin`, `adjustedRand`, `loadCluster` | `@wlearn/cluster` |
-| `MitraModel`, `registerMitraLoaders` | `@wlearn/mitra` (optional) |
+| `BayesianSearch`, `BayesianStrategy` | `@wlearn/automl` |
+| `BayesianOptimizer`, `compileSpace`, `encodeParams`, `decodeParams` | `@wlearn/bo` |
+| `MitraClassifier`, `MitraRegressor`, `registerMitraLoaders` | `@wlearn/mitra` (optional; requires an ONNX source) |
 
-All model classes above are unified wrappers built with `createModelClass`. They accept an optional `task` parameter (`'classification'` or `'regression'`) and auto-detect the task from labels if omitted. Split classes (`XLearnFMClassifier`, `MLPClassifier`, etc.) are also re-exported for backward compatibility.
+Unified classes accept an optional `task` parameter (`'classification'` or `'regression'`) and auto-detect the task from labels if omitted. Split classes (`XLearnFMClassifier`, `MLPClassifier`, etc.) are exported for explicit task-specific imports.
 
 AutoML and ensemble:
 
 - `autoFit` from `@wlearn/automl`
+- Bayesian search from `@wlearn/automl`, powered by `@wlearn/bo`
 - `VotingEnsemble`, `StackingEnsemble`, `BaggedEstimator` from `@wlearn/ensemble`
 
 Core utilities:
@@ -65,9 +71,18 @@ Core utilities:
 - `Pipeline`, `load`, `loadSync`, `register`
 - `encodeBundle`, `decodeBundle`, `validateBundle`
 - `normalizeX`, `normalizeY`
-- `StandardScaler`, `MinMaxScaler`, `Preprocessor`
+- `StandardScaler`, `MinMaxScaler`
 - `accuracy`, `r2Score`, `f1Score`, `logLoss`, `rocAuc`, and other metrics
 - `kFold`, `stratifiedKFold`, `trainTestSplit`, `crossValScore`
+- `createTask`, `createPrediction`, `evaluateMetricSet`, `createResamplingPlan`, `Archive`
+
+The SDK is a barrel only. Model behavior, persistence, and memory ownership stay in the underlying packages.
+
+`Preprocessor` is re-exported from `@wlearn/preprocess`. In SDK 0.3, replace
+`new Preprocessor(config)` with `await Preprocessor.create(config)`. Fit and
+transform remain synchronous after construction; fitted preprocessing saves in
+WLRN Pipelines. Legacy core `getState()` objects require refitting from training
+data; they are not adapter artifacts.
 
 ## Caveats
 

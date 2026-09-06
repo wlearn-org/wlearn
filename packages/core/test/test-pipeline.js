@@ -495,3 +495,46 @@ describe('Pipeline dispose', () => {
     assert.throws(() => pipe.setParams({}), DisposedError)
   })
 })
+
+describe('Pipeline persistence contracts', () => {
+  for (const method of ['save', 'getParams']) it(`reports a step missing ${method} before serializing children`, () => {
+    const first = createMockTransformer('first')
+    let saves = 0
+    first.save = () => { saves++; return new Uint8Array() }
+    const last = createMockRegressor()
+    last[method] = undefined
+    const pipe = new Pipeline([['first', first], ['broken', last]])
+    try {
+      pipe.fit({ data: Float64Array.of(0, 1), rows: 2, cols: 1 }, [0, 1])
+      assert.throws(() => pipe.save(), e => e instanceof ValidationError && e.message.includes('broken') && e.message.includes(method))
+      assert.equal(saves, 0)
+    } finally { pipe.dispose() }
+  })
+})
+
+describe('Pipeline sample weights', () => {
+  it('routes weights to supporting steps and rejects unsupported final estimators before mutation', () => {
+    const weights = Float64Array.of(1, 3), calls = []
+    const map = { capabilities: { transformer: true, sampleWeight: true },
+      fitTransform(X, y, opts) { calls.push(['map', opts?.sampleWeight]); return X } }
+    const final = { capabilities: { sampleWeight: true }, fit(X, y, opts) { calls.push(['model', opts?.sampleWeight]); return this } }
+    const pipe = new Pipeline([['map', map], ['model', final]])
+    pipe.fit([[0], [1]], [0, 1], { sampleWeight: weights })
+    assert.deepEqual(calls, [['map', weights], ['model', weights]])
+    final.capabilities.sampleWeight = false
+    assert.throws(() => pipe.fit([[0], [1]], [0, 1], { sampleWeight: weights }), ValidationError)
+    assert.equal(calls.length, 2)
+  })
+  it('fits unweighted transformers normally and validates weight shape and values first', () => {
+    const calls = []
+    const prep = { fitTransform(...args) { calls.push(args.length); return args[0] } }
+    const final = { capabilities: { sampleWeight: true }, fit() { calls.push('fit'); return this } }
+    const pipe = new Pipeline([['prep', prep], ['model', final]])
+    for (const weight of [[1], [0, 0], [-1, 2], [NaN, 1], [Infinity, 1]]) {
+      assert.throws(() => pipe.fit([[0], [1]], [0, 1], { sampleWeight: weight }), ValidationError)
+    }
+    assert.deepEqual(calls, [])
+    pipe.fit([[0], [1]], [0, 1], { sampleWeight: [1, 2] })
+    assert.deepEqual(calls, [2, 'fit'])
+  })
+})

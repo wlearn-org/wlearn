@@ -6,11 +6,27 @@ const {
   accuracy, r2Score, meanSquaredError, meanAbsoluteError,
   confusionMatrix, precisionScore, recallScore, f1Score, logLoss, rocAuc,
   kFold, stratifiedKFold, trainTestSplit, crossValScore,
-  StandardScaler, MinMaxScaler, Preprocessor
+  StandardScaler, MinMaxScaler,
+  TASK_KINDS, createTask, validateTask, taskRows,
+  PREDICTION_FIELDS, createPrediction, validatePrediction,
+  MEASURE_DIRECTIONS, MEASURE_RESPONSES, listMeasures, evaluateMeasure,
+  evaluateMetricSet, aggregateMeasure,
+  RESAMPLING_STRATEGIES, createResamplingPlan, validateResamplingPlan,
+  serializeResamplingPlan, deserializeResamplingPlan,
+  groupKFold, timeSeriesSplit, slidingWindowSplit, slidingIndexSplit,
+  slidingPeriodSplit,
+  TRIAL_STATUSES, Archive
 } = require('@wlearn/core')
 
+const { Preprocessor } = require('@wlearn/preprocess')
+
+const { BasisClassifier, BasisRegressor, BasisTransformer, loadBasis } = require('@wlearn/basis')
+
 // AutoML
-const { autoFit } = require('@wlearn/automl')
+const {
+  autoFit, registerBayesianSearch,
+  BayesianSearch, BayesianStrategy,
+} = require('@wlearn/automl')
 
 // Ensemble
 const { StackingEnsemble, VotingEnsemble, BaggedEstimator } = require('@wlearn/ensemble')
@@ -42,16 +58,29 @@ const {
   ClusterModel, silhouette, calinskiHarabasz,
   daviesBouldin, adjustedRand, loadCluster
 } = require('@wlearn/cluster')
+const {
+  BayesianOptimizer, compileSpace, encodeParams, decodeParams, countFreeParams, loadBO
+} = require('@wlearn/bo')
 
 // Mitra requires onnxruntime peer dep -- optional
-let MitraModel, MitraClassifier, MitraRegressor, registerMitraLoaders
+let MitraClassifier, MitraRegressor, registerMitraLoaders
 try {
   const mitra = require('@wlearn/mitra')
-  MitraModel = mitra.MitraModel
   MitraClassifier = mitra.MitraClassifier
   MitraRegressor = mitra.MitraRegressor
   registerMitraLoaders = mitra.registerLoaders
-} catch (_) {}
+} catch (error) {
+  if (!isMissingOptionalMitra(error)) throw error
+}
+
+function isMissingOptionalMitra(error) {
+  return Boolean(
+    error &&
+    error.code === 'MODULE_NOT_FOUND' &&
+    typeof error.message === 'string' &&
+    /Cannot find module ['"]@wlearn\/mitra['"]/.test(error.message)
+  )
+}
 
 module.exports = {
   // Core
@@ -62,11 +91,21 @@ module.exports = {
   confusionMatrix, precisionScore, recallScore, f1Score, logLoss, rocAuc,
   kFold, stratifiedKFold, trainTestSplit, crossValScore,
   StandardScaler, MinMaxScaler, Preprocessor,
+  TASK_KINDS, createTask, validateTask, taskRows,
+  PREDICTION_FIELDS, createPrediction, validatePrediction,
+  MEASURE_DIRECTIONS, MEASURE_RESPONSES, listMeasures, evaluateMeasure,
+  evaluateMetricSet, aggregateMeasure,
+  RESAMPLING_STRATEGIES, createResamplingPlan, validateResamplingPlan,
+  serializeResamplingPlan, deserializeResamplingPlan,
+  groupKFold, timeSeriesSplit, slidingWindowSplit, slidingIndexSplit,
+  slidingPeriodSplit,
+  TRIAL_STATUSES, Archive,
   // AutoML
-  autoFit,
+  autoFit, registerBayesianSearch,
   // Ensemble
   StackingEnsemble, VotingEnsemble, BaggedEstimator,
   // Models
+  BasisClassifier, BasisRegressor, BasisTransformer, loadBasis,
   LinearModel, SVMModel, XGBModel, LGBModel, KNNModel, EBMModel,
   TsetlinModel, BARTModel,
   XLearnLR, XLearnFM, XLearnFFM,
@@ -85,6 +124,9 @@ module.exports = {
   // Cluster
   ClusterModel, silhouette, calinskiHarabasz,
   daviesBouldin, adjustedRand, loadCluster,
+  // BO
+  BayesianOptimizer, BayesianStrategy, BayesianSearch,
+  compileSpace, encodeParams, decodeParams, countFreeParams, loadBO,
   // Mitra (optional)
-  MitraModel, MitraClassifier, MitraRegressor, registerMitraLoaders,
+  MitraClassifier, MitraRegressor, registerMitraLoaders,
 }

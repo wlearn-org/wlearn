@@ -32,7 +32,6 @@ const { Pipeline } = require('./pipeline.js')
 const { Step } = require('./step.js')
 
 // preprocessing
-const { Preprocessor } = require('./preprocess.js')
 const { StandardScaler, MinMaxScaler } = require('./scalers.js')
 
 // rng
@@ -93,7 +92,7 @@ module.exports = {
   // pipeline
   Pipeline, Step,
   // preprocessing
-  Preprocessor, StandardScaler, MinMaxScaler,
+  StandardScaler, MinMaxScaler,
   // rng
   makeLCG, shuffle,
   // metrics

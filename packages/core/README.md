@@ -135,13 +135,12 @@ usage.
 
 - `StandardScaler` -- zero mean and population variance (`ddof=0`)
 - `MinMaxScaler` -- scale the fitted range to [0, 1]
-- `Preprocessor` -- legacy state-only dense preprocessing helper
 
-For new fitted tabular preprocessing over dense numeric matrices, use `Preprocessor` from
-`@wlearn/preprocess`. It wraps Tranfi prepared transforms and implements WLRN
-`save()`/load registration. The core class with the same name predates that
-adapter, exposes `getState()`/`fromState()`, and must not be used as a serializable
-Pipeline step.
+Core 0.3 removes the legacy state-only `Preprocessor`. Import it from
+`@wlearn/preprocess` and replace `new Preprocessor(config)` with
+`await Preprocessor.create(config)`. The adapter wraps Tranfi prepared transforms
+and implements WLRN `save()`/load registration. Refit legacy `getState()` data
+from its original training inputs; that state was not a portable WLRN artifact.
 
 New scaler artifacts use the corrected `standard_scaler@2` and
 `minmax_scaler@2` contracts. Both runtimes retain `@1` loaders so existing
