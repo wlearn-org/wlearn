@@ -4,7 +4,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const require = createRequire(import.meta.url)
-const core = require('../packages/core/src/index.js')
+const core = require('../js/core/src/index.js')
 const workspace = resolve(
   process.env.WLEARN_PORTS_DIR || join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 )

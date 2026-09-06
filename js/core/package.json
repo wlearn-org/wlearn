@@ -1,43 +1,47 @@
 {
-  "name": "@wlearn/types",
-  "version": "0.2.0",
-  "description": "Type definitions and constants for wlearn",
+  "name": "@wlearn/core",
+  "version": "0.3.0",
+  "description": "Runtime core for wlearn: matrix helpers, bundle format, registry, pipeline",
   "type": "commonjs",
-  "main": "index.js",
+  "main": "src/index.js",
   "types": "index.d.ts",
   "exports": {
     ".": {
       "types": "./index.d.ts",
-      "require": "./index.js",
-      "default": "./index.js"
+      "require": "./src/index.js",
+      "default": "./src/index.js"
     }
   },
   "files": [
-    "index.js",
+    "src/",
     "index.d.ts",
     "LICENSE",
     "NOTICE",
     "README.md"
   ],
+  "sideEffects": false,
+  "dependencies": {
+    "@wlearn/types": "^0.2.0"
+  },
   "scripts": {
     "test": "node --test test/*.js",
     "test:types": "tsc --project test/tsconfig.json"
   },
-  "sideEffects": false,
   "publishConfig": {
     "access": "public"
   },
   "keywords": [
     "wlearn",
     "machine-learning",
-    "types",
-    "typescript"
+    "bundle",
+    "pipeline",
+    "registry"
   ],
   "author": "Anton Zemlyansky",
   "repository": {
     "type": "git",
     "url": "https://github.com/wlearn-org/wlearn.git",
-    "directory": "packages/types"
+    "directory": "js/core"
   },
   "license": "Apache-2.0",
   "devDependencies": {

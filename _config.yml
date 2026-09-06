@@ -33,7 +33,7 @@ defaults:
       permalink: /
 
 exclude:
-  - packages/
+  - js/
   - py/
   - fixtures/
   - node_modules/

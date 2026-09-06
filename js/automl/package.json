@@ -48,7 +48,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/wlearn-org/wlearn.git",
-    "directory": "packages/automl"
+    "directory": "js/automl"
   },
   "license": "Apache-2.0",
   "devDependencies": {

@@ -561,7 +561,7 @@ class TestCommon:
 
     @pytest.mark.parametrize('vector', json.loads(
         (Path(__file__).resolve().parents[2] /
-         'packages/automl/test/candidate-v1.json').read_text(
+         'js/automl/test/candidate-v1.json').read_text(
              encoding='utf-8'))['cases'])
     def test_candidate_identity_shared_vectors(self, vector):
         candidate = create_candidate(

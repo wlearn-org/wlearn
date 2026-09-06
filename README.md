@@ -630,7 +630,7 @@ For the simple path, stop there: use `result.model` to predict, `result.leaderbo
 - `createResamplingPlan()` creates deterministic holdout/k-fold/group/time-series plus sliding row/index/period splits.
 - `Archive` records candidate params, scores, timings, failed runs, and leaderboards.
 
-See the structured API sections in [@wlearn/core](packages/core/README.md) and
+See the structured API sections in [@wlearn/core](js/core/README.md) and
 [Python wlearn](py/README.md) for the concrete contracts.
 
 ## Python
@@ -854,6 +854,11 @@ const { LinearModel } = require('@wlearn/liblinear')
 
 ## Repository structure
 
+This repository keeps JavaScript workspaces in `js/{types,core,preprocess,ensemble,automl,sdk}`
+and the Python distribution in `py/`. Shared integration fixtures live in
+`fixtures/`; development commands live in `scripts/` and the root Makefile.
+The former `packages/` source paths moved to `js/`; npm package names are unchanged.
+
 | Repo | Package | Description |
 |------|---------|-------------|
 | [wlearn](https://github.com/wlearn-org/wlearn) | `@wlearn/types`, `@wlearn/core`, `@wlearn/preprocess`, `@wlearn/sdk`, `@wlearn/automl`, `@wlearn/ensemble` | Core monorepo + Python `wlearn` |
@@ -871,10 +876,11 @@ const { LinearModel } = require('@wlearn/liblinear')
 | [nn](https://github.com/wlearn-org/nn) | `@wlearn/nn` | MLP, TabM, NAM (polygrad) |
 | [gam](https://github.com/wlearn-org/gam) | `@wlearn/gam` | GLM/GAM/Cox (C11) |
 | [cluster](https://github.com/wlearn-org/cluster) | `@wlearn/cluster` | K-Means, DBSCAN, hierarchical (C11) |
+| [basis](https://github.com/wlearn-org/basis) | `@wlearn/basis` | Fused estimators and independent feature maps (C11) |
 
 Website: [wlearn.org](https://wlearn.org)
 
-WASM port repos carry upstream C/C++ source as git submodules. C11 repos (rf, gam, cluster, bo) are written from scratch with canonical C in root `src/`, JS packages in `js/`, and standalone Python packages in `py/`. Python wrappers for upstream-native packages live in the core repo.
+WASM port repos carry upstream C/C++ source as git submodules. C11 repos (rf, gam, cluster, bo, basis) are written from scratch with canonical C in root `src/`, JS packages in `js/`, and standalone Python packages in `py/`. Python wrappers for upstream-native packages live in the core repo.
 
 ## License
 

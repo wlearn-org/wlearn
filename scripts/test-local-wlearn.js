@@ -16,8 +16,8 @@ function sandbox(t) {
     fs.writeFileSync(path.join(root, dir, 'package.json'), JSON.stringify({ name, version, dependencies }))
   }
   pkg('basis/js', '@wlearn/basis', '0.1.0', { '@wlearn/core': '^0.3.0' })
-  pkg('wlearn/packages/core', '@wlearn/core', '0.3.0')
-  fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ private: true, workspaces: ['packages/*'] }))
+  pkg('wlearn/js/core', '@wlearn/core', '0.3.0')
+  fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ private: true, workspaces: ['js/*'] }))
   const link = path.join(repo, 'node_modules/@wlearn/basis')
   const run = (...args) => spawnSync(process.execPath, [path.join(repo, 'scripts/link-local-wlearn.js'), ...args], {
     encoding: 'utf8', env: { ...process.env, WLEARN_REPOS_ROOT: root }
@@ -53,7 +53,7 @@ test('dependency check compares declared ranges without creating package links',
   const s = sandbox(t)
   assert.equal(s.run('--check').status, 0)
   assert.equal(fs.existsSync(path.join(s.repo, 'node_modules')), false)
-  s.pkg('wlearn/packages/sdk', '@wlearn/sdk', '0.3.0', { '@wlearn/core': '0.2.0' })
+  s.pkg('wlearn/js/sdk', '@wlearn/sdk', '0.3.0', { '@wlearn/core': '0.2.0' })
   const result = s.run('--check')
   assert.equal(result.status, 1)
   assert.match(result.stdout + result.stderr, /@wlearn\/sdk.*@wlearn\/core.*0\.2\.0.*0\.3\.0/)
@@ -69,7 +69,7 @@ test('dependency check handles caret zero versions and unions, and rejects unsup
 
 test('dependency check reports installed split core identities without importing them', t => {
   const s = sandbox(t)
-  const core = path.join(s.repo, 'packages/core/index.js')
+  const core = path.join(s.repo, 'js/core/index.js')
   fs.writeFileSync(core, 'throw new Error("must not import")')
   s.pkg('basis/js/node_modules/@wlearn/core', '@wlearn/core', '0.3.0')
   fs.writeFileSync(path.join(s.root, 'basis/js/node_modules/@wlearn/core/index.js'), 'throw new Error("must not import")')

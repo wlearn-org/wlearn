@@ -37,7 +37,7 @@ async function tryLoadModels() {
   }
   const preprocessModule = await import(
     PORTS_DIR
-      ? `${__dirname}/../packages/preprocess/src/index.js`
+      ? `${__dirname}/../js/preprocess/src/index.js`
       : '@wlearn/preprocess'
   )
   const preprocess = preprocessModule.default || preprocessModule

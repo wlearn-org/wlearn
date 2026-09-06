@@ -49,7 +49,7 @@ async function importModels() {
   }
   const preprocessModule = await import(
     portsDir
-      ? `${fixturesDir}/../packages/preprocess/src/index.js`
+      ? `${fixturesDir}/../js/preprocess/src/index.js`
       : '@wlearn/preprocess'
   )
   const preprocess = preprocessModule.default || preprocessModule

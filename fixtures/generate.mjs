@@ -34,7 +34,7 @@ async function importPort(name) {
   if (PORTS_DIR) {
     // dev mode: absolute path to sibling repo
     if (name === 'preprocess') {
-      return import(`${__dirname}/../packages/preprocess/src/index.js`)
+      return import(`${__dirname}/../js/preprocess/src/index.js`)
     }
     const map = { liblinear: 'liblinear-wasm', libsvm: 'libsvm-wasm', xgboost: 'xgboost-wasm', nanoflann: 'nanoflann-wasm', ebm: 'ebm-wasm', lightgbm: 'lightgbm-wasm', stochtree: 'stochtree-wasm', xlearn: 'xlearn-wasm' }
     const dir = map[name]
