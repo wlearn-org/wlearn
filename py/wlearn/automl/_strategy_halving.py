@@ -2,7 +2,8 @@
 
 import math
 
-from ._rng import make_lcg
+from ..rng import make_lcg
+from ._common import default_search_space
 from ._sampler import sample_config
 from ._conditions import effective_search_space
 from ._candidate import (
@@ -24,9 +25,7 @@ class HalvingStrategy:
         all_candidates = []
         seen = {}
         for model in normalize_model_specs(models):
-            space = model.get('searchSpace') or {}
-            if not space and hasattr(model['cls'], 'default_search_space'):
-                space = model['cls'].default_search_space()
+            space = default_search_space(model)
 
             fixed_params = model.get('params') or {}
             effective_space = effective_search_space(space, fixed_params)
@@ -90,13 +89,13 @@ class HalvingStrategy:
         fraction = min(1, n_resources / self._n_samples) if self._n_samples > 0 else 1
 
         # Sort results
-        sorted_results = list(self._round_results)
+        sorted_results = [r for r in self._round_results if r.get('status') != 'failed']
         if self._greater_is_better:
             sorted_results.sort(key=lambda r: -r['meanScore'])
         else:
             sorted_results.sort(key=lambda r: r['meanScore'])
 
-        n_survivors = max(1, math.ceil(len(sorted_results) / self._factor))
+        n_survivors = math.ceil(len(sorted_results) / self._factor)
 
         self._rounds.append({
             'round': self._round,
@@ -114,6 +113,8 @@ class HalvingStrategy:
             c for c in self._candidates if c['candidateId'] in survivor_ids
         ]
 
+        if not self._candidates:
+            self._done = True
         self._round += 1
         self._round_index = 0
         self._round_results = []

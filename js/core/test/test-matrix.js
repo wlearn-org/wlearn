@@ -1,5 +1,13 @@
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
+
+it('dense helpers reject CSR even when nnz equals the dense size', () => {
+  const { normalizeX, validateMatrix, ValidationError } = require('../src/index.js')
+  const csr = { rows: 2, cols: 2, data: new Float64Array([1, 2, 3, 4]),
+    indices: new Int32Array([1, 0, 1, 0]), indptr: new Int32Array([0, 2, 4]) }
+  assert.throws(() => normalizeX(csr), ValidationError)
+  assert.throws(() => validateMatrix(csr), ValidationError)
+})
 const { normalizeX, normalizeY, makeDense, validateMatrix } = require('../src/matrix.js')
 const { ValidationError } = require('../src/errors.js')
 
@@ -163,4 +171,19 @@ describe('validateMatrix', () => {
       ValidationError
     )
   })
+})
+
+
+it('row subsets preserve order and label dtype without aliasing inputs', () => {
+  const { subsetRows, subsetLabels } = require('../src/matrix.js')
+  const X = { data: new Float64Array([1, 2, 3, 4]), rows: 2, cols: 2 }
+  const rows = subsetRows(X, [1, 0, 1])
+  assert.deepEqual([...rows.data], [3, 4, 1, 2, 3, 4])
+  rows.data[0] = 99
+  assert.equal(X.data[2], 3)
+  const y = subsetLabels(new Int32Array([5, 9]), [1, 0])
+  assert(y instanceof Int32Array)
+  assert.deepEqual([...y], [9, 5])
+  assert.throws(() => subsetRows(X, [2]), /indices/)
+  assert.throws(() => subsetLabels(y, [0.5]), /indices/)
 })

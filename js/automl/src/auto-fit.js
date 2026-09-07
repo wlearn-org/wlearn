@@ -196,7 +196,7 @@ async function autoFit(models, X, y, opts = {}) {
     createCandidateClass: candidate => (
       createCandidatePipelineClass(spec, candidate, {
         baseSeed: seed,
-        foldCount: cv,
+        foldCount: typeof cv === 'number' ? cv : (cv.folds || cv).length,
       })
     ),
   }))

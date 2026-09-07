@@ -3,6 +3,7 @@
 import math
 
 from ..errors import ValidationError
+from ..resampling import resolve_cv
 
 
 _NESTED_MEDIA_TYPE = 'application/x-wlearn-bundle'
@@ -47,7 +48,7 @@ def validate_stacking_manifest(
         raise ValidationError(
             'StackingEnsemble metaName must differ from every base '
             'estimator name')
-    _assert_integer(params.get('cv'), 2, 'StackingEnsemble cv')
+    _validate_cv(params.get('cv'), 'StackingEnsemble cv')
     if not isinstance(params.get('passthrough'), bool):
         raise ValidationError(
             'StackingEnsemble passthrough must be a boolean')
@@ -77,9 +78,9 @@ def validate_bagging_manifest(
         manifest, classifier_type, regressor_type, 'BaggedEstimator')
     k_fold = params.get('kFold')
     n_repeats = params.get('nRepeats')
-    _assert_integer(k_fold, 2, 'BaggedEstimator kFold')
+    fold_count = _validate_cv(k_fold, 'BaggedEstimator kFold', params.get('nSamples'))
     _assert_integer(n_repeats, 1, 'BaggedEstimator nRepeats')
-    model_count = k_fold * n_repeats
+    model_count = fold_count * n_repeats
     if model_count > (1 << 53) - 1:
         raise ValidationError(
             'BaggedEstimator fold model count exceeds the safe integer range')
@@ -119,6 +120,28 @@ def validate_bagging_manifest(
         expected.append(('oof', _OOF_MEDIA_TYPE))
     _validate_artifacts(toc, expected, 'BaggedEstimator')
     return params
+
+
+def _validate_cv(cv, label, rows=None):
+    if isinstance(cv, int) and not isinstance(cv, bool):
+        _assert_integer(cv, 2, label)
+        return cv
+    if not isinstance(cv, list) or not cv:
+        raise ValidationError(f'{label} must be an integer or fold array')
+    if rows is None:
+        rows = 0
+        for fold in cv:
+            for field in ('train', 'test'):
+                if not isinstance(fold, dict) or not isinstance(fold.get(field), list):
+                    raise ValidationError(f'{label} has invalid folds')
+                for index in fold[field]:
+                    if isinstance(index, bool) or not isinstance(index, int) or index < 0 or index >= 2147483647:
+                        raise ValidationError(f'{label} has invalid row indices')
+                    rows = max(rows, index + 1)
+    _assert_integer(rows, 2, f'{label} rows')
+    # range carries the row count without materializing untrusted manifest sizes.
+    resolve_cv(cv, range(rows), task='regression')
+    return len(cv)
 
 
 def _validate_common(

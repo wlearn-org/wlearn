@@ -11,39 +11,18 @@ const scripts = pkg.scripts || {}
 const files = pkg.files || []
 const skipBuild = /^(1|true|yes)$/i.test(process.env.WLEARN_SKIP_BUILD || '')
 
-function run(cmd, args, extraEnv = {}) {
+function run(cmd, args) {
   const result = spawnSync(cmd, args, {
     cwd: pkgDir,
     stdio: 'inherit',
-    env: { ...process.env, ...extraEnv }
+    env: process.env
   })
   if (result.status !== 0) {
     process.exit(result.status || 1)
   }
 }
 
-const buildEnv = {
-  EM_CACHE: process.env.EM_CACHE || path.join(pkgDir, 'build', '.emcache')
-}
-
-if (!process.env.EMSDK_PYTHON && fs.existsSync('/usr/bin/python3')) {
-  buildEnv.EMSDK_PYTHON = '/usr/bin/python3'
-}
-
-const wantsWasm = files.includes('wasm/')
 const wantsDist = files.includes('dist/')
-
-if (wantsWasm) {
-  const wasmDir = path.join(pkgDir, 'wasm')
-  const hasWasmJs = fs.existsSync(wasmDir) && fs.readdirSync(wasmDir).some((name) => name.endsWith('.js'))
-  if (!hasWasmJs) {
-    if (!scripts.build) {
-      console.error('prepack: package declares wasm/ in files but has no build script')
-      process.exit(1)
-    }
-    run('npm', ['run', 'build'], buildEnv)
-  }
-}
 
 if (wantsDist) {
   if (!scripts['build:browser']) {
@@ -62,7 +41,7 @@ if (wantsDist) {
     }
     console.log('prepack: WLEARN_SKIP_BUILD=1, skipping browser dist rebuild')
   } else {
-    run('npm', ['run', 'build:browser'], buildEnv)
+    run('npm', ['run', 'build:browser'])
   }
 }
 

@@ -1,4 +1,4 @@
-const { ValidationError } = require('@wlearn/core')
+const { ValidationError, resolveCv } = require('@wlearn/core')
 
 const NESTED_MEDIA_TYPE = 'application/x-wlearn-bundle'
 const OOF_MEDIA_TYPE = 'application/octet-stream'
@@ -31,7 +31,7 @@ function validateStackingManifest(manifest, toc, classifierType, regressorType) 
   if (names.includes(metaName)) {
     throw new ValidationError('StackingEnsemble metaName must differ from every base estimator name')
   }
-  assertInteger(p.cv, 2, 'StackingEnsemble cv')
+  validateCv(p.cv, 'StackingEnsemble cv')
   if (typeof p.passthrough !== 'boolean') {
     throw new ValidationError('StackingEnsemble passthrough must be a boolean')
   }
@@ -59,9 +59,9 @@ function validateStackingManifest(manifest, toc, classifierType, regressorType) 
 
 function validateBaggingManifest(manifest, toc, classifierType, regressorType) {
   const p = validateCommon(manifest, classifierType, regressorType, 'BaggedEstimator')
-  assertInteger(p.kFold, 2, 'BaggedEstimator kFold')
+  const foldCount = validateCv(p.kFold, 'BaggedEstimator kFold', p.nSamples)
   assertInteger(p.nRepeats, 1, 'BaggedEstimator nRepeats')
-  if (!Number.isSafeInteger(p.kFold * p.nRepeats)) {
+  if (!Number.isSafeInteger(foldCount * p.nRepeats)) {
     throw new ValidationError('BaggedEstimator fold model count exceeds the safe integer range')
   }
   if (!Number.isSafeInteger(p.seed)) {
@@ -78,7 +78,7 @@ function validateBaggingManifest(manifest, toc, classifierType, regressorType) {
   }
 
   const expected = []
-  const modelCount = p.kFold * p.nRepeats
+  const modelCount = foldCount * p.nRepeats
   const hasOof = toc.some(entry => entry.id === 'oof')
   if (toc.length !== modelCount + (hasOof ? 1 : 0)) {
     throw new ValidationError('BaggedEstimator artifact count is inconsistent with its params')
@@ -98,6 +98,29 @@ function validateBaggingManifest(manifest, toc, classifierType, regressorType) {
   }
   validateArtifacts(toc, expected, 'BaggedEstimator')
   return p
+}
+
+function validateCv(cv, label, rows) {
+  if (typeof cv === 'number') {
+    assertInteger(cv, 2, label)
+    return cv
+  }
+  if (!Array.isArray(cv) || !cv.length) throw new ValidationError(`${label} must be an integer or fold array`)
+  if (rows == null) {
+    rows = 0
+    for (const fold of cv) for (const field of ['train', 'test']) {
+      if (!Array.isArray(fold?.[field])) throw new ValidationError(`${label} has invalid folds`)
+      for (const index of fold[field]) {
+        if (!Number.isInteger(index) || index < 0 || index >= 2147483647) {
+          throw new ValidationError(`${label} has invalid row indices`)
+        }
+        rows = Math.max(rows, index + 1)
+      }
+    }
+  }
+  // Validate indices without allocating a dataset from untrusted manifest sizes.
+  resolveCv(cv, { length: rows }, { task: 'regression' })
+  return cv.length
 }
 
 function validateCommon(manifest, classifierType, regressorType, label) {

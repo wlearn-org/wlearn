@@ -9,8 +9,14 @@ const fs = require('fs')
 const ROOT = path.resolve(__dirname, '..')
 const pkg = require(path.join(ROOT, 'package.json'))
 const NAME = pkg.name.split('/').pop()
+const BASIS_ROOT = path.resolve(path.dirname(require.resolve('@wlearn/basis')), '..')
 const EXPORTS = Object.keys(require(path.join(ROOT, 'src', 'index.js')))
 const TMP_DIR = fs.mkdtempSync(path.join(ROOT, '.browser-test-'))
+const CORE_BUNDLE = path.join(TMP_DIR, 'core.js')
+require('esbuild').buildSync({
+  entryPoints: [require.resolve('@wlearn/core')], bundle: true,
+  platform: 'browser', format: 'iife', globalName: 'wlearnCore', outfile: CORE_BUNDLE
+})
 let chromium
 
 function failMissingPlaywright(e) {
@@ -62,12 +68,49 @@ const bundles = [
   { name: 'ESM',  file: `dist/${NAME}.mjs`, type: 'esm' },
 ]
 
+async function roundtrip(VotingEnsemble, StackingEnsemble, BasisRegressor, caruanaSelect) {
+  let taskError
+  try { await BasisRegressor.create({ task: 'classification' }) } catch (error) { taskError = error }
+  if (!(taskError instanceof wlearnCore.ValidationError)) throw new Error('Public core error identity differs between bundles')
+  wlearnCore.registerMeasure({ id: 'browser-test-loss', taskKinds: ['classification'],
+    direction: 'minimize', response: 'proba',
+    fn: ({ truth, proba }) => wlearnCore.logLoss(truth, proba, { classes: [0, 1] }) })
+  const selection = caruanaSelect([[0.9, 0.1, 0.1, 0.9]], [0, 1], {
+    scoring: 'browser-test-loss', maxSize: 1
+  })
+  if (selection.indices[0] !== 0) throw new Error('Custom measure did not cross the bundle boundary')
+  const X = [[-1, 0], [0, 1], [1, 0], [2, 1], [3, 0], [4, 1]]
+  const y = [-1, 1, 3, 5, 7, 9]
+  for (const Ensemble of [VotingEnsemble, StackingEnsemble]) {
+    const params = { method: 'rvfl', nComponents: 4 }
+    const model = await Ensemble.create({ task: 'regression',
+      estimators: [['basis', BasisRegressor, params]],
+      finalEstimator: ['readout', BasisRegressor, params], cv: 2 })
+    let restored
+    try {
+      await model.fit(X, y)
+      const before = Array.from(await model.predict(X))
+      restored = await Ensemble.load(model.save())
+      const after = Array.from(await restored.predict(X))
+      if (before.some((value, index) => Math.abs(value - after[index]) > 1e-8)) {
+        throw new Error('Composed model predictions changed after loading')
+      }
+    } finally {
+      model.dispose()
+      if (restored) restored.dispose()
+    }
+  }
+}
+
 function makeIifeHtml(jsPath, globalName, exportKeys) {
   return `<!DOCTYPE html><html><body>
+<script src="/${path.relative(ROOT, CORE_BUNDLE).replace(/\\/g, '/')}"></script>
+<script src="/basis.js"></script>
 <script src="${jsPath}"></script>
 <script>
 async function runTest() {
   try {
+    await (${roundtrip.toString()})(${globalName}.VotingEnsemble, ${globalName}.StackingEnsemble, basis.BasisRegressor, ${globalName}.caruanaSelect)
     var lib = ${globalName}
     var expected = ${JSON.stringify(exportKeys)}
     var missing = expected.filter(function(k) { return !(k in lib) })
@@ -84,10 +127,13 @@ window.__testResult = runTest()
 function makeEsmHtml(jsPath, exportKeys) {
   const imports = exportKeys.join(', ')
   return `<!DOCTYPE html><html><body>
+<script src="/${path.relative(ROOT, CORE_BUNDLE).replace(/\\/g, '/')}"></script>
 <script type="module">
 import { ${imports} } from '${jsPath}'
+import { BasisRegressor } from '/basis.mjs'
 async function runTest() {
   try {
+    await (${roundtrip.toString()})(VotingEnsemble, StackingEnsemble, BasisRegressor, caruanaSelect)
     var types = {}
     var exports = [${exportKeys.map(k => `['${k}', ${k}]`).join(', ')}]
     exports.forEach(function(e) { types[e[0]] = typeof e[1] })
@@ -101,8 +147,9 @@ window.__testResult = runTest()
 async function main() {
   const server = http.createServer((req, res) => {
     const url = decodeURIComponent((req.url || '/').split('?')[0])
-    const fp = path.resolve(ROOT, url.replace(/^\/+/, ''))
-    if (!fp.startsWith(ROOT + path.sep)) {
+    const modelFile = url === '/basis.js' || url === '/basis.mjs'
+    const fp = modelFile ? path.join(BASIS_ROOT, 'dist', url.slice(1)) : path.resolve(ROOT, url.replace(/^\/+/, ''))
+    if (!modelFile && !fp.startsWith(ROOT + path.sep)) {
       res.writeHead(403)
       res.end('Forbidden')
       return

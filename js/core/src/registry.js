@@ -1,8 +1,23 @@
 const { RegistryError } = require('./errors.js')
 const { validateBundle } = require('./bundle.js')
 
-const registry = new Map()
-const LOAD_CONTEXT = Symbol('wlearn.loadContext')
+const { version } = require('../package.json')
+
+// Standalone browser bundles each embed core. Loader identity and immutable
+// nested-load contexts belong to the realm, not to one esbuild module closure.
+// Reject mixed releases rather than sharing loaders across incompatible cores.
+const REGISTRY = Symbol.for('wlearn.core.registry')
+const existing = globalThis[REGISTRY]
+if (existing && existing.version !== version) {
+  throw new RegistryError(`Conflicting @wlearn/core versions: ${existing.version} and ${version}. Use one core version in all bundles.`)
+}
+if (!existing) {
+  Object.defineProperty(globalThis, REGISTRY, {
+    value: Object.freeze({ version, loaders: new Map() })
+  })
+}
+const registry = globalThis[REGISTRY].loaders
+const LOAD_CONTEXT = Symbol.for(`wlearn.loadContext@${version}`)
 
 function register(typeId, loaderFn, options = {}) {
   if (typeof typeId !== 'string' || !typeId.includes('@')) {

@@ -1,3 +1,4 @@
+const { taskParams, validateEstimatorTask, resolveCv } = require('@wlearn/core')
 const {
   encodeBundle, validateBundle, register, load: registryLoad,
   assertRequiredLoaders,
@@ -81,9 +82,10 @@ class VotingEnsemble {
     const models = []
     try {
       for (const [name, EstClass, params] of this.#specs) {
-        const model = await EstClass.create(params || {})
+        const model = await EstClass.create(taskParams(params, this.#task))
         models.push(model)
         await model.fit(Xn, yn)
+        validateEstimatorTask(model, this.#task)
         if (this.#task === 'classification' && this.#voting === 'soft') {
           _validateSoftVotingModel(
             model, classes, `VotingEnsemble estimator "${name}"`

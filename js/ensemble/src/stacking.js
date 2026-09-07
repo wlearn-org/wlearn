@@ -1,3 +1,5 @@
+const { subsetRows, subsetLabels } = require('@wlearn/core')
+const { taskParams, validateEstimatorTask, resolveCv, serializeCv } = require('@wlearn/core')
 const {
   encodeBundle, validateBundle, register, load: registryLoad,
   assertRequiredLoaders,
@@ -94,9 +96,7 @@ class StackingEnsemble {
     }
 
     // Generate folds
-    const folds = this.#task === 'classification'
-      ? stratifiedKFold(yn, this.#cv, { shuffle: true, seed: this.#seed })
-      : kFold(n, this.#cv, { shuffle: true, seed: this.#seed })
+    const folds = resolveCv(this.#cv, yn, { task: this.#task, seed: this.#seed, requireComplete: true })
 
     const baggedBases = []
     const specBases = []
@@ -162,14 +162,15 @@ class StackingEnsemble {
 
     for (const [b, , EstClass, params] of specBases) {
       for (const { train, test } of folds) {
-        const Xtrain = _subsetX(Xn, train)
-        const ytrain = _subsetY(yn, train)
-        const Xtest = _subsetX(Xn, test)
+        const Xtrain = subsetRows(Xn, train)
+        const ytrain = subsetLabels(yn, train)
+        const Xtest = subsetRows(Xn, test)
 
-        const model = await EstClass.create(params || {})
+        const model = await EstClass.create(taskParams(params, this.#task))
         let operationError = null
         try {
           await model.fit(Xtrain, ytrain)
+          validateEstimatorTask(model, this.#task)
           if (this.#task === 'classification') {
             const label = `StackingEnsemble base estimator "${this.#baseSpecs[b][0]}"`
             requireProbabilityModel(model, label)
@@ -234,10 +235,11 @@ class StackingEnsemble {
     let metaModel = null
     try {
       for (const [index, , EstClass, params] of specBases) {
-        const model = await EstClass.create(params || {})
+        const model = await EstClass.create(taskParams(params, this.#task))
         createdModels.push(model)
         baseModels[index] = model
         await model.fit(Xn, yn)
+        validateEstimatorTask(model, this.#task)
         if (this.#task === 'classification') {
           const label =
             `StackingEnsemble base estimator "${this.#baseSpecs[index][0]}"`
@@ -249,8 +251,9 @@ class StackingEnsemble {
       }
 
       const [, MetaClass, metaParams] = this.#metaSpec
-      metaModel = await MetaClass.create(metaParams || {})
+      metaModel = await MetaClass.create(taskParams(metaParams, this.#task))
       await metaModel.fit(metaX, yn)
+      validateEstimatorTask(metaModel, this.#task)
       if (this.#task === 'classification') {
         classColumnMap(
           metaModel, classes,
@@ -337,7 +340,7 @@ class StackingEnsemble {
       typeId,
       params: {
         task: this.#task,
-        cv: this.#cv,
+        cv: serializeCv(this.#cv),
         passthrough: this.#passthrough,
         seed: this.#seed,
         estimatorNames: this.#baseSpecs.map(s => s[0]),
@@ -390,7 +393,7 @@ class StackingEnsemble {
   getParams() {
     return {
       task: this.#task,
-      cv: this.#cv,
+      cv: serializeCv(this.#cv),
       passthrough: this.#passthrough,
       seed: this.#seed,
       estimatorNames: this.#baseSpecs.map(s => s[0]),
@@ -602,7 +605,7 @@ function _validateStackingConfig(
       'StackingEnsemble task must be "classification" or "regression"'
     )
   }
-  if (!Number.isSafeInteger(cv) || cv < 2) {
+  if (typeof cv === 'number' ? !Number.isSafeInteger(cv) || cv < 2 : !(Array.isArray(cv) || cv?.folds)) {
     throw new ValidationError('StackingEnsemble cv must be a safe integer >= 2')
   }
   if (typeof passthrough !== 'boolean') {
@@ -669,27 +672,6 @@ function _disposeOwned(models, operationError = null) {
     }
   }
   if (operationError === null && firstError !== null) throw firstError
-}
-
-// --- Subset helpers ---
-
-function _subsetX(X, indices) {
-  const { data, cols } = X
-  const rows = indices.length
-  const out = new Float64Array(rows * cols)
-  for (let i = 0; i < rows; i++) {
-    const srcOff = indices[i] * cols
-    out.set(data.subarray(srcOff, srcOff + cols), i * cols)
-  }
-  return { data: out, rows, cols }
-}
-
-function _subsetY(y, indices) {
-  const out = new (y.constructor)(indices.length)
-  for (let i = 0; i < indices.length; i++) {
-    out[i] = y[indices[i]]
-  }
-  return out
 }
 
 module.exports = { StackingEnsemble }

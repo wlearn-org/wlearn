@@ -1,4 +1,5 @@
-const { stratifiedKFold, kFold, normalizeX, normalizeY,
+const { taskParams, resolveCv } = require('@wlearn/core')
+const { normalizeX, normalizeY,
   ValidationError } = require('@wlearn/core')
 const { Executor } = require('./executor.js')
 const { ProgressiveStrategy } = require('./strategy-progressive.js')
@@ -45,24 +46,17 @@ class ProgressiveSearch {
     const Xn = normalizeX(X)
     const yn = normalizeY(y)
     const task = this.#opts.task || detectTask(yn)
+    const models = this.#models.map(spec => ({ ...spec, params: taskParams(spec.params, task) }))
     const scoring = this.#opts.scoring || (task === 'classification' ? 'accuracy' : 'r2')
     const { cv, seed, nIter, maxTimeMs, promoteCount, probeFraction, onProgress } = this.#opts
     const greaterIsBetter = scorerGreaterIsBetter(scoring)
 
-    // Probe folds: use only 1 fold for cheap screening
-    const probeFolds = task === 'classification'
-      ? stratifiedKFold(yn, 2, { shuffle: true, seed })
-      : kFold(yn.length, 2, { shuffle: true, seed })
-    // Use only the first fold for probing
-    const singleFold = [probeFolds[0]]
-
-    // Full folds for promoted candidates
-    const fullFolds = task === 'classification'
-      ? stratifiedKFold(yn, cv, { shuffle: true, seed: seed + 1 })
-      : kFold(yn.length, cv, { shuffle: true, seed: seed + 1 })
+    // Probe the caller's first fold; regenerating a split could leak groups.
+    const fullFolds = resolveCv(cv, yn, { task, seed })
+    const singleFold = [fullFolds[0]]
 
     // Create strategy
-    const strategy = new ProgressiveStrategy(this.#models, {
+    const strategy = new ProgressiveStrategy(models, {
       nIter, seed, promoteCount, greaterIsBetter, probeFraction,
     })
 
@@ -86,25 +80,9 @@ class ProgressiveSearch {
         strategy.report(result)
       } catch (error) {
         probeExecutor.recordFailure(cand, error)
-        // Report a failing result so the strategy can count it
-        strategy.report({
-          candidateId: cand.candidateId,
-          candidate: cand.candidate,
-          params: cand.candidate.model.params,
-          meanScore: -Infinity,
-          foldScores: new Float64Array(1),
-          stdScore: 0,
-          fitTimeMs: 0,
-          nTrainUsed: 0,
-          nTest: 0,
-        })
+        strategy.report({ candidateId: cand.candidateId, candidate: cand.candidate,
+          status: 'failed', meanScore: null })
       }
-    }
-
-    // If probe timed out and strategy hasn't transitioned, force it
-    if (strategy.phase === 'probe') {
-      // Transition didn't happen (not all probes completed) - use what we have
-      // The strategy's report method handles this
     }
 
     // Phase 2: full evaluation of promoted candidates

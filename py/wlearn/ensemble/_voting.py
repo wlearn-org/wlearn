@@ -3,13 +3,14 @@
 import math
 import numpy as np
 
+from ..task import task_params, validate_estimator_task
 from ..errors import ValidationError, NotFittedError, DisposedError
 from ..bundle import encode_bundle, validate_bundle, write_bundle_output
 from ..registry import (
     register, load as registry_load, _load_with_context,
     assert_required_loaders,
 )
-from ..automl._cv import accuracy, r2_score
+from ..cv import accuracy, r2_score
 from ._manifest import validate_voting_manifest
 from ._class_order import (
     class_column_map, require_probability_model, validate_label_output,
@@ -68,9 +69,10 @@ class VotingEnsemble:
         models = []
         try:
             for name, est_cls, params in self._specs:
-                model = est_cls.create(params or {})
+                model = est_cls.create(task_params(params, self._task))
                 models.append(model)
                 model.fit(X, y)
+                validate_estimator_task(model, self._task)
                 if (self._task == 'classification' and
                         self._voting == 'soft'):
                     _validate_soft_voting_model(

@@ -2,13 +2,15 @@
 
 import numpy as np
 
+from ..task import task_params, validate_estimator_task
+from ..resampling import resolve_cv, serialize_cv, ResamplingPlan
 from ..errors import ValidationError, NotFittedError, DisposedError
 from ..bundle import encode_bundle, validate_bundle, write_bundle_output
 from ..registry import (
     register, load as registry_load, _load_with_context,
     assert_required_loaders,
 )
-from ..automl._cv import accuracy, r2_score, stratified_k_fold, k_fold
+from ..cv import accuracy, r2_score
 from ._manifest import validate_stacking_manifest
 from ._class_order import (
     class_column_map, require_probability_model, validate_label_output,
@@ -81,10 +83,7 @@ class StackingEnsemble:
             n_classes = len(classes)
 
         # Generate folds
-        if self._task == 'classification':
-            folds = stratified_k_fold(y, self._cv, do_shuffle=True, seed=self._seed)
-        else:
-            folds = k_fold(n, self._cv, do_shuffle=True, seed=self._seed)
+        folds = resolve_cv(self._cv, y, task=self._task, seed=self._seed, require_complete=True)
 
         # Classify base specs: pre-fitted BaggedEstimator vs regular (name, cls, params)
         from ._bagging import BaggedEstimator
@@ -141,10 +140,11 @@ class StackingEnsemble:
                 X_train, y_train = X[train], y[train]
                 X_test = X[test]
 
-                model = est_cls.create(params or {})
+                model = est_cls.create(task_params(params, self._task))
                 operation_error = None
                 try:
                     model.fit(X_train, y_train)
+                    validate_estimator_task(model, self._task)
                     if self._task == 'classification':
                         label = (
                             f'StackingEnsemble base estimator '
@@ -194,10 +194,11 @@ class StackingEnsemble:
         meta_model = None
         try:
             for b, _name, est_cls, params in spec_bases:
-                model = est_cls.create(params or {})
+                model = est_cls.create(task_params(params, self._task))
                 created_models.append(model)
                 base_models[b] = model
                 model.fit(X, y)
+                validate_estimator_task(model, self._task)
                 if self._task == 'classification':
                     label = (
                         f'StackingEnsemble base estimator '
@@ -209,8 +210,9 @@ class StackingEnsemble:
             meta_cls = self._meta_spec[1]
             meta_params = (
                 self._meta_spec[2] if len(self._meta_spec) > 2 else None)
-            meta_model = meta_cls.create(meta_params or {})
+            meta_model = meta_cls.create(task_params(meta_params, self._task))
             meta_model.fit(meta_X, y)
+            validate_estimator_task(meta_model, self._task)
             if self._task == 'classification':
                 class_column_map(
                     meta_model, classes,
@@ -280,7 +282,7 @@ class StackingEnsemble:
             'typeId': type_id,
             'params': {
                 'task': self._task,
-                'cv': self._cv,
+                'cv': serialize_cv(self._cv),
                 'passthrough': self._passthrough,
                 'seed': self._seed,
                 'estimatorNames': [s[0] for s in self._base_specs],
@@ -331,7 +333,7 @@ class StackingEnsemble:
     def get_params(self):
         return {
             'task': self._task,
-            'cv': self._cv,
+            'cv': serialize_cv(self._cv),
             'passthrough': self._passthrough,
             'seed': self._seed,
             'estimatorNames': [s[0] for s in self._base_specs],
@@ -517,8 +519,8 @@ def _validate_stacking_config(
     if task not in ('classification', 'regression'):
         raise ValidationError(
             'StackingEnsemble task must be "classification" or "regression"')
-    if (isinstance(cv, bool) or not isinstance(cv, int) or cv < 2 or
-            cv > (1 << 53) - 1):
+    if not isinstance(cv, (list, tuple, ResamplingPlan)) and (
+            isinstance(cv, bool) or not isinstance(cv, int) or cv < 2 or cv > (1 << 53) - 1):
         raise ValidationError(
             'StackingEnsemble cv must be a safe integer >= 2')
     if not isinstance(passthrough, bool):

@@ -23,23 +23,8 @@
  *   m.fit(X, y)  // detects from y (sync)
  */
 
-const { normalizeY } = require('./matrix.js')
-
-const { round } = Math
-
-/**
- * Detect task type from labels.
- */
-function detectTask(y) {
-  const yn = normalizeY(y)
-  if (yn instanceof Int32Array) return 'classification'
-  const unique = new Set()
-  for (let i = 0; i < yn.length; i++) {
-    if (yn[i] !== round(yn[i])) return 'regression'
-    unique.add(yn[i])
-  }
-  return unique.size <= 20 ? 'classification' : 'regression'
-}
+const { inferTaskKind: detectTask } = require('./task.js')
+const { ValidationError, NotFittedError, DisposedError } = require('./errors.js')
 
 // WeakMap for internal state (allows dynamic prototype methods to access inner)
 const _state = new WeakMap()
@@ -48,7 +33,7 @@ const VALID_TASKS = new Set(['classification', 'regression'])
 
 function _validateTask(task) {
   if (task !== null && !VALID_TASKS.has(task)) {
-    throw new Error(`Unknown task: '${task}'. Use 'classification' or 'regression'.`)
+    throw new ValidationError(`Unknown task: '${task}'. Use 'classification' or 'regression'.`)
   }
   return task
 }
@@ -76,14 +61,14 @@ function _taskFromInner(inner, fallback) {
 
 function _get(self) {
   const s = _state.get(self)
-  if (!s) throw new Error('Model: invalid instance')
+  if (!s) throw new ValidationError('Model: invalid instance')
   return s
 }
 
 function _ensureInner(self, name) {
   const s = _get(self)
-  if (s.disposed) throw new Error(`${name} has been disposed.`)
-  if (!s.inner || !s.fitted) throw new Error(`${name}: not fitted`)
+  if (s.disposed) throw new DisposedError(`${name} has been disposed.`)
+  if (!s.inner || !s.fitted) throw new NotFittedError(`${name}: not fitted`)
   return s.inner
 }
 
@@ -191,8 +176,8 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
 
     fit(X, y, fitOpts) {
       const s = _get(this)
-      if (s.disposed) throw new Error(`${modelName} has been disposed.`)
-      if (s.fitInProgress) throw new Error(`${modelName} fit is already in progress`)
+      if (s.disposed) throw new DisposedError(`${modelName} has been disposed.`)
+      if (s.fitInProgress) throw new ValidationError(`${modelName} fit is already in progress`)
 
       const previous = {
         task: s.task,
@@ -202,7 +187,7 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
       const fitTask = s.task || detectTask(y)
       const fitInner = s.instances.get(sameClass ? 'shared' : fitTask) || null
       if (!fitInner) {
-        throw new Error(`${modelName}: task cannot be changed on a loaded model; create a new model`)
+        throw new ValidationError(`${modelName}: task cannot be changed on a loaded model; create a new model`)
       }
 
       if (typeof fitInner.setParams === 'function') {
@@ -215,7 +200,7 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
       s.fitInProgress = true
       const commit = () => {
         s.fitInProgress = false
-        if (s.disposed) throw new Error(`${modelName} has been disposed.`)
+        if (s.disposed) throw new DisposedError(`${modelName} has been disposed.`)
         // Explicit backend selectors (for example objective/solver/family) are
         // authoritative. Keep the wrapper task aligned with the fitted backend.
         s.task = _taskFromInner(fitInner, fitTask)
@@ -250,7 +235,7 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
     predictProba(X, predOpts) {
       const inner = _ensureInner(this, modelName)
       if (typeof inner.predictProba !== 'function') {
-        throw new Error(`${modelName}: predictProba not available`)
+        throw new ValidationError(`${modelName}: predictProba not available`)
       }
       return inner.predictProba(X, predOpts)
     }
@@ -267,18 +252,24 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
       const s = _get(this)
       if (s.disposed) return
       if (s.fitInProgress) {
-        throw new Error(`Cannot dispose ${modelName} while fit is in progress`)
+        throw new ValidationError(`Cannot dispose ${modelName} while fit is in progress`)
       }
       const disposed = new Set()
+      let firstError = null
       for (const instance of s.instances.values()) {
         if (!instance || disposed.has(instance)) continue
         disposed.add(instance)
-        if (typeof instance.dispose === 'function') instance.dispose()
+        try {
+          if (typeof instance.dispose === 'function') instance.dispose()
+        } catch (error) {
+          firstError ??= error
+        }
       }
       s.instances.clear()
       s.inner = null
       s.fitted = false
       s.disposed = true
+      if (firstError) throw firstError
     }
 
     getParams() {
@@ -292,9 +283,9 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
 
     setParams(p) {
       const s = _get(this)
-      if (s.disposed) throw new Error(`${modelName} has been disposed.`)
+      if (s.disposed) throw new DisposedError(`${modelName} has been disposed.`)
       if (s.fitInProgress) {
-        throw new Error(`Cannot set ${modelName} params while fit is in progress`)
+        throw new ValidationError(`Cannot set ${modelName} params while fit is in progress`)
       }
       const updates = { ...p }
       let taskChanged = false
@@ -305,7 +296,7 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
         delete updates.task
         taskChanged = newTask !== s.task
         if (taskChanged && newTask && !sameClass && !s.instances.has(newTask)) {
-          throw new Error(`${modelName}: task cannot be changed on a loaded model; create a new model`)
+          throw new ValidationError(`${modelName}: task cannot be changed on a loaded model; create a new model`)
         }
       }
 

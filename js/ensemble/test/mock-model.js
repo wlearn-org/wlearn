@@ -73,7 +73,7 @@ class MockModel {
     for (let i = 0; i < n; i++) {
       const base = 0.1 / (nc - 1 || 1)
       for (let c = 0; c < nc; c++) {
-        out[i * nc + c] = c === classIdx ? 0.9 : base
+        out[i * nc + c] = nc === 1 ? 1 : classIdx < 0 ? 1 / nc : c === classIdx ? 0.9 : base
       }
     }
     return out

@@ -4,6 +4,7 @@ const assert = require('node:assert/strict')
 const core = require('..')
 
 const EXPECTED_EXPORTS = [
+  'subsetRows', 'subsetLabels', 'taskParams', 'validateEstimatorTask', 'scoreEstimator', 'resolveCv', 'serializeCv',
   'Archive', 'BackendError', 'BundleError', 'CancelledError',
   'DEFAULT_BUNDLE_LIMITS', 'DisposedError', 'MEASURE_DIRECTIONS',
   'MEASURE_RESPONSES', 'MinMaxScaler', 'NotFittedError', 'PREDICTION_FIELDS',

@@ -11,6 +11,54 @@ from wlearn.ensemble import (
 from wlearn.errors import NotFittedError, DisposedError, ValidationError
 
 
+
+@pytest.mark.parametrize('prediction', [[-1, 2, 2, -1], [.2, .2, .3, .3]])
+def test_selection_rejects_invalid_probability_mass(prediction):
+    with pytest.raises(ValidationError, match='proba'):
+        caruana_select([np.asarray(prediction)], np.array([0, 1]), max_size=1)
+
+
+def test_caruana_refinement_preserves_mae_objective():
+    predictions = [np.array([0., 0., 9.]), np.array([3., 3., -9.])]
+    result = caruana_select(predictions, np.zeros(3), max_size=2,
+                            task='regression', scoring='neg_mae')
+    np.testing.assert_array_equal(result['weights'], [0.5, 0.5])
+
+
+def test_caruana_probability_measure_response_and_direction():
+    predictions = [np.array([.9, .1, .1, .9]), np.array([.6, .4, .4, .6])]
+    for scoring in ['log_loss', 'roc_auc']:
+        result = caruana_select(predictions, np.array([5, 2]), max_size=1,
+                                scoring=scoring, classes=[5, 2])
+        assert result['indices'].tolist() == [0]
+
+
+def test_oof_and_composites_accept_complete_custom_folds():
+    from wlearn.resampling import create_resampling_plan
+    X = np.arange(10, dtype=float).reshape(-1, 1)
+    y = np.arange(10, dtype=float)
+    plan = create_resampling_plan(n=10, k=2)
+    specs = [('base', MockModel, {})]
+    result = get_oof_predictions(specs, X, y, cv=plan, task='regression')
+    assert len(result['oofPreds'][0]) == len(y)
+    for cv in [[plan.folds[0]], plan.folds * 2]:
+        with pytest.raises(ValidationError, match='exactly once'):
+            get_oof_predictions(specs, X, y, cv=cv, task='regression')
+    for model in [
+        StackingEnsemble.create(estimators=specs, final_estimator=('meta', MockModel, {}), cv=plan, task='regression'),
+        BaggedEstimator.create(estimator=specs[0], k_fold=plan, n_repeats=2, task='regression'),
+    ]:
+        restored = None
+        try:
+            model.fit(X, y)
+            restored = type(model).load(model.save())
+            np.testing.assert_array_equal(restored.predict(X), model.predict(X))
+        finally:
+            model.dispose()
+            if restored is not None:
+                restored.dispose()
+
+
 # --- MockModel: no native deps, deterministic ---
 
 class MockModel:
@@ -36,7 +84,7 @@ class MockModel:
             unique.sort(reverse=True)
         elif self._params.get('classOrder') != 'firstSeen':
             unique.sort()
-        if len(unique) <= 20:
+        if self._params.get('task') != 'regression' and len(unique) <= 20:
             self._classes = np.array(unique, dtype=np.int32)
             self._n_classes = len(unique)
         self._mean = float(np.mean(y))
@@ -1707,9 +1755,10 @@ class TestNegLogloss:
 
     def test_scorer_registry(self):
         from wlearn.automl._cv import get_scorer
-        # CV scorers consume predict() labels. Probability-aware scoring needs
-        # a separate scorer/executor contract and is not silently approximated.
-        with pytest.raises(ValidationError, match='Unknown scoring'):
+        scorer = get_scorer('log_loss')
+        assert scorer.response == 'proba'
+        assert scorer.direction == 'minimize'
+        with pytest.raises(ValidationError, match='Unknown measure'):
             get_scorer('neg_logloss')
 
 
@@ -1960,3 +2009,23 @@ def test_stacking_validates_regression_base_and_meta_inference():
     with pytest.raises(ValidationError, match='finite numbers'):
         meta_malformed.predict(X)
     meta_malformed.dispose()
+
+
+def test_composites_reject_a_child_that_ignores_regression_task():
+    class WrongTask(MockModel):
+        @property
+        def capabilities(self):
+            return {'classifier': True, 'regressor': False, 'predictProba': True}
+
+    X = np.arange(12, dtype=float).reshape(-1, 1)
+    y = np.arange(12, dtype=float)
+    spec = ('wrong', WrongTask, {})
+    for model in [VotingEnsemble.create(estimators=[spec], task='regression'),
+                  BaggedEstimator.create(estimator=spec, k_fold=2, task='regression')]:
+        try:
+            with pytest.raises(ValidationError, match='capabilities conflict'):
+                model.fit(X, y)
+        finally:
+            model.dispose()
+    with pytest.raises(ValidationError, match='capabilities conflict'):
+        get_oof_predictions([spec], X, y, cv=2, task='regression')

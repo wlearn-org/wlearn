@@ -3,6 +3,7 @@
 import numpy as np
 
 from ..errors import ValidationError
+from ..prediction import create_prediction
 
 
 def normalize_class_order(value, expected_length, label):
@@ -89,6 +90,7 @@ def validate_probability_output(value, rows, class_count, label):
     if not np.all(np.isfinite(output)):
         raise ValidationError(
             f'{label} predict_proba output must contain finite numbers')
+    create_prediction(proba=output, proba_rows=rows)
     return output
 
 

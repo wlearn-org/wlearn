@@ -1,4 +1,5 @@
-const { stratifiedKFold, kFold, normalizeX, normalizeY,
+const { taskParams, resolveCv } = require('@wlearn/core')
+const { normalizeX, normalizeY,
   ValidationError } = require('@wlearn/core')
 const { Executor } = require('./executor.js')
 const { HalvingStrategy } = require('./strategy-halving.js')
@@ -44,14 +45,13 @@ class SuccessiveHalvingSearch {
     const yn = normalizeY(y)
     const n = Xn.rows
     const task = this.#opts.task || detectTask(yn)
+    const models = this.#models.map(spec => ({ ...spec, params: taskParams(spec.params, task) }))
     const scoring = this.#opts.scoring || (task === 'classification' ? 'accuracy' : 'r2')
     const greaterIsBetter = scorerGreaterIsBetter(scoring)
     const { cv, seed, nIter, maxTimeMs, factor, onProgress } = this.#opts
 
     // Generate base folds on full data
-    const folds = task === 'classification'
-      ? stratifiedKFold(yn, cv, { shuffle: true, seed })
-      : kFold(n, cv, { shuffle: true, seed })
+    const folds = resolveCv(cv, yn, { task, seed })
 
     const executor = new Executor({
       folds,
@@ -63,13 +63,13 @@ class SuccessiveHalvingSearch {
       onProgress,
     })
 
-    const strategy = new HalvingStrategy(this.#models, {
+    const strategy = new HalvingStrategy(models, {
       nIter,
       seed,
       factor,
       nSamples: n,
       greaterIsBetter,
-      cv,
+      cv: folds.length,
     })
 
     const { leaderboard, archive } = await executor.runStrategy(strategy)

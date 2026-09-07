@@ -1,6 +1,39 @@
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
 const { createModelClass, detectTask } = require('../src/index.js')
+const { NotFittedError, DisposedError, ValidationError, inferTaskKind } = require('../src/index.js')
+
+it('unified models preserve stable lifecycle errors', async () => {
+  const Model = createModelClass(MockClassifier, MockRegressor)
+  await assert.rejects(Model.create({ task: 'unknown' }), ValidationError)
+  const model = await Model.create({ task: 'regression' })
+  assert.throws(() => model.predict([[1]]), NotFittedError)
+  model.dispose()
+  assert.throws(() => model.fit([[1]], [1]), DisposedError)
+  assert.throws(() => model.predict([[1]]), DisposedError)
+})
+
+it('unified models use the shared task inference for constant float targets', () => {
+  const y = new Float64Array([1, 1, 1])
+  assert.equal(detectTask(y), inferTaskKind(y))
+  assert.equal(detectTask(y), 'regression')
+})
+
+it('unified disposal cleans every prepared child even if one fails', async () => {
+  const calls = []
+  class Broken {
+    static async create() { return { dispose() { calls.push('first'); throw new Error('cleanup') } } }
+  }
+  class Other {
+    static async create() { return { dispose() { calls.push('second') } } }
+  }
+  const model = await createModelClass(Broken, Other).create()
+  assert.throws(() => model.dispose(), /cleanup/)
+  assert.deepEqual(calls, ['first', 'second'])
+  model.dispose()
+  assert.equal(calls.length, 2)
+  assert.throws(() => model.predict([[1]]), DisposedError)
+})
 
 // --- Mock estimator classes ---
 

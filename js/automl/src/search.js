@@ -1,4 +1,5 @@
-const { stratifiedKFold, kFold, normalizeX, normalizeY,
+const { taskParams, resolveCv } = require('@wlearn/core')
+const { normalizeX, normalizeY,
   ValidationError } = require('@wlearn/core')
 const { Executor } = require('./executor.js')
 const { RandomStrategy } = require('./strategy-random.js')
@@ -45,13 +46,12 @@ class RandomSearch {
     const Xn = normalizeX(X)
     const yn = normalizeY(y)
     const task = this.#opts.task || detectTask(yn)
+    const models = this.#models.map(spec => ({ ...spec, params: taskParams(spec.params, task) }))
     const scoring = this.#opts.scoring || (task === 'classification' ? 'accuracy' : 'r2')
     const { cv, seed, nIter, maxTimeMs, onProgress } = this.#opts
 
     // Generate folds once, shared across all candidates
-    const folds = task === 'classification'
-      ? stratifiedKFold(yn, cv, { shuffle: true, seed })
-      : kFold(yn.length, cv, { shuffle: true, seed })
+    const folds = resolveCv(cv, yn, { task, seed })
 
     const executor = new Executor({
       folds,
@@ -63,7 +63,7 @@ class RandomSearch {
       onProgress,
     })
 
-    const strategy = new RandomStrategy(this.#models, { nIter, seed })
+    const strategy = new RandomStrategy(models, { nIter, seed })
 
     const { leaderboard, archive } = await executor.runStrategy(strategy)
 

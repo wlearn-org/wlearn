@@ -1,6 +1,6 @@
 # @wlearn/core
 
-Runtime core for wlearn: matrix helpers, bundle format, model registry, pipeline, preprocessing, metrics, and cross-validation. No WASM. No heavy dependencies.
+Runtime core for wlearn: matrix helpers, bundle format, model registry, pipeline, scalers, metrics, and cross-validation. No WASM. No heavy dependencies.
 
 Part of [wlearn](https://wlearn.org) ([GitHub](https://github.com/wlearn-org), [all packages](https://github.com/wlearn-org/wlearn#repository-structure)).
 
@@ -221,7 +221,7 @@ The returned class supports:
 - `model.task` -- the detected or specified task.
 - Extra methods and getters from the inner classes are discovered and proxied automatically.
 
-Auto-detection rules: if `y` is `Int32Array`, task is classification. Otherwise, if any value is non-integer, task is regression. If all values are integers and there are 20 or fewer unique values, task is classification; otherwise regression.
+Auto-detection rules: if `y` is `Int32Array`, task is classification. Otherwise, if any value is non-integer, task is regression. If all values are integers and there are 2–20 unique values, task is classification; otherwise regression.
 
 ### Errors
 
@@ -237,3 +237,31 @@ Auto-detection rules: if `y` is `Int32Array`, task is classification. Otherwise,
 ## License
 
 Apache-2.0
+
+## CV, scoring, and runtime identity
+
+`cv` accepts a fold count, explicit `{ train, test }` row-index arrays, or a
+`ResamplingPlan`. `resolveCv` checks indices and train/test separation. AutoML,
+OOF, stacking, and bagging use these same folds; OOF consumers require each row
+in test folds exactly once. Bagging repeats may reuse an explicit complete plan.
+Temporal/index/period split generators are **experimental**, outside the stable
+CV contract. Their partial coverage is supported for evaluation, not materialized
+OOF training. This does not add time-series modeling or uncertainty estimation.
+
+`getScorer` resolves the Measure registry, including `log_loss`, `roc_auc`, `mse`,
+and `mae`. Measure definitions declare their required response and whether to
+minimize or maximize. Plain two-array callable scorers keep response predictions
+and maximization. `scoreEstimator` requests the correct prediction method and
+validates a finite score. Probability rows must contain finite values in [0, 1]
+and sum to one within 1e-6; declared classes must be unique.
+
+Independent browser bundles share one public core API and loader registry per
+JavaScript realm. They must embed exactly the same core version; mixing core
+versions throws an actionable `RegistryError`. Rebuild every browser bundle when
+updating core. This also preserves error-constructor identity and custom Measure
+registrations across composed packages. Workers and frames have their own realms.
+
+The current Pipeline executes a sequential list of steps. TensorRef and graph
+interfaces describe future routing; they are not the current Pipeline executor.
+Matrix normalization and CV require dense inputs; sparse-capable model APIs must
+handle CSR through their declared capability.

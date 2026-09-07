@@ -1,35 +1,11 @@
+const { validateEstimatorTask, subsetRows, subsetLabels } = require('@wlearn/core')
 const {
-  normalizeX, normalizeY, makeLCG, getScorer, Archive, ValidationError
+  normalizeX, normalizeY, makeLCG, getScorer, scoreEstimator, Archive, ValidationError
 } = require('@wlearn/core')
 const { Leaderboard } = require('./leaderboard.js')
 const { now, makeCandidateId, seedFor, partialShuffle } = require('./common.js')
 
 const { ceil, min } = Math
-
-/**
- * Subset rows of X by index array.
- */
-function subsetX(X, indices) {
-  const { data, cols } = X
-  const rows = indices.length
-  const out = new Float64Array(rows * cols)
-  for (let i = 0; i < rows; i++) {
-    const srcOff = indices[i] * cols
-    out.set(data.subarray(srcOff, srcOff + cols), i * cols)
-  }
-  return { data: out, rows, cols }
-}
-
-/**
- * Subset labels by index array.
- */
-function subsetY(y, indices) {
-  const out = new (y.constructor)(indices.length)
-  for (let i = 0; i < indices.length; i++) {
-    out[i] = y[indices[i]]
-  }
-  return out
-}
 
 /**
  * Executor: evaluation engine and canonical leaderboard owner.
@@ -73,13 +49,13 @@ class Executor {
     this.#timeLimitMs = timeLimitMs
     this.#seed = seed
     this.#startTime = now()
-    this.#leaderboard = new Leaderboard()
+    this.#leaderboard = new Leaderboard({ direction: this.#scorerFn.direction || 'maximize' })
     this.#metric = typeof scoring === 'string' ? scoring : 'score'
     this.#archive = new Archive({
       id: 'automl',
       measures: [this.#metric],
       primaryMeasure: this.#metric,
-      direction: 'maximize',
+      direction: this.#scorerFn.direction || 'maximize',
       metadata: {
         source: '@wlearn/automl',
         seed,
@@ -142,17 +118,17 @@ class Executor {
 
       totalTrainUsed += train.length
 
-      const Xtrain = subsetX(this.#X, train)
-      const ytrain = subsetY(this.#y, train)
-      const Xtest = subsetX(this.#X, test)
-      const ytest = subsetY(this.#y, test)
+      const Xtrain = subsetRows(this.#X, train)
+      const ytrain = subsetLabels(this.#y, train)
+      const Xtest = subsetRows(this.#X, test)
+      const ytest = subsetLabels(this.#y, test)
 
       const model = await cls.create(effectiveParams)
       let operationError = null
       try {
         await model.fit(Xtrain, ytrain)
-        const preds = await model.predict(Xtest)
-        scores[f] = this.#scorerFn(ytest, preds)
+        validateEstimatorTask(model, candidate.model.params.task)
+        scores[f] = await scoreEstimator(model, Xtest, ytest, this.#scorerFn)
       } catch (error) {
         operationError = error
         throw error
@@ -308,7 +284,9 @@ class Executor {
       } catch (error) {
         done++
         this.recordFailure(task, error)
-        // Skip failed candidates (invalid params, create errors, etc.)
+        // Strategies must count failed evaluations to complete their round.
+        strategy.report({ candidateId: task.candidateId, candidate: task.candidate,
+          status: 'failed', meanScore: null })
       }
     }
     return { leaderboard: this.#leaderboard, archive: this.#archive }

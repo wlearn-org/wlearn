@@ -5,6 +5,34 @@ const { encodeBundle } = require('../src/bundle.js')
 const { RegistryError } = require('../src/errors.js')
 const { BundleError } = require('../src/errors.js')
 
+it('independently evaluated core copies share loaders and preserve nested context', async () => {
+  const fs = require('node:fs')
+  const { createRequire } = require('node:module')
+  const filename = require.resolve('../src/registry.js')
+  const source = fs.readFileSync(filename, 'utf8')
+  const localRequire = createRequire(filename)
+  function copy(version) {
+    const module = { exports: {} }
+    const require = id => id === '../package.json' && version
+      ? { version } : localRequire(id)
+    new Function('require', 'module', source)(require, module)
+    return module.exports
+  }
+  const first = copy()
+  const second = copy()
+  const contextValue = { threshold: 3 }
+  first.register('wlearn.test.independent-child@1', (_m, _t, _b, ctx) => ctx,
+    { acceptsContext: true })
+  second.register('wlearn.test.independent-parent@1', (_m, _t, _b, ctx) =>
+    first.load(makeBundle('wlearn.test.independent-child@1'), ctx), { acceptsContext: true })
+  const result = await first.load(makeBundle('wlearn.test.independent-parent@1'), {
+    loaderOptions: { child: contextValue }
+  })
+  assert.deepEqual(result.loaderOptions.child, contextValue)
+  assert(Object.isFrozen(result.loaderOptions.child))
+  assert.throws(() => copy('999.0.0'), /core.*version|version.*core/i)
+})
+
 // Helper: create a minimal bundle
 function makeBundle(typeId, data = new Uint8Array([1])) {
   return encodeBundle({ typeId }, [{ id: 'model', data }])

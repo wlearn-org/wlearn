@@ -26,7 +26,7 @@ CLASSIFIER_OBJECTIVES = frozenset([
 
 PROBA_OBJECTIVES = frozenset(['binary', 'multiclass', 'multiclassova'])
 
-WLEARN_PARAMS = frozenset(['numRound', 'coerce'])
+WLEARN_PARAMS = frozenset(['numRound', 'coerce', 'task'])
 
 
 def _check_lightgbm():
@@ -75,13 +75,21 @@ class LGBModel:
         if X.ndim == 1:
             X = X.reshape(1, -1)
 
-        obj = self._params.get('objective', 'regression')
+        obj = self._params.get('objective')
+        if obj is None or getattr(self, '_objective_inferred', False):
+            if self._params.get('task') == 'classification':
+                obj = 'multiclass' if np.unique(y).size > 2 else 'binary'
+            else:
+                obj = 'regression'
+            inferred = True
+        else:
+            inferred = False
         num_round = self._params.get('numRound', 100)
 
         # Build lgb params (exclude wlearn-only params)
         lgb_params = {k: v for k, v in self._params.items()
                       if k not in WLEARN_PARAMS}
-        lgb_params.setdefault('objective', obj)
+        lgb_params['objective'] = obj
         lgb_params.setdefault('verbosity', -1)
 
         # Detect classes for classification
@@ -107,6 +115,8 @@ class LGBModel:
         self._booster = lgb.train(lgb_params, dtrain,
                                   num_boost_round=num_round)
         self._model_bytes = None
+        self._params['objective'] = obj
+        self._objective_inferred = inferred
         self._fitted = True
         return self
 
@@ -253,6 +263,8 @@ class LGBModel:
         return dict(self._params)
 
     def set_params(self, p):
+        if 'objective' in p:
+            self._objective_inferred = False
         self._params.update(p)
         return self
 
@@ -282,12 +294,9 @@ class LGBModel:
             raise NotFittedError('LGBModel is not fitted.')
 
     @classmethod
-    def default_search_space(cls):
+    def default_search_space(cls, task=None):
         return {
-            'objective': {
-                'type': 'categorical',
-                'values': ['binary', 'regression'],
-            },
+            **({} if task else {'objective': {'type': 'categorical', 'values': ['binary', 'regression']}}),
             'max_depth': {'type': 'int_uniform', 'low': 3, 'high': 12},
             'learning_rate': {'type': 'log_uniform', 'low': 0.01, 'high': 0.3},
             'numRound': {'type': 'int_uniform', 'low': 50, 'high': 500},

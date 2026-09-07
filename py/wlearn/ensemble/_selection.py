@@ -3,7 +3,7 @@
 import numpy as np
 
 from ..errors import ValidationError
-from ..automl._cv import get_scorer
+from ..cv import get_scorer
 from ._class_order import (
     normalize_class_order,
     validate_probability_output,
@@ -42,7 +42,11 @@ def caruana_select(oof_predictions, y_true, max_size=20, scoring='accuracy',
     if n_candidates == 0:
         raise ValidationError('caruana_select: need at least 1 candidate')
 
+    if not isinstance(max_size, int) or max_size < 1 or n < 1:
+        raise ValidationError('caruana_select: max_size and row count must be positive')
     scorer_fn = get_scorer(scoring)
+    maximize = getattr(scorer_fn, 'direction', 'maximize') != 'minimize'
+    objective = getattr(getattr(scorer_fn, 'measure', None), 'id', None)
 
     pred_size = len(oof_predictions[0]) / n
     if pred_size != int(pred_size):
@@ -81,13 +85,13 @@ def caruana_select(oof_predictions, y_true, max_size=20, scoring='accuracy',
 
     for t in range(max_size):
         best_idx = -1
-        best_score = -float('inf')
+        best_score = -float('inf') if maximize else float('inf')
 
         for i in range(n_candidates):
             trial = _trial_predictions(current, oof_predictions[i], t, t + 1)
             trial_score = _score(
                 trial, y_true, scorer_fn, task, n_classes, n, class_labels)
-            if trial_score > best_score:
+            if (trial_score > best_score if maximize else trial_score < best_score):
                 best_score = trial_score
                 best_idx = i
 
@@ -116,7 +120,10 @@ def caruana_select(oof_predictions, y_true, max_size=20, scoring='accuracy',
         'scores': np.array(scores, dtype=np.float64),
     }
 
-    if refine_weights and len(unique_indices) > 1:
+    # Only refine objectives implemented by the numerical optimizer.
+    can_refine = (objective in ('mse', 'neg_mse', 'r2') if task == 'regression'
+                  else objective == 'log_loss')
+    if refine_weights and can_refine and len(unique_indices) > 1:
         from ._weights import optimize_weights
         selected_oofs = [oof_predictions[int(idx)] for idx in unique_indices]
         refined = optimize_weights(
@@ -136,8 +143,12 @@ def _trial_predictions(current, candidate, t_count, t_total):
 
 
 def _score(preds, y_true, scorer_fn, task, n_classes, n, classes):
-    if task == 'regression':
-        return scorer_fn(y_true, preds)
+    if task == 'regression' or getattr(scorer_fn, 'response', 'response') != 'response':
+        opts = {'classes': classes} if classes is not None else {}
+        score = scorer_fn(y_true, preds, **opts)
+        if not np.isfinite(score):
+            raise ValidationError('Scorer must return a finite number')
+        return score
     # Classification: convert proba to hard predictions via argmax
     hard_preds = np.zeros(n, dtype=np.float64)
     for i in range(n):
@@ -148,7 +159,10 @@ def _score(preds, y_true, scorer_fn, task, n_classes, n, classes):
                 best_v = preds[i * n_classes + c]
                 best_c = c
         hard_preds[i] = classes[best_c]
-    return scorer_fn(y_true, hard_preds)
+    score = scorer_fn(y_true, hard_preds)
+    if not np.isfinite(score):
+        raise ValidationError('Scorer must return a finite number')
+    return score
 
 
 def _resolve_classes(y_true, n_classes, classes):

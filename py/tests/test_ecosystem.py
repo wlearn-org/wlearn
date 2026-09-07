@@ -30,6 +30,22 @@ X = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
 y = np.array([0, 1, 0], dtype=np.int32)
 
 
+@pytest.mark.parametrize('proba', [[np.nan, 1, 0, 1], [-0.1, 1.1, 0, 1], [0.2, 0.2, 0, 1]])
+def test_prediction_rejects_invalid_probabilities(proba):
+    with pytest.raises(ValidationError):
+        create_prediction(truth=[0, 1], proba=proba, classes=[0, 1])
+
+
+def test_prediction_rejects_duplicate_classes():
+    with pytest.raises(ValidationError):
+        create_prediction(truth=[0, 1], proba=[0.5, 0.5, 0, 1], classes=[0, 0])
+
+
+def test_holdout_rounds_half_up_like_javascript():
+    plan = create_resampling_plan(strategy='holdout', n=10, test_size=0.25, shuffle=False)
+    assert plan.folds[0].test.tolist() == [7, 8, 9]
+
+
 def test_task_creates_schema_and_infers_kind():
     schema = create_feature_schema(X, names=['a', 'b'], roles=['feature', 'offset'])
     task = create_task(id='toy', X=X, y=y, feature_schema=schema)
@@ -88,13 +104,12 @@ def test_log_loss_rejects_missing_class_and_non_finite_probability():
     with pytest.raises(ValidationError):
         evaluate_measure('log_loss', missing_class)
 
-    non_finite = create_prediction(
-        truth=np.array([0, 1], dtype=np.int32),
-        proba=np.array([0.8, 0.2, np.nan, 0.9], dtype=np.float64),
-        classes=np.array([0, 1], dtype=np.int32),
-    )
     with pytest.raises(ValidationError):
-        evaluate_measure('log_loss', non_finite)
+        create_prediction(
+            truth=np.array([0, 1], dtype=np.int32),
+            proba=np.array([0.8, 0.2, np.nan, 0.9], dtype=np.float64),
+            classes=np.array([0, 1], dtype=np.int32),
+        )
 
 
 def test_prediction_rejects_probability_length_mismatch():
@@ -370,3 +385,10 @@ def test_archive_validates_trial_records():
     record = create_trial_record({'candidate_id': 'x', 'fold_id': 'fold-1', 'batch': 1})
     assert record.trial_id == 'x-fold-1-42'
     assert record.batch == 1
+
+
+def test_cv_validates_reserved_validation_rows():
+    from wlearn.resampling import resolve_cv
+    with pytest.raises(ValidationError, match='overlap'):
+        resolve_cv([{'train': [0, 1], 'test': [2, 3], 'validate': [1]}],
+                   np.arange(4, dtype=float))

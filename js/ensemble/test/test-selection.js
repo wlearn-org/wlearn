@@ -1,6 +1,31 @@
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
 const { caruanaSelect } = require('../src/selection.js')
+
+it('selection rejects invalid probability mass even with hard-label scoring', () => {
+  for (const prediction of [[-1, 2, 2, -1], [0.2, 0.2, 0.3, 0.3]]) {
+    assert.throws(() => caruanaSelect([prediction], [0, 1], { maxSize: 1 }), /proba/i)
+  }
+})
+
+it('MAE selection retains its objective during optional refinement', () => {
+  const predictions = [[0, 0, 9], [3, 3, -9]].map(x => Float64Array.from(x))
+  const result = caruanaSelect(predictions, new Float64Array(3), {
+    maxSize: 2, task: 'regression', scoring: 'neg_mae'
+  })
+  assert.deepEqual(Array.from(result.weights), [0.5, 0.5])
+})
+
+it('probability measures select using probabilities and their declared direction', () => {
+  const good = Float64Array.from([0.9, 0.1, 0.1, 0.9])
+  const weak = Float64Array.from([0.6, 0.4, 0.4, 0.6])
+  for (const scoring of ['log_loss', 'roc_auc']) {
+    const result = caruanaSelect([good, weak], Int32Array.from([5, 2]), {
+      maxSize: 1, scoring, classes: [5, 2]
+    })
+    assert.deepEqual(Array.from(result.indices), [0])
+  }
+})
 const { ValidationError } = require('@wlearn/core')
 
 describe('caruanaSelect', () => {

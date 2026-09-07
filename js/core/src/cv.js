@@ -1,36 +1,9 @@
+const { subsetRows, subsetLabels } = require('./matrix.js')
 const { ValidationError } = require('./errors.js')
 const { makeLCG, shuffle } = require('./rng.js')
 const { normalizeX, normalizeY } = require('./matrix.js')
-const { accuracy, r2Score, meanSquaredError, meanAbsoluteError } = require('./metrics.js')
-
-// --- Scorer registry ---
-
-const SCORERS = {
-  accuracy: (yTrue, yPred) => accuracy(yTrue, yPred),
-  r2: (yTrue, yPred) => r2Score(yTrue, yPred),
-  neg_mse: (yTrue, yPred) => -meanSquaredError(yTrue, yPred),
-  neg_mae: (yTrue, yPred) => -meanAbsoluteError(yTrue, yPred),
-}
-
-function _detectTask(y) {
-  if (y instanceof Int32Array) return 'classification'
-  const seen = new Set()
-  for (let i = 0; i < y.length; i++) {
-    if (!Number.isInteger(y[i])) return 'regression'
-    seen.add(y[i])
-    if (seen.size > 20) return 'regression'
-  }
-  return seen.size > 1 ? 'classification' : 'regression'
-}
-
-function getScorer(scoring) {
-  if (typeof scoring === 'function') return scoring
-  const fn = SCORERS[scoring]
-  if (!fn) {
-    throw new ValidationError(`Unknown scoring: "${scoring}". Available: ${Object.keys(SCORERS).join(', ')}`)
-  }
-  return fn
-}
+const { getScorer, scoreEstimator } = require('./measure.js')
+const { inferTaskKind, taskParams, validateEstimatorTask } = require('./task.js')
 
 // --- Fold generators ---
 
@@ -135,36 +108,31 @@ async function crossValScore(EstimatorClass, X, y, {
   scoring = 'accuracy',
   seed = 42,
   params = {},
+  task,
 } = {}) {
   const Xn = normalizeX(X)
   const yn = normalizeY(y)
   const scorerFn = getScorer(scoring)
 
-  // Generate folds
-  let folds
-  if (Array.isArray(cv)) {
-    folds = cv
-  } else {
-    folds = _detectTask(yn) === 'classification'
-      ? stratifiedKFold(yn, cv, { shuffle: true, seed })
-      : kFold(yn.length, cv, { shuffle: true, seed })
-  }
+  const resolvedTask = task || params.task || inferTaskKind(yn)
+  const { resolveCv } = require('./resampling.js')
+  const folds = resolveCv(cv, yn, { task: resolvedTask, seed })
 
   const scores = new Float64Array(folds.length)
 
   for (let f = 0; f < folds.length; f++) {
     const { train, test } = folds[f]
-    const Xtrain = _subsetX(Xn, train)
-    const ytrain = _subsetY(yn, train)
-    const Xtest = _subsetX(Xn, test)
-    const ytest = _subsetY(yn, test)
+    const Xtrain = subsetRows(Xn, train)
+    const ytrain = subsetLabels(yn, train)
+    const Xtest = subsetRows(Xn, test)
+    const ytest = subsetLabels(yn, test)
 
-    const model = await EstimatorClass.create(params)
+    const model = await EstimatorClass.create(taskParams(params, resolvedTask))
     let operationError = null
     try {
       await model.fit(Xtrain, ytrain)
-      const preds = await model.predict(Xtest)
-      scores[f] = scorerFn(ytest, preds)
+      validateEstimatorTask(model, resolvedTask)
+      scores[f] = await scoreEstimator(model, Xtest, ytest, scorerFn)
     } catch (error) {
       operationError = error
       throw error
@@ -193,23 +161,6 @@ function _concat(parts) {
   return out
 }
 
-function _subsetX(X, indices) {
-  const { data, cols } = X
-  const rows = indices.length
-  const out = new Float64Array(rows * cols)
-  for (let i = 0; i < rows; i++) {
-    const srcOff = indices[i] * cols
-    out.set(data.subarray(srcOff, srcOff + cols), i * cols)
-  }
-  return { data: out, rows, cols }
-}
 
-function _subsetY(y, indices) {
-  const out = new (y.constructor)(indices.length)
-  for (let i = 0; i < indices.length; i++) {
-    out[i] = y[indices[i]]
-  }
-  return out
-}
 
 module.exports = { kFold, stratifiedKFold, trainTestSplit, crossValScore, getScorer }

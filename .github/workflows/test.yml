@@ -1,0 +1,40 @@
+name: test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ecosystem:
+    runs-on: ubuntu-latest
+    env:
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      CMAKE_BUILD_PARALLEL_LEVEL: '1'
+      MAKEFLAGS: '-j1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install declared dependencies
+        run: |
+          npm install
+          python -m pip install -e './py[all,test]'
+          npx playwright install --with-deps chromium
+      - name: Build browser artifacts
+        run: |
+          first_cpu=$(python -c 'import os; print(min(os.sched_getaffinity(0)))')
+          taskset -c "$first_cpu" npm run build:browser --workspaces --if-present
+      - name: Run standard gates
+        run: |
+          first_cpu=$(python -c 'import os; print(min(os.sched_getaffinity(0)))')
+          taskset -c "$first_cpu" make test-all PYTHON=python

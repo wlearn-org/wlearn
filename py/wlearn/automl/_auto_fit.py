@@ -1,7 +1,6 @@
 """High-level AutoML matching JS automl/auto-fit.js."""
 
 import math
-import numpy as np
 
 from ..errors import ValidationError
 from ..ensemble._voting import VotingEnsemble
@@ -169,7 +168,7 @@ def auto_fit(models, X, y, ensemble=True, ensemble_size=20, refit=True,
         'createCandidateClass': (
             lambda candidate, current=spec:
             create_candidate_pipeline_class(
-                current, candidate, base_seed=seed, fold_count=cv)),
+                current, candidate, base_seed=seed, fold_count=cv if isinstance(cv, int) else len(getattr(cv, 'folds', cv)))),
     } for spec in specs]
 
     if strategy == 'portfolio':

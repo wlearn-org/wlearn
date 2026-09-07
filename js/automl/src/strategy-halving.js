@@ -51,7 +51,7 @@ class HalvingStrategy {
     const allCandidates = []
     const seen = new Map()
     for (const model of normalizeModelSpecs(models)) {
-      const space = model.searchSpace || model.cls.defaultSearchSpace?.() || {}
+      const space = model.searchSpace || model.cls.defaultSearchSpace?.(model.params?.task) || {}
       const effectiveSpace = effectiveSearchSpace(space, model.params || {})
 
       const configRng = makeLCG((rng() * 0x7fffffff) | 0)
@@ -115,14 +115,14 @@ class HalvingStrategy {
     const fraction = min(1, nResources / this.#nSamples)
 
     // Sort results
-    const sorted = [...this.#roundResults]
+    const sorted = this.#roundResults.filter(result => result.status !== 'failed')
     if (this.#greaterIsBetter) {
       sorted.sort((a, b) => b.meanScore - a.meanScore)
     } else {
       sorted.sort((a, b) => a.meanScore - b.meanScore)
     }
 
-    const nSurvivors = max(1, ceil(sorted.length / this.#factor))
+    const nSurvivors = ceil(sorted.length / this.#factor)
 
     this.#rounds.push({
       round: this.#round,
@@ -136,6 +136,7 @@ class HalvingStrategy {
     const survivorIds = new Set(sorted.slice(0, nSurvivors).map(r => r.candidateId))
     this.#candidates = this.#candidates.filter(c => survivorIds.has(c.candidateId))
 
+    if (this.#candidates.length === 0) this.#done = true
     this.#round++
     this.#roundIndex = 0
     this.#roundResults = []

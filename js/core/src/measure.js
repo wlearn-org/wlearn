@@ -10,7 +10,46 @@ const {
   logLoss,
   rocAuc
 } = require('./metrics.js')
-const { validatePrediction } = require('./prediction.js')
+const { createPrediction, validatePrediction } = require('./prediction.js')
+
+// The callable form retains the original two-array scorer contract. Named and
+// structured measures additionally carry the response and optimization direction.
+function getScorer(scoring) {
+  if (typeof scoring === 'function') return scoring
+  const measure = typeof scoring === 'string' ? getMeasureDef(scoring) : defineMeasure(scoring)
+  const scorer = (truth, values, opts = {}) => {
+    const field = measure.response === 'score' && opts.classes &&
+      values.length === truth.length * opts.classes.length ? 'proba' : measure.response
+    const value = evaluateMeasure(measure, createPrediction({
+      truth, [field]: values, classes: opts.classes
+    }), opts)
+    if (!Number.isFinite(value)) throw new ValidationError(`Scorer "${measure.id}" must return a finite number`)
+    return value
+  }
+  return Object.assign(scorer, { measure, direction: measure.direction, response: measure.response })
+}
+
+async function scoreEstimator(model, X, y, scoring) {
+  const scorer = getScorer(scoring)
+  const response = scorer.response || 'response'
+  let method = { response: 'predict', proba: 'predictProba', score: 'decisionFunction', decision: 'decisionFunction' }[response]
+  if (response === 'score' && typeof model[method] !== 'function') method = 'predictProba'
+  if (!method || typeof model[method] !== 'function') {
+    throw new ValidationError(`Scoring response "${response}" requires ${method || 'a supported prediction method'}`)
+  }
+  const values = await model[method](X)
+  const classes = method === 'predictProba'
+    ? (typeof model.classes === 'function' ? model.classes() : model.classes)
+    : undefined
+  if (method === 'predictProba' && !classes) {
+    throw new ValidationError('Probability scoring requires the model class order')
+  }
+  const value = scorer(y, values, { classes })
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new ValidationError('Scorer must return a finite number')
+  }
+  return value
+}
 
 const MEASURE_DIRECTIONS = ['maximize', 'minimize']
 const MEASURE_RESPONSES = ['response', 'proba', 'score', 'decision', 'distribution']
@@ -308,6 +347,8 @@ function registerBuiltinMeasures() {
 registerBuiltinMeasures()
 
 module.exports = {
+  getScorer,
+  scoreEstimator,
   MEASURE_DIRECTIONS,
   MEASURE_RESPONSES,
   defineMeasure,

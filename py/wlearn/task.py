@@ -10,6 +10,23 @@ import numpy as np
 from .errors import ValidationError
 
 
+def task_params(params, task):
+    if task not in ('classification', 'regression'):
+        raise ValidationError('Estimator task must be classification or regression')
+    params = dict(params or {})
+    if params.get('task') is not None and params['task'] != task:
+        raise ValidationError(f'Estimator task conflicts with requested task "{task}"')
+    return {**params, 'task': task}
+
+
+def validate_estimator_task(model, task):
+    caps = getattr(model, 'capabilities', {}) or {}
+    if ((task == 'regression' and caps.get('classifier') and not caps.get('regressor'))
+            or (task == 'classification' and caps.get('regressor') and not caps.get('classifier'))):
+        raise ValidationError(f'Fitted estimator capabilities conflict with requested task "{task}"')
+    return model
+
+
 TASK_KINDS = (
     'classification',
     'regression',

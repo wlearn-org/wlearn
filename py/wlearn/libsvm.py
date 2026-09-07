@@ -57,7 +57,7 @@ class SVMModel:
         if X.ndim == 1:
             X = X.reshape(1, -1)
 
-        svm_type = self._params.get('svmType', 0)
+        svm_type = self._params.get('svmType', 3 if self._params.get('task') == 'regression' else 0)
         kernel = self._params.get('kernel', 2)
         degree = self._params.get('degree', 3)
         gamma = self._params.get('gamma', 0)
@@ -111,7 +111,7 @@ class SVMModel:
         y_dummy = [0] * len(X_list)
         p_labels, _, _ = svm_predict(y_dummy, X_list, self._model, '-q')
 
-        svm_type = self._params.get('svmType', 0)
+        svm_type = self._params.get('svmType', 3 if self._params.get('task') == 'regression' else 0)
         if svm_type in SVR_TYPES:
             return np.array(p_labels, dtype=np.float64)
         return np.array(p_labels, dtype=np.float64)
@@ -134,7 +134,7 @@ class SVMModel:
     def score(self, X, y):
         preds = self.predict(X)
         y = np.asarray(y, dtype=np.float64)
-        svm_type = self._params.get('svmType', 0)
+        svm_type = self._params.get('svmType', 3 if self._params.get('task') == 'regression' else 0)
 
         if svm_type in SVR_TYPES:
             y_mean = y.mean()
@@ -157,7 +157,7 @@ class SVMModel:
         finally:
             os.unlink(tmp_path)
 
-        svm_type = self._params.get('svmType', 0)
+        svm_type = self._params.get('svmType', 3 if self._params.get('task') == 'regression' else 0)
         type_id = ('wlearn.libsvm.regressor@1'
                    if svm_type in SVR_TYPES
                    else 'wlearn.libsvm.classifier@1')
@@ -176,7 +176,7 @@ class SVMModel:
         self._fitted = False
 
     def get_params(self):
-        return dict(self._params)
+        return {**self._params, 'svmType': self._params.get('svmType', 3 if self._params.get('task') == 'regression' else 0)}
 
     def set_params(self, p):
         self._params.update(p)
@@ -185,13 +185,13 @@ class SVMModel:
     @property
     def classes(self):
         self._ensure_fitted()
-        if self._params.get('svmType', 0) in SVR_TYPES:
+        if self._params.get('svmType', 3 if self._params.get('task') == 'regression' else 0) in SVR_TYPES:
             return None
         return np.asarray(self._model.get_labels(), dtype=np.int32)
 
     @property
     def capabilities(self):
-        svm_type = self._params.get('svmType', 0)
+        svm_type = self._params.get('svmType', 3 if self._params.get('task') == 'regression' else 0)
         classifier = svm_type not in SVR_TYPES
         return estimator_capabilities(
             classifier=classifier,
@@ -212,14 +212,14 @@ class SVMModel:
 
 
     @classmethod
-    def default_search_space(cls):
+    def default_search_space(cls, task=None):
         return {
-            'svmType': {'type': 'categorical', 'values': [0, 1]},
+            'svmType': {'type': 'categorical', 'values': [3, 4] if task == 'regression' else [0, 1]},
             'kernel': {'type': 'categorical', 'values': [2, 0, 1]},
             'C': {'type': 'log_uniform', 'low': 1e-3, 'high': 1e3},
             'gamma': {'type': 'log_uniform', 'low': 1e-5, 'high': 1e1},
             'degree': {'type': 'int_uniform', 'low': 2, 'high': 5, 'condition': {'kernel': 1}},
-            'nu': {'type': 'uniform', 'low': 0.01, 'high': 0.99, 'condition': {'svmType': 1}},
+            'nu': {'type': 'uniform', 'low': 0.01, 'high': 0.99, 'condition': {'svmType': 4 if task == 'regression' else 1}},
         }
 
 

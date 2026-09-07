@@ -55,7 +55,7 @@ class LinearModel:
         if X.ndim == 1:
             X = X.reshape(1, -1)
 
-        solver = self._params.get('solver', 0)
+        solver = self._params.get('solver', 11 if self._params.get('task') == 'regression' else 0)
         C = self._params.get('C', 1.0)
         eps = self._params.get('eps', 0.01)
         bias = self._params.get('bias', -1)
@@ -98,14 +98,14 @@ class LinearModel:
         y_dummy = [0] * len(X_list)
         p_labels, _, _ = ll_predict(y_dummy, X_list, self._model, '-q')
 
-        solver = self._params.get('solver', 0)
+        solver = self._params.get('solver', 11 if self._params.get('task') == 'regression' else 0)
         if solver in SVR_SOLVERS:
             return np.array(p_labels, dtype=np.float64)
         return np.array(p_labels, dtype=np.float64)
 
     def predict_proba(self, X):
         self._ensure_fitted()
-        solver = self._params.get('solver', 0)
+        solver = self._params.get('solver', 11 if self._params.get('task') == 'regression' else 0)
         if solver not in LR_SOLVERS:
             raise ValueError(
                 f'predict_proba requires a logistic regression solver, got solver={solver}')
@@ -121,7 +121,7 @@ class LinearModel:
     def score(self, X, y):
         preds = self.predict(X)
         y = np.asarray(y, dtype=np.float64)
-        solver = self._params.get('solver', 0)
+        solver = self._params.get('solver', 11 if self._params.get('task') == 'regression' else 0)
 
         if solver in SVR_SOLVERS:
             y_mean = y.mean()
@@ -144,7 +144,7 @@ class LinearModel:
         finally:
             os.unlink(tmp_path)
 
-        solver = self._params.get('solver', 0)
+        solver = self._params.get('solver', 11 if self._params.get('task') == 'regression' else 0)
         type_id = ('wlearn.liblinear.regressor@1'
                    if solver in SVR_SOLVERS
                    else 'wlearn.liblinear.classifier@1')
@@ -163,7 +163,7 @@ class LinearModel:
         self._fitted = False
 
     def get_params(self):
-        return dict(self._params)
+        return {**self._params, 'solver': self._params.get('solver', 11 if self._params.get('task') == 'regression' else 0)}
 
     def set_params(self, p):
         self._params.update(p)
@@ -172,13 +172,13 @@ class LinearModel:
     @property
     def classes(self):
         self._ensure_fitted()
-        if self._params.get('solver', 0) in SVR_SOLVERS:
+        if self._params.get('solver', 11 if self._params.get('task') == 'regression' else 0) in SVR_SOLVERS:
             return None
         return np.asarray(self._model.get_labels(), dtype=np.int32)
 
     @property
     def capabilities(self):
-        solver = self._params.get('solver', 0)
+        solver = self._params.get('solver', 11 if self._params.get('task') == 'regression' else 0)
         classifier = solver not in SVR_SOLVERS
         return estimator_capabilities(
             classifier=classifier,
@@ -198,9 +198,9 @@ class LinearModel:
 
 
     @classmethod
-    def default_search_space(cls):
+    def default_search_space(cls, task=None):
         return {
-            'solver': {'type': 'categorical', 'values': [0, 6, 7]},
+            'solver': {'type': 'categorical', 'values': [11, 12, 13] if task == 'regression' else [0, 6, 7]},
             'C': {'type': 'log_uniform', 'low': 1e-4, 'high': 1e4},
             'eps': {'type': 'log_uniform', 'low': 1e-5, 'high': 1e-1},
         }

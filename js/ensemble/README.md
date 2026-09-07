@@ -162,3 +162,22 @@ npm run test:browser # builds IIFE/ESM bundles and checks exports in Chromium
 ## License
 
 Apache-2.0
+
+## Scoring and explicit folds
+
+OOF generation and stacking accept `cv` as a count, fold array, or core
+`ResamplingPlan`; bagging accepts the same choices through `kFold`. Each complete
+plan must assess every training row exactly once. Partial or repeated test
+coverage is rejected instead of inserting missing/duplicate OOF features.
+Bagging's explicit `nRepeats` averages complete-plan repeats. Custom folds survive
+WLRN save/load as portable index arrays.
+
+`caruanaSelect` accepts core Measure names or definitions. It uses class-aligned
+probabilities for probability measures and respects minimizing losses. Optional
+refinement preserves MSE/R2 or log-loss objectives; other metrics retain greedy
+weights. Scalar regression predictions remain required; interval and quantile
+ensembles belong to the postponed uncertainty work.
+
+Independent browser model and ensemble bundles must contain the same core version.
+Their loaders, public error classes, and registered measures share one runtime per
+realm. Both IIFE and ESM composition are covered by model save/load tests.

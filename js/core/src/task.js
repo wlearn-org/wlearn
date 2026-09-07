@@ -12,6 +12,25 @@ const TASK_KINDS = [
   'anomaly'
 ]
 
+function taskParams(params = {}, task) {
+  if (!['classification', 'regression'].includes(task)) {
+    throw new ValidationError('Estimator task must be classification or regression')
+  }
+  if (params.task != null && params.task !== task) {
+    throw new ValidationError(`Estimator task "${params.task}" conflicts with requested task "${task}"`)
+  }
+  return { ...params, task }
+}
+
+function validateEstimatorTask(model, task) {
+  const caps = model.capabilities || {}
+  if ((task === 'regression' && caps.classifier === true && caps.regressor !== true) ||
+      (task === 'classification' && caps.regressor === true && caps.classifier !== true)) {
+    throw new ValidationError(`Fitted estimator capabilities conflict with requested task "${task}"`)
+  }
+  return model
+}
+
 function inferTaskKind(y) {
   if (y == null) return 'clustering'
   const yn = normalizeY(y)
@@ -222,6 +241,8 @@ function _validateOptionalLength(value, expected, name) {
 }
 
 module.exports = {
+  taskParams,
+  validateEstimatorTask,
   TASK_KINDS,
   inferTaskKind,
   createFeatureSchema,

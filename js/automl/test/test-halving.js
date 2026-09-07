@@ -103,3 +103,18 @@ describe('SuccessiveHalvingSearch', () => {
     await assert.rejects(() => halving.fit(X, yCls), /create failed/)
   })
 })
+
+
+it('a failed candidate does not stop surviving halving rounds', async () => {
+  class Broken {
+    static classId = 'wlearn.test.broken@1'
+    static async create() { throw new Error('invalid candidate') }
+  }
+  const search = new SuccessiveHalvingSearch([
+    { name: 'broken', cls: Broken, searchSpace: {} },
+    { name: 'working', cls: SearchableMockReg }
+  ], { nIter: 3, cv: 2, task: 'regression', factor: 2 })
+  const { rounds } = await search.fit(X, yReg)
+  assert(rounds.length > 0, 'surviving candidates must reach subsequent rounds')
+  assert(rounds.every(round => round.nSurvivors > 0))
+})

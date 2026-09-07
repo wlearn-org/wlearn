@@ -12,6 +12,9 @@ export declare const DTYPE: {
 export type Dtype = 'float32' | 'float64' | 'int32'
 
 export interface DenseMatrix {
+  /** Dense helpers do not accept sparse row/index buffers. */
+  indptr?: never
+  indices?: never
   dtype?: Dtype
   rows: number
   cols: number
@@ -426,6 +429,7 @@ export interface LeaderboardRow {
   n: number
   trialIds: string[]
   rank: number
+  direction: MeasureDirection
 }
 
 export interface ArchiveJSON {
@@ -517,12 +521,22 @@ export interface CVFold {
   test: Int32Array
 }
 
-export type ScoringName = 'accuracy' | 'r2' | 'neg_mse' | 'neg_mae'
+export type ScoringName = 'accuracy' | 'precision' | 'recall' | 'f1' | 'log_loss' | 'roc_auc' | 'roc_auc_ovr' | 'roc_auc_ovo' | 'r2' | 'mse' | 'neg_mse' | 'mae' | 'neg_mae'
 export type ScoringFn = (yTrue: Labels, yPred: Labels) => number
 
+export type CVSpec = number | CVFold[] | ResamplingPlan | Array<{ train: number[]; test: number[] }>
+export type Scoring = ScoringName | (string & {}) | ScoringFn | MeasureDef
+export interface ResolvedScorer extends ScoringFn {
+  (yTrue: Labels, yPred: Labels, opts?: { classes?: Labels }): number
+  readonly direction?: MeasureDirection
+  readonly response?: MeasureResponse
+  readonly measure?: MeasureDef
+}
+
 export interface CrossValScoreOpts {
-  cv?: number | CVFold[]
-  scoring?: ScoringName | ScoringFn
+  task?: TaskType
+  cv?: CVSpec
+  scoring?: Scoring
   seed?: number
   params?: Record<string, unknown>
 }
@@ -581,7 +595,7 @@ export type VotingEnsembleMutableParams = Partial<
 export interface StackingEnsembleParams {
   estimators?: Array<EstimatorSpec | PrefittedBaggedSpec>
   finalEstimator?: EstimatorSpec
-  cv?: number
+  cv?: CVSpec
   task?: TaskType
   passthrough?: boolean
   seed?: number
@@ -599,7 +613,7 @@ export interface CaruanaResult {
 
 export interface CaruanaOpts {
   maxSize?: number
-  scoring?: ScoringName | ScoringFn
+  scoring?: Scoring
   task?: TaskType
   nClasses?: number
   refineWeights?: boolean
@@ -608,7 +622,7 @@ export interface CaruanaOpts {
 
 export interface BaggedEstimatorParams {
   estimator?: EstimatorSpec
-  kFold?: number
+  kFold?: CVSpec
   nRepeats?: number
   task?: TaskType
   seed?: number
@@ -626,7 +640,7 @@ export interface WeightOptimizationOpts {
 }
 
 export interface OofOpts {
-  cv?: number
+  cv?: CVSpec
   seed?: number
   task?: TaskType
 }
@@ -671,11 +685,12 @@ export interface CandidateResult {
   stdScore: number
   fitTimeMs: number
   rank: number
+  direction: MeasureDirection
 }
 
 export interface SearchOpts {
-  scoring?: ScoringName | ScoringFn
-  cv?: number
+  scoring?: Scoring
+  cv?: CVSpec
   seed?: number
   task?: TaskType
   nIter?: number

@@ -887,3 +887,16 @@ WASM port repos carry upstream C/C++ source as git submodules. C11 repos (rf, ga
 Packages in this core repository are Apache-2.0. Each model repository carries
 its own package license, notices, and upstream attribution; consult its `LICENSE`
 and `NOTICE` files before redistribution.
+
+## Current execution scope
+
+Pipeline runs sequential steps and AutoML evaluates candidates/folds serially.
+DAG execution, TensorRef routing, and a worker scheduler remain planned. Explicit
+CV fold arrays and resampling plans are supported for evaluation; OOF/stacking
+require complete, non-repeated test coverage. Advanced temporal split generators
+are experimental. Probability scoring uses class order and the Measure's declared
+optimization direction; uncertainty estimation remains a separate planned effort.
+
+Browser bundles that compose models must use the same exact core version. Core
+shares runtime identity within each JavaScript realm and rejects mixed versions.
+Rebuild all browser artifacts after a core update.

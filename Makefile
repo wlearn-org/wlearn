@@ -15,6 +15,8 @@ PY_CORE_TESTS = \
 	py/tests/test_composite_load_hardening.py \
 	py/tests/test_pipeline_fit.py
 
+.NOTPARALLEL: test-all
+
 .PHONY: test test-js test-browser test-py-core test-py test-z3 test-all
 
 test: test-js test-py-core
@@ -34,8 +36,15 @@ test-py:
 test-z3:
 	PYTHONPATH=py $(Z3_PY) py/tests/external/resampling_z3.py
 
-test-all: test-js test-browser test-py test-integration
+test-all: test-js test-types test-browser test-py test-integration test-interop
 
 .PHONY: test-integration
 test-integration:
 	$(NPM) run test:integration
+
+.PHONY: test-types test-interop
+test-types:
+	$(NPM) run test:types
+
+test-interop:
+	WLEARN_PYTHON=$(PYTHON) $(NPM) run test:interop:full

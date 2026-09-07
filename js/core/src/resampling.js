@@ -2,6 +2,59 @@ const { ValidationError } = require('./errors.js')
 const { makeLCG, shuffle } = require('./rng.js')
 const { normalizeY } = require('./matrix.js')
 const { kFold, stratifiedKFold, trainTestSplit } = require('./cv.js')
+const { inferTaskKind } = require('./task.js')
+
+function serializeCv(cv) {
+  if (typeof cv === 'number') return cv
+  const folds = Array.isArray(cv) ? cv : cv.folds
+  return folds.map(fold => ({
+    ...fold,
+    train: Array.from(fold.train),
+    test: Array.from(fold.test),
+    ...(fold.validate ? { validate: Array.from(fold.validate) } : {})
+  }))
+}
+
+function resolveCv(cv, y, { task = inferTaskKind(y), seed = 42, requireComplete = false } = {}) {
+  const n = y.length
+  let source
+  if (typeof cv === 'number') {
+    source = task === 'classification'
+      ? stratifiedKFold(y, cv, { seed }) : kFold(n, cv, { seed })
+  } else if (Array.isArray(cv)) {
+    source = cv
+  } else {
+    validateResamplingPlan(cv)
+    if (cv.n !== n) throw new ValidationError('CV plan row count must match y')
+    source = cv.folds
+  }
+  if (!source.length) throw new ValidationError('CV folds must be non-empty')
+  const folds = source.map((fold, index) => {
+    if (!fold || typeof fold !== 'object') throw new ValidationError('CV fold must be an object')
+    const out = { ...fold, foldId: fold.foldId || `fold-${index}` }
+    for (const field of ['train', 'test', 'validate']) {
+      if (field === 'validate' && fold[field] == null) continue
+      const values = fold[field]
+      if (!(Array.isArray(values) || values instanceof Int32Array) ||
+          Array.from(values).some(value => !Number.isInteger(value) || value < 0 || value >= n)) {
+        throw new ValidationError(`CV fold ${index}.${field} must contain valid integer row indices`)
+      }
+      out[field] = new Int32Array(values)
+    }
+    _validateFold(out, n)
+    return out
+  })
+  if (requireComplete) {
+    const counts = new Uint32Array(n)
+    for (const fold of folds) for (const row of fold.test) counts[row]++
+    // A materialized OOF feature matrix needs one independent prediction per
+    // training row. Partial/repeated folds require a different aggregation API.
+    if (counts.some(count => count !== 1)) {
+      throw new ValidationError('OOF requires every row in test folds exactly once')
+    }
+  }
+  return folds
+}
 
 const RESAMPLING_STRATEGIES = [
   'holdout',
@@ -551,6 +604,8 @@ function _validateK(k) {
 }
 
 module.exports = {
+  serializeCv,
+  resolveCv,
   RESAMPLING_STRATEGIES,
   createResamplingPlan,
   validateResamplingPlan,

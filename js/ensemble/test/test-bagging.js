@@ -12,6 +12,34 @@ const X = {
 const yCls = new Int32Array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 const yReg = new Float64Array([1.1, 2.3, 3.7, 4.2, 5.8, 6.1, 7.5, 8.9, 9.4, 10.6])
 
+it('bagging fits and persists explicit group folds across repeats', async () => {
+  const { createResamplingPlan, load } = require('@wlearn/core')
+  const plan = createResamplingPlan({ strategy: 'group_kfold', n: 10, k: 2,
+    groups: Int32Array.from([0, 0, 1, 1, 2, 2, 3, 3, 4, 4]) })
+  const model = await BaggedEstimator.create({
+    estimator: ['mock', MockModel, {}], kFold: plan, nRepeats: 2, task: 'regression'
+  })
+  await model.fit(X, yReg)
+  const restored = await load(model.save())
+  assert.deepEqual(restored.predict(X), model.predict(X))
+  restored.dispose()
+  model.dispose()
+})
+
+it('OOF accepts a complete plan and rejects partial or repeated coverage', async () => {
+  const { createResamplingPlan } = require('@wlearn/core')
+  const plan = createResamplingPlan({ n: 10, k: 2 })
+  const result = await getOofPredictions([['mock', MockModel]], X, yReg, {
+    cv: plan, task: 'regression'
+  })
+  assert.equal(result.oofPreds[0].length, 10)
+  for (const cv of [[plan.folds[0]], [...plan.folds, ...plan.folds]]) {
+    await assert.rejects(getOofPredictions([['mock', MockModel]], X, yReg, {
+      cv, task: 'regression'
+    }), /exactly once/)
+  }
+})
+
 describe('BaggedEstimator classification', () => {
   it('fit and predict', async () => {
     const bag = await BaggedEstimator.create({

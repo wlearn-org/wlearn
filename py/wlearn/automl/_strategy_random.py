@@ -1,6 +1,7 @@
 """Random search strategy matching JS automl/strategy-random.js."""
 
-from ._rng import make_lcg
+from ..rng import make_lcg
+from ._common import default_search_space
 from ._sampler import sample_config
 from ._conditions import effective_search_space
 from ._candidate import (
@@ -25,9 +26,7 @@ class RandomStrategy:
         seen = {}
 
         for model in normalize_model_specs(models):
-            space = model.get('searchSpace') or {}
-            if not space and hasattr(model['cls'], 'default_search_space'):
-                space = model['cls'].default_search_space()
+            space = default_search_space(model)
 
             fixed_params = model.get('params') or {}
             effective_space = effective_search_space(space, fixed_params)

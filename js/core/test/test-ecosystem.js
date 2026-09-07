@@ -24,6 +24,13 @@ const { ValidationError } = require('../src/errors.js')
 const X = { data: new Float64Array([1, 2, 3, 4, 5, 6]), rows: 3, cols: 2 }
 const y = new Int32Array([0, 1, 0])
 
+it('Prediction rejects invalid probability values, mass and class identity', () => {
+  for (const proba of [[NaN, 1, 0, 1], [-0.1, 1.1, 0, 1], [0.2, 0.2, 0, 1]]) {
+    assert.throws(() => createPrediction({ truth: [0, 1], proba, classes: [0, 1] }), ValidationError)
+  }
+  assert.throws(() => createPrediction({ truth: [0, 1], proba: [0.5, 0.5, 0, 1], classes: [0, 0] }), ValidationError)
+})
+
 describe('Task primitives', () => {
   it('creates task with inferred kind and feature schema', () => {
     const schema = createFeatureSchema(X, {
@@ -98,12 +105,11 @@ describe('Prediction and measure primitives', () => {
     })
     assert.throws(() => evaluateMeasure('log_loss', missingClass), ValidationError)
 
-    const nonFinite = createPrediction({
+    assert.throws(() => createPrediction({
       truth: new Int32Array([0, 1]),
       proba: new Float64Array([0.8, 0.2, NaN, 0.9]),
       classes: new Int32Array([0, 1])
-    })
-    assert.throws(() => evaluateMeasure('log_loss', nonFinite), ValidationError)
+    }), ValidationError)
   })
 
   it('rejects probability length that does not match classes', () => {

@@ -8,7 +8,7 @@ from typing import Any, Callable
 import numpy as np
 
 from .errors import ValidationError
-from .prediction import Prediction, validate_prediction
+from .prediction import Prediction, create_prediction, validate_prediction
 
 
 MEASURE_DIRECTIONS = ('maximize', 'minimize')
@@ -585,6 +585,53 @@ def _roc_auc_ovo(**kw: Any) -> float:
     kw = dict(kw)
     kw['opts'] = {**kw['opts'], 'multi_class': 'ovo'}
     return _roc_auc(**kw)
+
+
+def get_scorer(scoring):
+    """Resolve scoring through Measure; plain two-array callables maximize."""
+    if callable(scoring):
+        return scoring
+    measure = get_measure_def(scoring) if isinstance(scoring, str) else define_measure(scoring)
+
+    def scorer(truth, values, **opts):
+        field_name = measure.response
+        classes = opts.get('classes')
+        if field_name == 'score' and classes is not None and len(values) == len(truth) * len(classes):
+            field_name = 'proba'
+        value = evaluate_measure(measure, create_prediction(
+            truth=truth, **{field_name: values}, classes=classes), **opts)
+        if not np.isfinite(value):
+            raise ValidationError(f'Scorer "{measure.id}" must return a finite number')
+        return value
+
+    scorer.measure = measure
+    scorer.direction = measure.direction
+    scorer.response = measure.response
+    return scorer
+
+
+def score_estimator(model, X, y, scoring):
+    scorer = get_scorer(scoring)
+    response = getattr(scorer, 'response', 'response')
+    method = {'response': 'predict', 'proba': 'predict_proba',
+              'score': 'decision_function', 'decision': 'decision_function'}.get(response)
+    if response == 'score' and not callable(getattr(model, method, None)):
+        method = 'predict_proba'
+    if method is None or not callable(getattr(model, method, None)):
+        raise ValidationError(f'Scoring response "{response}" requires {method}')
+    values = np.asarray(getattr(model, method)(X)).reshape(-1)
+    opts = {}
+    if method == 'predict_proba':
+        classes = getattr(model, 'classes', None)
+        if callable(classes):
+            classes = classes()
+        if classes is None:
+            raise ValidationError('Probability scoring requires the model class order')
+        opts['classes'] = classes
+    value = scorer(y, values, **opts)
+    if not np.isscalar(value) or not np.isfinite(value):
+        raise ValidationError('Scorer must return a finite number')
+    return float(value)
 
 
 def register_builtin_measures() -> None:

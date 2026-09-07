@@ -460,9 +460,9 @@ class XGBModel:
 
 
     @classmethod
-    def default_search_space(cls):
+    def default_search_space(cls, task=None):
         return {
-            'objective': {'type': 'categorical', 'values': ['binary:logistic', 'reg:squarederror']},
+            **({} if task else {'objective': {'type': 'categorical', 'values': ['binary:logistic', 'reg:squarederror']}}),
             'max_depth': {'type': 'int_uniform', 'low': 3, 'high': 10},
             'eta': {'type': 'log_uniform', 'low': 0.01, 'high': 0.3},
             'numRound': {'type': 'int_uniform', 'low': 50, 'high': 500},

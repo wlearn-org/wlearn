@@ -9,17 +9,18 @@ typeIds:
   wlearn.ensemble.bagged.regressor@1
 """
 
-import struct
 
 import numpy as np
 
+from ..task import task_params, validate_estimator_task
+from ..resampling import resolve_cv, serialize_cv, ResamplingPlan
 from ..errors import ValidationError, NotFittedError, DisposedError
 from ..bundle import encode_bundle, validate_bundle, write_bundle_output
 from ..registry import (
     register, load as registry_load, _load_with_context,
     assert_required_loaders,
 )
-from ..automl._cv import accuracy, r2_score, stratified_k_fold, k_fold
+from ..cv import accuracy, r2_score, k_fold
 from ._manifest import validate_bagging_manifest
 from ._class_order import (
     class_column_map, require_probability_model,
@@ -106,22 +107,17 @@ class BaggedEstimator:
             for repeat in range(self._n_repeats):
                 repeat_seed = self._seed + repeat
 
-                if self._task == 'classification':
-                    folds = stratified_k_fold(
-                        y, self._k_fold,
-                        do_shuffle=True, seed=repeat_seed)
-                else:
-                    folds = k_fold(
-                        n, self._k_fold,
-                        do_shuffle=True, seed=repeat_seed)
+                folds = resolve_cv(self._k_fold, y, task=self._task,
+                                   seed=repeat_seed, require_complete=True)
 
                 for train_idx, val_idx in folds:
                     X_train, y_train = X[train_idx], y[train_idx]
                     X_val = X[val_idx]
 
-                    model = est_cls.create(params or {})
+                    model = est_cls.create(task_params(params, self._task))
                     fold_models.append(model)
                     model.fit(X_train, y_train)
+                    validate_estimator_task(model, self._task)
 
                     if self._task == 'classification':
                         label = f'BaggedEstimator child "{name}"'
@@ -257,7 +253,7 @@ class BaggedEstimator:
             'typeId': type_id,
             'params': {
                 'task': self._task,
-                'kFold': self._k_fold,
+                'kFold': serialize_cv(self._k_fold),
                 'nRepeats': self._n_repeats,
                 'seed': self._seed,
                 'estimatorName': self._spec[0],
@@ -313,7 +309,7 @@ class BaggedEstimator:
     def get_params(self):
         return {
             'task': self._task,
-            'kFold': self._k_fold,
+            'kFold': serialize_cv(self._k_fold),
             'nRepeats': self._n_repeats,
             'seed': self._seed,
             'estimatorName': self._spec[0] if self._spec else None,
@@ -391,7 +387,7 @@ class BaggedEstimator:
         bag._spec = (p.get('estimatorName', 'base'), None, None)
 
         # Load fold models
-        n_fold_models = bag._k_fold * bag._n_repeats
+        n_fold_models = (bag._k_fold if isinstance(bag._k_fold, int) else len(bag._k_fold)) * bag._n_repeats
         bag._fold_models = []
         try:
             for i in range(n_fold_models):
@@ -445,15 +441,16 @@ def _validate_bagging_config(
     if task not in ('classification', 'regression'):
         raise ValidationError(
             'BaggedEstimator task must be "classification" or "regression"')
-    if (isinstance(k_fold, bool) or not isinstance(k_fold, int) or
-            k_fold < 2 or k_fold > (1 << 53) - 1):
+    if not isinstance(k_fold, (list, tuple, ResamplingPlan)) and (
+            isinstance(k_fold, bool) or not isinstance(k_fold, int) or k_fold < 2 or k_fold > (1 << 53) - 1):
         raise ValidationError(
             'BaggedEstimator kFold must be a safe integer >= 2')
     if (isinstance(n_repeats, bool) or not isinstance(n_repeats, int) or
             n_repeats < 1 or n_repeats > (1 << 53) - 1):
         raise ValidationError(
             'BaggedEstimator nRepeats must be a safe integer >= 1')
-    if k_fold * n_repeats > (1 << 53) - 1:
+    count = k_fold if isinstance(k_fold, int) else len(k_fold.folds if isinstance(k_fold, ResamplingPlan) else k_fold)
+    if count * n_repeats > (1 << 53) - 1:
         raise ValidationError(
             'BaggedEstimator fold model count exceeds the safe integer range')
     if (isinstance(seed, bool) or not isinstance(seed, int) or

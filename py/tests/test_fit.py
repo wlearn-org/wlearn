@@ -515,3 +515,90 @@ class TestLightGBM:
         model.dispose()
         with pytest.raises(DisposedError):
             model.predict(X)
+
+
+@pytest.mark.parametrize('module_name,class_name,backend,params', [
+    ('wlearn.liblinear', 'LinearModel', 'liblinear', {'C': 1}),
+    ('wlearn.libsvm', 'SVMModel', 'libsvm', {'C': 1, 'kernel': 0}),
+    ('wlearn.xgboost', 'XGBModel', 'xgboost', {'numRound': 3, 'max_depth': 2, 'nthread': 1}),
+    ('wlearn.lightgbm', 'LGBModel', 'lightgbm', {'numRound': 3, 'verbosity': -1, 'min_data_in_leaf': 1, 'num_threads': 1}),
+    ('wlearn_rf', 'RFModel', 'wlearn_rf', {'n_estimators': 3, 'max_depth': 2}),
+    ('wlearn_gam', 'GAMModel', 'wlearn_gam', {'nLambda': 3, 'nFolds': 0, 'maxIter': 30}),
+])
+def test_automl_default_space_respects_regression(module_name, class_name, backend, params):
+    pytest.importorskip(backend)
+    from wlearn.automl import RandomSearch
+    model_class = getattr(importlib.import_module(module_name), class_name)
+    X = np.array([[i / 12, (i % 3) / 3] for i in range(12)])
+    y = np.arange(12, dtype=float) - 6
+    search = RandomSearch([{'name': class_name, 'classId': 'test.' + class_name, 'cls': model_class, 'params': params}],
+                          task='regression', cv=2, n_iter=2, seed=42)
+    result = search.fit(X, y)
+    assert not result['archive'].records(status='failed')
+    model = search.refit_best(X, y)
+    try:
+        assert model.capabilities['regressor'] is True
+        assert model.capabilities['classifier'] is False
+    finally:
+        model.dispose()
+
+
+@pytest.mark.parametrize('module_name,class_name,backend', [
+    ('wlearn.liblinear', 'LinearModel', 'liblinear'),
+    ('wlearn.libsvm', 'SVMModel', 'libsvm'),
+    ('wlearn.lightgbm', 'LGBModel', 'lightgbm'),
+])
+def test_explicit_task_controls_default_native_objective(module_name, class_name, backend):
+    pytest.importorskip(backend)
+    cls = getattr(importlib.import_module(module_name), class_name)
+    X = np.arange(24, dtype=float).reshape(-1, 2)
+    for task in ['regression', 'classification']:
+        y = np.arange(12, dtype=float) if task == 'regression' else np.arange(12) % 3
+        model = cls.create({'task': task, 'numRound': 2, 'num_threads': 1})
+        try:
+            model.fit(X, y)
+            assert model.capabilities['regressor'] == (task == 'regression')
+            assert model.capabilities['classifier'] == (task == 'classification')
+            assert len(model.predict(X)) == len(y)
+            if model.capabilities.get('predictProba'):
+                from wlearn.prediction import create_prediction
+                create_prediction(truth=y, proba=model.predict_proba(X), classes=model.classes)
+        finally:
+            model.dispose()
+
+
+@pytest.mark.parametrize('module_name,class_name,backend', [
+    ('wlearn.lightgbm', 'LGBModel', 'lightgbm'),
+    ('wlearn_gam', 'GAMModel', 'wlearn_gam'),
+])
+def test_native_probability_scoring_and_ensemble(module_name, class_name, backend):
+    pytest.importorskip(backend)
+    from wlearn.automl import auto_fit
+    cls = getattr(importlib.import_module(module_name), class_name)
+    X = np.array([[i % 3, i / 24] for i in range(24)])
+    y = np.array([-5, 3, 9])[X[:, 0].astype(int)]
+    result = auto_fit([{'name': class_name, 'classId': 'test.' + class_name, 'cls': cls,
+                        'params': {'nLambda': 3, 'maxIter': 50, 'numRound': 3, 'num_threads': 1},
+                        'searchSpace': {}}], X, y,
+                      task='classification', scoring='log_loss', cv=3, n_iter=1)
+    try:
+        assert not result['archive'].records(status='failed')
+        assert result['model'].predict_proba(X).shape == (len(X) * 3,)
+    finally:
+        result['model'].dispose()
+
+
+@pytest.mark.skipif(not HAS_LIGHTGBM, reason='lightgbm not installed')
+def test_lightgbm_explicit_objective_replaces_inferred_objective():
+    from wlearn.lightgbm import LGBModel
+    X = np.arange(24, dtype=float).reshape(-1, 2)
+    y = np.arange(12) % 2
+    model = LGBModel.create({'task': 'classification', 'numRound': 2, 'num_threads': 1})
+    try:
+        model.fit(X, y)
+        model.set_params({'objective': 'regression'}).fit(X, y)
+        assert model.capabilities['regressor']
+        model.set_params({'task': 'classification'}).fit(X, y)
+        assert model.capabilities['regressor'], 'an explicit objective remains authoritative'
+    finally:
+        model.dispose()

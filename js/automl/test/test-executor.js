@@ -19,6 +19,29 @@ function makeTask(name, cls, params, classId = `wlearn.test.${name}@1`) {
   return { candidateId: makeCandidateId(candidate), candidate, cls, params }
 }
 
+it('Executor preserves probability response and minimizing scores in archives and serialized rankings', async () => {
+  const { Leaderboard } = require('../src/leaderboard.js')
+  class Model {
+    static async create(params) { return new Model(params) }
+    constructor(params) { this.p = params.confidence }
+    fit() { return this }
+    predict() { throw new Error('probability response required') }
+    predictProba(X) {
+      return Float64Array.from(Array.from({ length: X.rows }, (_, i) =>
+        X.data[i * 2] <= 10 ? [1 - this.p, this.p] : [this.p, 1 - this.p]).flat())
+    }
+    get classes() { return Int32Array.from([1, 0]) }
+    dispose() {}
+  }
+  const exec = new Executor({ folds: stratifiedKFold(yCls, 2), X, y: yCls, scoring: 'log_loss' })
+  const weak = await exec.evaluateCandidate(makeTask('weak', Model, { confidence: 0.6 }))
+  const good = await exec.evaluateCandidate(makeTask('good', Model, { confidence: 0.9 }))
+  assert(good.meanScore < weak.meanScore)
+  assert.equal(exec.leaderboard.best().candidateId, good.candidateId)
+  assert.equal(Leaderboard.fromJSON(exec.leaderboard.toJSON()).best().candidateId, good.candidateId)
+  assert.equal(exec.archive.direction, 'minimize')
+})
+
 describe('Executor evaluateCandidate', () => {
   it('waits for asynchronous fit before prediction and disposal', async () => {
     let disposals = 0

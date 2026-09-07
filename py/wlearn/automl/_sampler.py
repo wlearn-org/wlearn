@@ -2,7 +2,7 @@
 
 import math
 
-from ._rng import make_lcg
+from ..rng import make_lcg
 from ._conditions import condition_order, condition_satisfied
 
 

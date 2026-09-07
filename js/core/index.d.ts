@@ -6,6 +6,10 @@ import type {
   ConfusionMatrixResult,
   CrossValScoreOpts,
   CVFold,
+  CVSpec,
+  Scoring,
+  ResolvedScorer,
+  TaskType,
   DataProvenance,
   DenseMatrix,
   Estimator,
@@ -123,7 +127,7 @@ export type RuntimeLoader<T = Estimator | Transformer> = (
 export declare const DEFAULT_BUNDLE_LIMITS: Readonly<Required<BundleLimits>>
 
 export declare function normalizeX(
-  X: Matrix | number[][],
+  X: DenseMatrix | number[][],
   coerce?: 'auto' | 'warn' | 'error'
 ): DenseMatrix
 export declare function normalizeY(y: Labels | number[]): Labels
@@ -132,7 +136,7 @@ export declare function makeDense(
   rows: number,
   cols: number
 ): DenseMatrix
-export declare function validateMatrix<T extends Matrix>(matrix: T): T
+export declare function validateMatrix<T extends DenseMatrix>(matrix: T): T
 export declare function sha256Sync(bytes: Uint8Array | ArrayBuffer): string
 
 export declare function encodeBundle(
@@ -246,17 +250,24 @@ export declare function trainTestSplit(
   n: number,
   opts?: { testSize?: number; shuffle?: boolean; seed?: number }
 ): CVFold
-export declare function getScorer(scoring: ScoringName | ScoringFn): ScoringFn
+export declare function getScorer(scoring: Scoring): ResolvedScorer
+export declare function scoreEstimator(model: Estimator, X: DenseMatrix | number[][], y: Labels, scoring: Scoring): Promise<number>
+export declare function taskParams(params: Record<string, unknown> | undefined, task: TaskType): Record<string, unknown>
+export declare function validateEstimatorTask<T extends { readonly capabilities: Capabilities }>(model: T, task: TaskType): T
+export declare function resolveCv(cv: CVSpec, y: Labels, opts?: {
+  task?: TaskType; seed?: number; requireComplete?: boolean
+}): CVFold[]
+export declare function serializeCv(cv: CVSpec): number | Array<{ train: number[]; test: number[] }>
 export declare function crossValScore(
   EstimatorClass: EstimatorClass,
-  X: Matrix | number[][],
+  X: DenseMatrix | number[][],
   y: Labels | number[],
   opts?: CrossValScoreOpts
 ): Promise<Float64Array>
 
 export declare function inferTaskKind(y?: Labels | number[] | null): TaskKind
 export declare function createFeatureSchema(
-  X: Matrix | number[][],
+  X: DenseMatrix | number[][],
   opts?: {
     names?: string[]
     types?: string[]
@@ -273,7 +284,7 @@ export declare function validateRowRoles(rowRoles: RowRoles, rows: number): RowR
 export declare function createTask(opts: {
   id?: string
   kind?: TaskKind
-  X: Matrix | number[][]
+  X: DenseMatrix | number[][]
   y?: Labels | number[]
   featureSchema?: FeatureSchema
   targetSchema?: TargetSchema
@@ -350,18 +361,22 @@ export declare function groupKFold(
   k?: number,
   opts?: { shuffle?: boolean; seed?: number }
 ): ResamplingFold[]
+/** @experimental Temporal split generation is not part of the stable CV contract. */
 export declare function timeSeriesSplit(
   n: number,
   opts?: { initialWindow?: number; horizon?: number; step?: number }
 ): ResamplingFold[]
+/** @experimental Temporal split generation is not part of the stable CV contract. */
 export declare function slidingWindowSplit(
   n: number,
   opts?: SlidingResamplingOpts
 ): ResamplingFold[]
+/** @experimental Temporal split generation is not part of the stable CV contract. */
 export declare function slidingIndexSplit(
   index: ArrayLike<number | string | Date>,
   opts?: SlidingResamplingOpts
 ): ResamplingFold[]
+/** @experimental Temporal split generation is not part of the stable CV contract. */
 export declare function slidingPeriodSplit(
   index: ArrayLike<number | string | Date>,
   opts?: SlidingResamplingOpts & {
@@ -441,3 +456,6 @@ export declare function createModelClass(
   regressor: EstimatorClass,
   options?: { name?: string; load?: () => void | Promise<void> }
 ): EstimatorClass
+
+export declare function subsetRows(X: DenseMatrix | number[][], indices: Int32Array | number[]): DenseMatrix
+export declare function subsetLabels(y: Labels | number[], indices: Int32Array | number[]): Labels

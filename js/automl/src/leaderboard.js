@@ -35,6 +35,12 @@ class Leaderboard {
   #entries = []
   #nextId = 0
   #dirty = true
+  #direction
+
+  constructor({ direction = 'maximize' } = {}) {
+    if (!['maximize', 'minimize'].includes(direction)) throw new ValidationError('Invalid leaderboard direction')
+    this.#direction = direction
+  }
 
   /**
    * Add a candidate result.
@@ -72,6 +78,7 @@ class Leaderboard {
       stdScore,
       fitTimeMs,
       rank: 0,
+      direction: this.#direction,
     }
     this.#entries.push(entry)
     this.#dirty = true
@@ -83,7 +90,7 @@ class Leaderboard {
    */
   ranked() {
     if (this.#dirty) {
-      this.#entries.sort((a, b) => b.meanScore - a.meanScore)
+      this.#entries.sort((a, b) => this.#direction === 'maximize' ? b.meanScore - a.meanScore : a.meanScore - b.meanScore)
       for (let i = 0; i < this.#entries.length; i++) {
         this.#entries[i].rank = i + 1
       }
@@ -125,6 +132,7 @@ class Leaderboard {
       stdScore: e.stdScore,
       fitTimeMs: e.fitTimeMs,
       rank: e.rank,
+      direction: this.#direction,
     }))
   }
 
@@ -132,7 +140,7 @@ class Leaderboard {
    * Deserialize from JSON array.
    */
   static fromJSON(arr) {
-    const lb = new Leaderboard()
+    const lb = new Leaderboard({ direction: arr[0]?.direction || 'maximize' })
     for (const e of arr) {
       lb.#entries.push({
         ...e,
@@ -152,7 +160,7 @@ class Leaderboard {
   /**
    * Convert ranked entries to an Archive.
    */
-  toArchive({ metric = 'score', direction = 'maximize', metadata = {} } = {}) {
+  toArchive({ metric = 'score', direction = this.#direction, metadata = {} } = {}) {
     const archive = new Archive({
       id: 'automl',
       measures: [metric],

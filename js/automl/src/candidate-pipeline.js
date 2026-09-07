@@ -1,3 +1,4 @@
+const { validateEstimatorTask } = require('@wlearn/core')
 'use strict'
 
 const { Pipeline, normalizeX, normalizeY } = require('@wlearn/core')
@@ -91,6 +92,7 @@ async function fitCandidate(spec, candidate, X, y, candidateId = null) {
   const instance = await CandidateClass.create(candidate.model.params)
   try {
     await instance.fit(normalizeX(X), normalizeY(y))
+    validateEstimatorTask(instance, candidate.model.params.task)
     return instance
   } catch (error) {
     disposeQuietly(instance)

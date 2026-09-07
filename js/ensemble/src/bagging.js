@@ -1,3 +1,5 @@
+const { subsetRows, subsetLabels } = require('@wlearn/core')
+const { taskParams, validateEstimatorTask, resolveCv, serializeCv } = require('@wlearn/core')
 const {
   encodeBundle, validateBundle, register, load: registryLoad,
   assertRequiredLoaders,
@@ -107,18 +109,17 @@ class BaggedEstimator {
       for (let repeat = 0; repeat < this.#nRepeats; repeat++) {
         const repeatSeed = this.#seed + repeat
 
-        const folds = this.#task === 'classification'
-          ? stratifiedKFold(yn, this.#kFold, { shuffle: true, seed: repeatSeed })
-          : kFold(n, this.#kFold, { shuffle: true, seed: repeatSeed })
+        const folds = resolveCv(this.#kFold, yn, { task: this.#task, seed: repeatSeed, requireComplete: true })
 
         for (const { train, test } of folds) {
-          const Xtrain = _subsetX(Xn, train)
-          const ytrain = _subsetY(yn, train)
-          const Xtest = _subsetX(Xn, test)
+          const Xtrain = subsetRows(Xn, train)
+          const ytrain = subsetLabels(yn, train)
+          const Xtest = subsetRows(Xn, test)
 
-          const model = await EstClass.create(params || {})
+          const model = await EstClass.create(taskParams(params, this.#task))
           foldModels.push(model)
           await model.fit(Xtrain, ytrain)
+          validateEstimatorTask(model, this.#task)
 
           if (this.#task === 'classification') {
             const label = `BaggedEstimator child "${name}"`
@@ -314,7 +315,7 @@ class BaggedEstimator {
       typeId,
       params: {
         task: this.#task,
-        kFold: this.#kFold,
+        kFold: serializeCv(this.#kFold),
         nRepeats: this.#nRepeats,
         seed: this.#seed,
         estimatorName: this.#spec[0],
@@ -375,7 +376,7 @@ class BaggedEstimator {
   getParams() {
     return {
       task: this.#task,
-      kFold: this.#kFold,
+      kFold: serializeCv(this.#kFold),
       nRepeats: this.#nRepeats,
       seed: this.#seed,
       estimatorName: this.#spec ? this.#spec[0] : null,
@@ -453,7 +454,7 @@ class BaggedEstimator {
     bag.#spec = [p.estimatorName || 'base', null, null]
 
     // Load fold models
-    const nFoldModels = bag.#kFold * bag.#nRepeats
+    const nFoldModels = (typeof bag.#kFold === 'number' ? bag.#kFold : bag.#kFold.length) * bag.#nRepeats
     bag.#foldModels = []
     try {
       for (let i = 0; i < nFoldModels; i++) {
@@ -507,13 +508,13 @@ function _validateBaggingConfig(
       'BaggedEstimator task must be "classification" or "regression"'
     )
   }
-  if (!Number.isSafeInteger(kFold) || kFold < 2) {
+  if (typeof kFold === 'number' ? !Number.isSafeInteger(kFold) || kFold < 2 : !(Array.isArray(kFold) || kFold?.folds)) {
     throw new ValidationError('BaggedEstimator kFold must be a safe integer >= 2')
   }
   if (!Number.isSafeInteger(nRepeats) || nRepeats < 1) {
     throw new ValidationError('BaggedEstimator nRepeats must be a safe integer >= 1')
   }
-  if (!Number.isSafeInteger(kFold * nRepeats)) {
+  if (!Number.isSafeInteger((typeof kFold === 'number' ? kFold : (kFold.folds || kFold).length) * nRepeats)) {
     throw new ValidationError('BaggedEstimator fold model count exceeds the safe integer range')
   }
   if (!Number.isSafeInteger(seed) || !Number.isSafeInteger(seed + nRepeats - 1)) {
@@ -544,27 +545,6 @@ function _disposeOwned(models, operationError = null) {
     }
   }
   if (operationError === null && firstError !== null) throw firstError
-}
-
-// --- Subset helpers ---
-
-function _subsetX(X, indices) {
-  const { data, cols } = X
-  const rows = indices.length
-  const out = new Float64Array(rows * cols)
-  for (let i = 0; i < rows; i++) {
-    const srcOff = indices[i] * cols
-    out.set(data.subarray(srcOff, srcOff + cols), i * cols)
-  }
-  return { data: out, rows, cols }
-}
-
-function _subsetY(y, indices) {
-  const out = new (y.constructor)(indices.length)
-  for (let i = 0; i < indices.length; i++) {
-    out[i] = y[indices[i]]
-  }
-  return out
 }
 
 module.exports = { BaggedEstimator }

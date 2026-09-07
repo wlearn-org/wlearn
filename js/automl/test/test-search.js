@@ -11,6 +11,44 @@ const X = {
 const yCls = new Int32Array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 const yReg = new Float64Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
 
+for (const [name, Search] of [
+  ['random', RandomSearch],
+  ['halving', require('../src/halving.js').SuccessiveHalvingSearch],
+  ['progressive', require('../src/progressive.js').ProgressiveSearch],
+  ['portfolio', require('../src/portfolio.js').PortfolioSearch],
+]) {
+  it(`${name} preserves explicit task and custom folds through search and refit`, async () => {
+    const { createResamplingPlan } = require('@wlearn/core')
+    const plan = createResamplingPlan({ strategy: 'group_kfold', n: 10, k: 2,
+      groups: Int32Array.from([0, 0, 1, 1, 2, 2, 3, 3, 4, 4]) })
+    const seen = []
+    class Model {
+      static classId = 'wlearn.test.task-folds@1'
+      static async create(params) {
+        assert.equal(params.task, 'regression')
+        return new Model()
+      }
+      fit(Xtrain) { this.train = Array.from(Xtrain.data).filter((_, i) => i % 2 === 0); return this }
+      predict(Xtest) {
+        const test = Array.from(Xtest.data).filter((_, i) => i % 2 === 0)
+        const group = v => Math.floor((v - 1) / 4)
+        assert(test.every(v => !this.train.some(t => group(t) === group(v))))
+        seen.push(test)
+        return new Float64Array(Xtest.rows)
+      }
+      dispose() {}
+    }
+    const search = new Search([{ name: 'model', cls: Model, searchSpace: {} }], {
+      nIter: 1, cv: plan, task: 'regression', scoring: 'mse'
+    })
+    const { bestResult } = await search.fit(X, yReg)
+    assert.equal(bestResult.candidate.model.params.task, 'regression')
+    assert(seen.length > 0)
+    const fitted = await search.refitBest(X, yReg)
+    fitted.dispose()
+  })
+}
+
 describe('RandomSearch classification', () => {
   it('fits and returns leaderboard', async () => {
     const search = new RandomSearch(

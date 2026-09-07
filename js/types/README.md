@@ -36,7 +36,7 @@ Data types:
 - `CSRMatrix` -- `{ data, indices, indptr, rows, cols }` (compressed sparse row)
 - `Matrix` -- `DenseMatrix | CSRMatrix`
 - `Labels` -- `Int32Array | Float32Array | Float64Array`
-- `TensorRef` -- zero-copy view descriptor for pipeline data routing
+- `TensorRef` -- descriptor for planned zero-copy routing; current Pipeline uses dense host matrices
 
 Estimator contract:
 

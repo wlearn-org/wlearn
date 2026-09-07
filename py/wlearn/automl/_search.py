@@ -2,13 +2,13 @@
 
 from copy import deepcopy
 
-import numpy as np
 
 from ..errors import ValidationError
+from ..task import task_params
+from ..resampling import resolve_cv
 from ._common import detect_task, scorer_greater_is_better
 from ._candidate import normalize_model_specs
 from ._candidate_pipeline import fit_candidate
-from ._cv import stratified_k_fold, k_fold
 from ._executor import Executor
 from ._strategy_random import RandomStrategy
 from ._strategy_halving import HalvingStrategy
@@ -39,12 +39,10 @@ class RandomSearch:
             dict with 'leaderboard' and 'bestResult'
         """
         task = self._task or detect_task(y)
+        models = [{**spec, 'params': task_params(spec.get('params'), task)} for spec in self._models]
         scoring = self._scoring or ('accuracy' if task == 'classification' else 'r2')
 
-        if task == 'classification':
-            folds = stratified_k_fold(y, self._cv, do_shuffle=True, seed=self._seed)
-        else:
-            folds = k_fold(len(y), self._cv, do_shuffle=True, seed=self._seed)
+        folds = resolve_cv(self._cv, y, task=task, seed=self._seed)
 
         executor = Executor(
             folds=folds,
@@ -55,7 +53,7 @@ class RandomSearch:
             seed=self._seed,
         )
 
-        strategy = RandomStrategy(self._models, n_iter=self._n_iter, seed=self._seed)
+        strategy = RandomStrategy(models, n_iter=self._n_iter, seed=self._seed)
 
         result = executor.run_strategy(strategy)
 
@@ -126,13 +124,11 @@ class SuccessiveHalvingSearch:
         """
         n = len(X)
         task = self._task or detect_task(y)
+        models = [{**spec, 'params': task_params(spec.get('params'), task)} for spec in self._models]
         scoring = self._scoring or ('accuracy' if task == 'classification' else 'r2')
         greater_is_better = scorer_greater_is_better(scoring)
 
-        if task == 'classification':
-            folds = stratified_k_fold(y, self._cv, do_shuffle=True, seed=self._seed)
-        else:
-            folds = k_fold(n, self._cv, do_shuffle=True, seed=self._seed)
+        folds = resolve_cv(self._cv, y, task=task, seed=self._seed)
 
         executor = Executor(
             folds=folds,
@@ -144,13 +140,13 @@ class SuccessiveHalvingSearch:
         )
 
         strategy = HalvingStrategy(
-            self._models,
+            models,
             n_iter=self._n_iter,
             seed=self._seed,
             factor=self._factor,
             n_samples=n,
             greater_is_better=greater_is_better,
-            cv=self._cv,
+            cv=len(folds),
         )
 
         result = executor.run_strategy(strategy)

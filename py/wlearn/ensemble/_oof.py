@@ -2,7 +2,8 @@
 
 import numpy as np
 
-from ..automl._cv import stratified_k_fold, k_fold
+from ..task import task_params, validate_estimator_task
+from ..resampling import resolve_cv
 from ._class_order import (
     class_column_map, require_probability_model,
     validate_probability_output, validate_regression_output,
@@ -27,10 +28,7 @@ def get_oof_predictions(estimator_specs, X, y, cv=5, seed=42, task='classificati
     """
     n = len(X)
 
-    if task == 'classification':
-        folds = stratified_k_fold(y, cv, do_shuffle=True, seed=seed)
-    else:
-        folds = k_fold(n, cv, do_shuffle=True, seed=seed)
+    folds = resolve_cv(cv, y, task=task, seed=seed, require_complete=True)
 
     classes = None
     n_classes = 0
@@ -51,10 +49,11 @@ def get_oof_predictions(estimator_specs, X, y, cv=5, seed=42, task='classificati
             X_train, y_train = X[train], y[train]
             X_test = X[test]
 
-            model = est_cls.create(params or {})
+            model = est_cls.create(task_params(params, task))
             operation_error = None
             try:
                 model.fit(X_train, y_train)
+                validate_estimator_task(model, task)
                 if task == 'classification':
                     label = f'OOF estimator "{name}"'
                     require_probability_model(model, label)

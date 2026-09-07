@@ -16,8 +16,8 @@ from ._candidate import (
     candidate_canonical_bytes, candidate_hash, create_candidate,
     normalize_model_specs,
 )
-from ._cv import (
+from ..cv import (
     k_fold, stratified_k_fold, cross_val_score,
     accuracy, r2_score, neg_mse, neg_mae, get_scorer,
 )
-from ._rng import make_lcg, shuffle
+from ..rng import make_lcg, shuffle

@@ -10,7 +10,8 @@ import type {
   EstimatorClass,
   HalvingOpts,
   Labels,
-  Matrix,
+  DenseMatrix,
+  Scoring,
   ModelSpec,
   RngFn,
   ScoringFn,
@@ -49,8 +50,8 @@ export interface SearchFitResult {
 
 export interface ExecutorOptions {
   folds: CVFold[]
-  scoring: ScoringName | ScoringFn
-  X: Matrix
+  scoring: Scoring
+  X: DenseMatrix
   y: Labels
   timeLimitMs?: number
   seed?: number
@@ -98,11 +99,11 @@ export declare function partialShuffle<T extends Int32Array | Uint32Array>(
   k: number,
   rng: RngFn
 ): T
-export declare function scorerGreaterIsBetter(scoring: ScoringName | ScoringFn): boolean
+export declare function scorerGreaterIsBetter(scoring: Scoring): boolean
 
 export declare function autoFit(
   models: (ModelSpec | AutoMLEstimatorSpec)[],
-  X: Matrix | number[][],
+  X: DenseMatrix | number[][],
   y: Labels | number[],
   opts?: AutoFitOpts
 ): Promise<AutoFitResult>
@@ -201,8 +202,8 @@ declare class SearchBase {
   readonly leaderboard: Leaderboard | null
   readonly bestResult: CandidateResult | null
   readonly archive: Archive | null
-  fit(X: Matrix | number[][], y: Labels | number[]): Promise<SearchFitResult>
-  refitBest(X: Matrix | number[][], y: Labels | number[]): Promise<Estimator>
+  fit(X: DenseMatrix | number[][], y: Labels | number[]): Promise<SearchFitResult>
+  refitBest(X: DenseMatrix | number[][], y: Labels | number[]): Promise<Estimator>
 }
 
 export class RandomSearch extends SearchBase {

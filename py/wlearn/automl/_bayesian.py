@@ -5,15 +5,16 @@ from copy import deepcopy
 import math
 
 from ..errors import ValidationError
+from ..task import task_params
+from ..resampling import resolve_cv
 from ._common import detect_task
 from ._candidate import (
     candidate_hash, create_candidate, create_candidate_task, normalize_model_specs,
     preprocess_choices,
 )
 from ._candidate_pipeline import fit_candidate
-from ._cv import stratified_k_fold, k_fold
 from ._executor import Executor
-from ._rng import make_lcg
+from ..rng import make_lcg
 from ._sampler import sample_config
 from ._conditions import effective_search_space
 
@@ -29,12 +30,7 @@ def _load_optimizer_cls():
     return BayesianOptimizer
 
 
-def _default_search_space(cls):
-    if hasattr(cls, 'default_search_space'):
-        return cls.default_search_space()
-    if hasattr(cls, 'defaultSearchSpace'):
-        return cls.defaultSearchSpace()
-    return {}
+from ._common import default_search_space
 
 
 class BayesianStrategy:
@@ -218,7 +214,7 @@ class BayesianStrategy:
         self._optimizers.clear()
 
     def _effective_space(self, model):
-        space = model.get('searchSpace') or _default_search_space(model['cls'])
+        space = default_search_space(model)
         return effective_search_space(space, model.get('params') or {})
 
 
@@ -256,14 +252,10 @@ class BayesianSearch:
 
     def fit(self, X, y):
         task = self._task or detect_task(y)
+        models = [{**spec, 'params': task_params(spec.get('params'), task)} for spec in self._models]
         scoring = self._scoring or ('accuracy' if task == 'classification' else 'r2')
 
-        if task == 'classification':
-            folds = stratified_k_fold(y, self._cv, do_shuffle=True,
-                                      seed=self._seed)
-        else:
-            folds = k_fold(len(y), self._cv, do_shuffle=True,
-                           seed=self._seed)
+        folds = resolve_cv(self._cv, y, task=task, seed=self._seed)
 
         executor = Executor(
             folds=folds,
@@ -275,7 +267,7 @@ class BayesianSearch:
         )
 
         strategy = BayesianStrategy(
-            self._models,
+            models,
             n_iter=self._n_iter,
             seed=self._seed,
             acquisition_fn=self._acquisition_fn,

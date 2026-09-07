@@ -1,5 +1,6 @@
+const { taskParams, resolveCv } = require('@wlearn/core')
 const {
-  stratifiedKFold, kFold, normalizeX, normalizeY, ValidationError
+  normalizeX, normalizeY, ValidationError
 } = require('@wlearn/core')
 const { Executor } = require('./executor.js')
 const { detectTask } = require('./common.js')
@@ -41,15 +42,14 @@ class BayesianSearch {
     const Xn = normalizeX(X)
     const yn = normalizeY(y)
     const task = this.#opts.task || detectTask(yn)
+    const models = this.#models.map(spec => ({ ...spec, params: taskParams(spec.params, task) }))
     const scoring = this.#opts.scoring || (task === 'classification' ? 'accuracy' : 'r2')
     const {
       cv, seed, nIter, maxTimeMs, onProgress,
       acquisitionFn, kappa, xi, kernel, nInitial,
     } = this.#opts
 
-    const folds = task === 'classification'
-      ? stratifiedKFold(yn, cv, { shuffle: true, seed })
-      : kFold(yn.length, cv, { shuffle: true, seed })
+    const folds = resolveCv(cv, yn, { task, seed })
 
     const executor = new Executor({
       folds,
@@ -61,7 +61,7 @@ class BayesianSearch {
       onProgress,
     })
 
-    const strategy = new BayesianStrategy(this.#models, {
+    const strategy = new BayesianStrategy(models, {
       nIter,
       seed,
       acquisitionFn,

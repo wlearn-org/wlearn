@@ -1,6 +1,7 @@
 """Progressive evaluation strategy matching JS automl/strategy-progressive.js."""
 
-from ._rng import make_lcg
+from ..rng import make_lcg
+from ._common import default_search_space
 from ._sampler import sample_config
 from ._conditions import effective_search_space
 from ._candidate import (
@@ -32,9 +33,7 @@ class ProgressiveStrategy:
         seen = {}
 
         for model in normalize_model_specs(models):
-            space = model.get('searchSpace') or {}
-            if not space and hasattr(model['cls'], 'default_search_space'):
-                space = model['cls'].default_search_space()
+            space = default_search_space(model)
 
             fixed_params = model.get('params') or {}
             effective_space = effective_search_space(space, fixed_params)
@@ -80,7 +79,7 @@ class ProgressiveStrategy:
 
     def _transition_to_promote(self):
         sorted_results = sorted(
-            self._probe_results,
+            [r for r in self._probe_results if r.get('status') != 'failed'],
             key=lambda r: r['meanScore'],
             reverse=self._greater_is_better,
         )

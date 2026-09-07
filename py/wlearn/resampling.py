@@ -8,8 +8,8 @@ from typing import Any
 
 import numpy as np
 
-from .automl._cv import k_fold, stratified_k_fold
-from .automl._rng import make_lcg, shuffle as lcg_shuffle
+from .cv import k_fold, stratified_k_fold
+from .rng import make_lcg, shuffle as lcg_shuffle
 from .errors import ValidationError
 
 
@@ -45,6 +45,68 @@ class ResamplingPlan:
     seed: int | None = 42
     constraints: dict[str, bool] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+def serialize_cv(cv):
+    if isinstance(cv, int):
+        return cv
+    source = cv.folds if isinstance(cv, ResamplingPlan) else cv
+    result = []
+    for fold in source:
+        if isinstance(fold, ResamplingFold):
+            result.append({'train': fold.train.tolist(), 'test': fold.test.tolist(),
+                           **({'validate': fold.validate.tolist()} if fold.validate is not None else {})})
+        elif isinstance(fold, dict):
+            result.append({**fold, 'train': np.asarray(fold['train']).tolist(), 'test': np.asarray(fold['test']).tolist(),
+                           **({'validate': np.asarray(fold['validate']).tolist()} if fold.get('validate') is not None else {})})
+        else:
+            result.append({'train': np.asarray(fold[0]).tolist(), 'test': np.asarray(fold[1]).tolist()})
+    return result
+
+
+def resolve_cv(cv, y, *, task=None, seed=42, require_complete=False):
+    from .task import infer_task_kind
+    task = task or infer_task_kind(y)
+    n = len(y)
+    if isinstance(cv, int) and not isinstance(cv, bool):
+        source = (stratified_k_fold(y, cv, seed=seed) if task == 'classification'
+                  else k_fold(n, cv, seed=seed))
+    elif isinstance(cv, (list, tuple)):
+        source = cv
+    else:
+        validate_resampling_plan(cv)
+        if cv.n != n:
+            raise ValidationError('CV plan row count must match y')
+        source = cv.folds
+    if not source:
+        raise ValidationError('CV folds must be non-empty')
+    folds = []
+    counts = np.zeros(n, dtype=np.int32) if require_complete else None
+    for index, fold in enumerate(source):
+        validate = None
+        if isinstance(fold, ResamplingFold):
+            train, test, validate = fold.train, fold.test, fold.validate
+        elif isinstance(fold, dict):
+            train, test, validate = fold.get('train'), fold.get('test'), fold.get('validate')
+        elif isinstance(fold, (list, tuple)) and len(fold) == 2:
+            train, test = fold
+        else:
+            raise ValidationError('CV fold must contain train and test indices')
+        arrays = []
+        for values in ((train, test) if validate is None else (train, test, validate)):
+            arr = np.asarray(values)
+            if (arr.ndim != 1 or arr.dtype.kind not in 'iu' or arr.size == 0
+                    or np.any(arr < 0) or np.any(arr >= n)):
+                raise ValidationError('CV folds must contain valid integer row indices')
+            arrays.append(arr.astype(np.int32, copy=True))
+        normalized = ResamplingFold(str(index), *arrays)
+        _validate_fold(normalized, n)
+        if counts is not None:
+            counts[normalized.test] += 1
+        folds.append((normalized.train, normalized.test))
+    if require_complete and np.any(counts != 1):
+        raise ValidationError('OOF requires every row in test folds exactly once')
+    return folds
 
 
 def create_resampling_plan(
@@ -102,7 +164,7 @@ def create_resampling_plan(
         indices = np.arange(n, dtype=np.int32)
         if shuffle:
             lcg_shuffle(indices, make_lcg(seed))
-        n_test = max(1, round(n * test_size))
+        n_test = max(1, int(np.floor(n * test_size + 0.5)))
         n_train = n - n_test
         plan_folds = [ResamplingFold('holdout-0', indices[:n_train].copy(), indices[n_train:].copy())]
     elif strategy == 'kfold':

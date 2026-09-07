@@ -1,20 +1,5 @@
-const { makeLCG } = require('@wlearn/core')
+const { inferTaskKind: detectTask, getScorer } = require('@wlearn/core')
 const { makeCandidateId, seedFor } = require('./candidate.js')
-
-const { round } = Math
-
-/**
- * Detect task type from labels.
- */
-function detectTask(y) {
-  if (y instanceof Int32Array) return 'classification'
-  const unique = new Set()
-  for (let i = 0; i < y.length; i++) {
-    if (y[i] !== round(y[i])) return 'regression'
-    unique.add(y[i])
-  }
-  return unique.size <= 20 ? 'classification' : 'regression'
-}
 
 /**
  * High-resolution timer.
@@ -40,22 +25,8 @@ function partialShuffle(indices, k, rng) {
   return indices.subarray ? indices.subarray(0, m) : indices.slice(0, m)
 }
 
-/**
- * Map scoring name to greaterIsBetter.
- * All built-in scorers are greater-is-better (neg_mse, neg_mae are negated).
- * Custom functions default to true.
- */
 function scorerGreaterIsBetter(scoring) {
-  if (typeof scoring === 'function') return true
-  switch (scoring) {
-    case 'accuracy':
-    case 'r2':
-    case 'neg_mse':
-    case 'neg_mae':
-      return true
-    default:
-      return true
-  }
+  return getScorer(scoring).direction !== 'minimize'
 }
 
 module.exports = { detectTask, now, makeCandidateId, seedFor, partialShuffle, scorerGreaterIsBetter }

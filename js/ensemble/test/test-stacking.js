@@ -8,6 +8,19 @@ const X = { data: new Float64Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 1
 const yCls = new Int32Array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 const yReg = new Float64Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
 
+it('stacking fits and persists a custom CV plan', async () => {
+  const { createResamplingPlan } = require('@wlearn/core')
+  const model = await StackingEnsemble.create({
+    estimators: [['base', MockModel, {}]], finalEstimator: ['meta', MockModel, {}],
+    cv: createResamplingPlan({ n: 10, k: 2 }), task: 'regression'
+  })
+  await model.fit(X, yReg)
+  const restored = await load(model.save())
+  assert.deepEqual(restored.predict(X), model.predict(X))
+  restored.dispose()
+  model.dispose()
+})
+
 class HardMetaMock extends MockModel {
   static async create(params = {}) { return new HardMetaMock(params) }
   get capabilities() { return { ...super.capabilities, predictProba: false } }

@@ -122,6 +122,19 @@ def validate_prediction(prediction: Prediction) -> Prediction:
                 raise ValidationError('Prediction.proba length must equal rows * classes')
         elif prediction.proba_rows is not None and len(prediction.proba) % prediction.proba_rows != 0:
             raise ValidationError('Prediction.proba length must be divisible by proba_rows')
+    if prediction.classes is not None:
+        labels = prediction.classes
+        if not np.all(np.isfinite(labels)) or len(np.unique(labels)) != len(labels):
+            raise ValidationError('Prediction.classes must contain unique finite labels')
+    if prediction.proba is not None:
+        values = prediction.proba
+        if values.ndim != 1 or len(values) == 0 or len(values) % rows:
+            raise ValidationError('Prediction.proba must contain complete probability rows')
+        if not np.all(np.isfinite(values)) or np.any(values < 0) or np.any(values > 1):
+            raise ValidationError('Prediction.proba values must be finite and in [0, 1]')
+        # Same tolerance as JS for Float32 backend rounding.
+        if np.any(np.abs(values.reshape(rows, -1).sum(axis=1) - 1) > 1e-6):
+            raise ValidationError('Prediction.proba rows must sum to 1')
     return prediction
 
 

@@ -5,7 +5,8 @@ import type {
   CaruanaOpts,
   CaruanaResult,
   Labels,
-  Matrix,
+  DenseMatrix,
+  Scoring,
   MaybePromise,
   OofOpts,
   OofResult,
@@ -44,10 +45,10 @@ export declare class VotingEnsemble {
   constructor(params?: VotingEnsembleParams)
   static create(params?: VotingEnsembleParams): Promise<VotingEnsemble>
   static load(bytes: Uint8Array, options?: EnsembleLoadOptions): Promise<VotingEnsemble>
-  fit(X: Matrix | number[][], y: Labels | number[]): Promise<this>
-  predict(X: Matrix | number[][]): MaybePromise<Labels>
-  predictProba(X: Matrix | number[][]): MaybePromise<Float64Array>
-  score(X: Matrix | number[][], y: Labels | number[]): MaybePromise<number>
+  fit(X: DenseMatrix | number[][], y: Labels | number[]): Promise<this>
+  predict(X: DenseMatrix | number[][]): MaybePromise<Labels>
+  predictProba(X: DenseMatrix | number[][]): MaybePromise<Float64Array>
+  score(X: DenseMatrix | number[][], y: Labels | number[]): MaybePromise<number>
   save(): Uint8Array
   dispose(): void
   getParams(): Record<string, unknown>
@@ -61,10 +62,10 @@ export declare class BaggedEstimator {
   constructor(params?: BaggedEstimatorParams)
   static create(params?: BaggedEstimatorParams): Promise<BaggedEstimator>
   static load(bytes: Uint8Array, options?: EnsembleLoadOptions): Promise<BaggedEstimator>
-  fit(X: Matrix | number[][], y: Labels | number[]): Promise<this>
-  predict(X: Matrix | number[][]): MaybePromise<Labels>
-  predictProba(X: Matrix | number[][]): MaybePromise<Float64Array>
-  score(X: Matrix | number[][], y: Labels | number[]): MaybePromise<number>
+  fit(X: DenseMatrix | number[][], y: Labels | number[]): Promise<this>
+  predict(X: DenseMatrix | number[][]): MaybePromise<Labels>
+  predictProba(X: DenseMatrix | number[][]): MaybePromise<Float64Array>
+  score(X: DenseMatrix | number[][], y: Labels | number[]): MaybePromise<number>
   save(): Uint8Array
   dispose(): void
   getParams(): Record<string, unknown>
@@ -79,10 +80,10 @@ export declare class StackingEnsemble {
   constructor(params?: StackingEnsembleParams)
   static create(params?: StackingEnsembleParams): Promise<StackingEnsemble>
   static load(bytes: Uint8Array, options?: EnsembleLoadOptions): Promise<StackingEnsemble>
-  fit(X: Matrix | number[][], y: Labels | number[]): Promise<this>
-  predict(X: Matrix | number[][]): MaybePromise<Labels>
-  predictProba(X: Matrix | number[][]): MaybePromise<Float64Array>
-  score(X: Matrix | number[][], y: Labels | number[]): MaybePromise<number>
+  fit(X: DenseMatrix | number[][], y: Labels | number[]): Promise<this>
+  predict(X: DenseMatrix | number[][]): MaybePromise<Labels>
+  predictProba(X: DenseMatrix | number[][]): MaybePromise<Float64Array>
+  score(X: DenseMatrix | number[][], y: Labels | number[]): MaybePromise<number>
   save(): Uint8Array
   dispose(): void
   getParams(): Record<string, unknown>
@@ -100,7 +101,7 @@ export declare function caruanaSelect(
 
 export declare function getOofPredictions(
   estimatorSpecs: import('@wlearn/types').EstimatorSpec[],
-  X: Matrix | number[][],
+  X: DenseMatrix | number[][],
   y: Labels | number[],
   opts?: OofOpts
 ): Promise<OofResult>

@@ -2,14 +2,14 @@
 set -euo pipefail
 
 # Build browser-ready IIFE + ESM bundles using esbuild
-# Pure JS package (no WASM) -- bundles @wlearn/core and @wlearn/ensemble inline
+# Pure JS package (no WASM) -- bundles @wlearn/core inline
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 DIST_DIR="${PROJECT_DIR}/dist"
 
 # Read package name from package.json
-# Browser global + bundle base name: @wlearn/automl -> automl
+# Browser global + bundle base name: @wlearn/ensemble -> ensemble
 NAME=$(node -e "
   const p = require('${PROJECT_DIR}/package.json')
   console.log(p.name.split('/').pop())

@@ -27,6 +27,41 @@ from wlearn.automl._candidate_pipeline import (
 )
 
 
+@pytest.mark.parametrize('search_class', [RandomSearch, SuccessiveHalvingSearch, PortfolioSearch])
+def test_search_preserves_task_and_custom_folds(search_class):
+    from wlearn.resampling import create_resampling_plan
+    X = np.arange(10, dtype=float).reshape(-1, 1)
+    y = np.arange(10, dtype=float)
+    plan = create_resampling_plan(strategy='group_kfold', n=10, k=2,
+                                  groups=np.arange(10, dtype=np.int32) // 2)
+
+    class Model:
+        class_id = 'wlearn.test.task-folds@1'
+
+        @classmethod
+        def create(cls, params):
+            assert params['task'] == 'regression'
+            return cls()
+
+        def fit(self, X, y):
+            self.groups = set((X[:, 0] // 2).tolist())
+            return self
+
+        def predict(self, X):
+            assert not self.groups.intersection((X[:, 0] // 2).tolist())
+            return np.zeros(len(X))
+
+        def dispose(self):
+            pass
+
+    options = {} if search_class is PortfolioSearch else {'n_iter': 1}
+    search = search_class([{'name': 'model', 'cls': Model, 'searchSpace': {}}],
+                          cv=plan, task='regression', scoring='mse', **options)
+    result = search.fit(X, y)
+    assert result['bestResult']['candidate']['model']['params']['task'] == 'regression'
+    search.refit_best(X, y).dispose()
+
+
 # --- MockModel (same as test_ensemble.py) ---
 
 class MockModel:
@@ -48,7 +83,7 @@ class MockModel:
     def fit(self, X, y):
         self._fitted = True
         unique = sorted(set(int(v) for v in y))
-        if len(unique) <= 20:
+        if self._params.get('task') != 'regression' and len(unique) <= 20:
             self._classes = np.array(unique, dtype=np.int32)
             self._n_classes = len(unique)
         self._mean = float(np.mean(y))
@@ -1061,7 +1096,7 @@ class TestCandidatePipelineLifecycle:
             search.refit_best(X, y)
         assert exc.value is fit_error
         assert events == [
-            'preprocessor:create', 'model:create:{}',
+            'preprocessor:create', "model:create:{'task': 'classification'}",
             'preprocessor:fit', 'model:fit',
             'model:dispose', 'preprocessor:dispose',
         ]
@@ -2131,3 +2166,21 @@ def test_package_owned_portfolio_configurations():
     for portfolio in [[], [None], [3], 'bad']:
         with pytest.raises(ValidationError):
             PortfolioStrategy([dict(name='custom', cls=Custom, portfolio=portfolio)])
+
+
+def test_failed_candidate_does_not_stop_halving_rounds():
+    class Broken:
+        class_id = 'wlearn.test.broken@1'
+
+        @classmethod
+        def create(cls, params):
+            raise ValueError('invalid candidate')
+
+    X = np.arange(24, dtype=float).reshape(-1, 2)
+    y = np.arange(12, dtype=float)
+    search = SuccessiveHalvingSearch([
+        {'name': 'broken', 'cls': Broken, 'searchSpace': {}},
+        {'name': 'working', 'cls': MockModel}
+    ], n_iter=3, cv=2, task='regression', factor=2)
+    result = search.fit(X, y)
+    assert result['rounds'], 'surviving candidates must reach subsequent rounds'

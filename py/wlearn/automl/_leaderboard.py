@@ -19,7 +19,10 @@ def _thaw_domain(value):
 
 
 class Leaderboard:
-    def __init__(self):
+    def __init__(self, direction='maximize'):
+        if direction not in ('maximize', 'minimize'):
+            raise ValidationError('Invalid leaderboard direction')
+        self._direction = direction
         self._entries = []
         self._next_id = 0
         self._dirty = True
@@ -65,6 +68,7 @@ class Leaderboard:
             'stdScore': std_score,
             'fitTimeMs': fit_time_ms,
             'rank': 0,
+            'direction': self._direction,
         }
         self._next_id += 1
         self._entries.append(entry)
@@ -74,7 +78,7 @@ class Leaderboard:
     def ranked(self):
         """Return all entries sorted by meanScore descending with ranks."""
         if self._dirty:
-            self._entries.sort(key=lambda e: -e['meanScore'])
+            self._entries.sort(key=lambda e: e['meanScore'], reverse=self._direction == 'maximize')
             for i, entry in enumerate(self._entries):
                 entry['rank'] = i + 1
             self._dirty = False
@@ -112,6 +116,7 @@ class Leaderboard:
                 'stdScore': e['stdScore'],
                 'fitTimeMs': e['fitTimeMs'],
                 'rank': e['rank'],
+                'direction': self._direction,
             }
             for e in self.ranked()
         ]
@@ -135,13 +140,13 @@ class Leaderboard:
         lb._dirty = True
         return lb
 
-    def to_archive(self, metric='score', direction='maximize', metadata=None):
+    def to_archive(self, metric='score', direction=None, metadata=None):
         """Convert ranked entries to an Archive."""
         archive = Archive(
             id='automl',
             measures=[metric],
             primary_measure=metric,
-            direction=direction,
+            direction=direction or self._direction,
             metadata=dict(metadata or {}),
         )
         for entry in self.ranked():

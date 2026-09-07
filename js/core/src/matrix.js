@@ -16,6 +16,9 @@ function matrixSize(rows, cols) {
 }
 
 function normalizeX(X, coerce = 'auto') {
+  if (X?.indptr != null || X?.indices != null) {
+    throw new ValidationError('normalizeX requires a dense matrix; CSR is not supported')
+  }
   // Fast path: typed matrix { data, rows, cols }
   if (X && typeof X === 'object' && !Array.isArray(X) && X.data != null) {
     const { data, rows, cols } = X
@@ -89,6 +92,9 @@ function makeDense(data, rows, cols) {
 }
 
 function validateMatrix(m) {
+  if (m?.indptr != null || m?.indices != null) {
+    throw new ValidationError('validateMatrix requires a dense matrix; CSR is not supported')
+  }
   if (!m || typeof m !== 'object') {
     throw new ValidationError('Matrix must be an object')
   }
@@ -103,4 +109,35 @@ function validateMatrix(m) {
   return m
 }
 
-module.exports = { normalizeX, normalizeY, makeDense, validateMatrix }
+// Copies selected rows into host-owned buffers for CV/module boundaries.
+function subsetRows(X, indices) {
+  const { data, rows, cols } = normalizeX(X)
+  validateIndices(indices, rows)
+  const out = new Float64Array(indices.length * cols)
+  for (let i = 0; i < indices.length; i++) {
+    const offset = indices[i] * cols
+    out.set(data.subarray(offset, offset + cols), i * cols)
+  }
+  return { data: out, rows: indices.length, cols }
+}
+
+function subsetLabels(y, indices) {
+  const labels = normalizeY(y)
+  validateIndices(indices, labels.length)
+  const out = new labels.constructor(indices.length)
+  for (let i = 0; i < indices.length; i++) out[i] = labels[indices[i]]
+  return out
+}
+
+function validateIndices(indices, rows) {
+  if (!(Array.isArray(indices) || indices instanceof Int32Array) || !indices.length) {
+    throw new ValidationError('Row indices must be a non-empty array or Int32Array')
+  }
+  for (const index of indices) {
+    if (!Number.isInteger(index) || index < 0 || index >= rows) {
+      throw new ValidationError('Row indices must be integers within the input rows')
+    }
+  }
+}
+
+module.exports = { normalizeX, normalizeY, makeDense, validateMatrix, subsetRows, subsetLabels }

@@ -1,6 +1,21 @@
 const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
 const { kFold, stratifiedKFold, trainTestSplit, crossValScore, getScorer } = require('../src/cv.js')
+
+it('CV uses probability response and class order from Measure', async () => {
+  class Classifier {
+    static async create() { return new Classifier() }
+    fit() { return this }
+    predict() { throw new Error('must request probabilities') }
+    predictProba(X) { return Float64Array.from(Array.from(X.data, x => x ? [0.9, 0.1] : [0.1, 0.9]).flat()) }
+    get classes() { return Int32Array.from([1, 0]) }
+    dispose() {}
+  }
+  const scores = await crossValScore(Classifier, [[0], [1], [0], [1]], Int32Array.from([0, 1, 0, 1]), {
+    cv: 2, scoring: 'log_loss'
+  })
+  for (const score of scores) assert(Math.abs(score + Math.log(0.9)) < 1e-12)
+})
 const { ValidationError } = require('../src/errors.js')
 
 describe('kFold', () => {

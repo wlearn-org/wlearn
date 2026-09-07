@@ -1,4 +1,4 @@
-const { ValidationError } = require('@wlearn/core')
+const { ValidationError, validatePrediction } = require('@wlearn/core')
 
 function normalizeClassOrder(value, expectedLength, label) {
   if (!Array.isArray(value) &&
@@ -84,6 +84,7 @@ function validateProbabilityOutput(value, rows, classCount, label) {
       throw new ValidationError(`${label} predictProba output must contain finite numbers`)
     }
   }
+  validatePrediction({ proba: value, probaRows: rows })
   return value
 }
 

@@ -114,6 +114,32 @@ function validatePrediction(prediction) {
       throw new ValidationError(`Prediction.proba length (${prediction.proba.length}) must be divisible by probaRows (${prediction.probaRows})`)
     }
   }
+  if (prediction.classes) {
+    const labels = Array.from(prediction.classes)
+    if (labels.some(value => !Number.isFinite(value)) || new Set(labels).size !== labels.length) {
+      throw new ValidationError('Prediction.classes must contain unique finite labels')
+    }
+  }
+  if (prediction.proba) {
+    const cols = prediction.proba.length / rows
+    if (!Number.isInteger(cols) || cols < 1) {
+      throw new ValidationError('Prediction.proba must contain complete probability rows')
+    }
+    for (let row = 0; row < rows; row++) {
+      let sum = 0
+      for (let col = 0; col < cols; col++) {
+        const value = prediction.proba[row * cols + col]
+        if (!Number.isFinite(value) || value < 0 || value > 1) {
+          throw new ValidationError('Prediction.proba values must be finite and in [0, 1]')
+        }
+        sum += value
+      }
+      // Allow Float32 backend rounding without accepting unnormalized scores.
+      if (Math.abs(sum - 1) > 1e-6) {
+        throw new ValidationError('Prediction.proba rows must sum to 1')
+      }
+    }
+  }
   return prediction
 }
 

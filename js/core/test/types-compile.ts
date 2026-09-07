@@ -24,6 +24,7 @@ register('wlearn.test.types@1', () => scaler, { sync: true })
 const sync = loadSync<typeof scaler>(bytes)
 const pending: Promise<typeof scaler> = load<typeof scaler>(bytes)
 const exhaustiveRuntimeNames = [
+  'subsetRows', 'subsetLabels', 'taskParams', 'validateEstimatorTask', 'scoreEstimator', 'resolveCv', 'serializeCv',
   'Archive', 'BackendError', 'BundleError', 'CancelledError',
   'DEFAULT_BUNDLE_LIMITS', 'DisposedError', 'MEASURE_DIRECTIONS',
   'MEASURE_RESPONSES', 'MinMaxScaler', 'NotFittedError', 'PREDICTION_FIELDS',
@@ -55,3 +56,17 @@ void pipelineClasses
 void sync
 void pending
 void exhaustiveRuntimeNames
+
+// Public scoring accepts a registered name, class order, and caller-owned folds.
+const customScorer = core.getScorer('application_metric')
+customScorer(new Int32Array([5, 2]), new Float64Array([.9, .1, .1, .9]), {
+  classes: new Int32Array([5, 2])
+})
+const customFolds = core.resolveCv([{ train: [0], test: [1] }], new Float64Array([0, 1]))
+core.serializeCv(customFolds)
+core.subsetRows(matrix, [1, 0])
+core.subsetLabels(new Int32Array([0, 1]), [1, 0])
+const sparse = { data: new Float64Array([1, 2]), rows: 2, cols: 1,
+  indices: new Int32Array([0, 0]), indptr: new Int32Array([0, 1, 2]) }
+// @ts-expect-error Dense-only normalization must not accept CSR descriptors.
+core.normalizeX(sparse)

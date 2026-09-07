@@ -2,6 +2,7 @@
 
 from ..pipeline import Pipeline
 from ..preprocess import Preprocessor
+from ..task import validate_estimator_task
 from ..errors import ValidationError
 from ._candidate import class_for_candidate, make_candidate_id, seed_for
 
@@ -34,9 +35,9 @@ def create_candidate_pipeline_class(
                 raise
 
         @classmethod
-        def default_search_space(cls):
-            method = getattr(model_cls, 'default_search_space', None)
-            return method() if method is not None else {}
+        def default_search_space(cls, task=None):
+            from ._common import default_search_space
+            return default_search_space({'cls': model_cls, 'params': {'task': task}})
 
         @classmethod
         def budget_spec(cls):
@@ -88,6 +89,7 @@ def fit_candidate(spec, candidate, X, y, candidate_id=None):
     instance = candidate_cls.create(candidate['model']['params'])
     try:
         instance.fit(X, y)
+        validate_estimator_task(instance, candidate['model']['params'].get('task'))
         return instance
     except Exception:
         _dispose_quietly(instance)

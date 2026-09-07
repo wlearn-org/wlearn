@@ -47,7 +47,7 @@ class ProgressiveStrategy {
     const rng = makeLCG(seed)
     const seen = new Map()
     for (const model of normalizeModelSpecs(models)) {
-      const space = model.searchSpace || model.cls.defaultSearchSpace?.() || {}
+      const space = model.searchSpace || model.cls.defaultSearchSpace?.(model.params?.task) || {}
       const effectiveSpace = effectiveSearchSpace(space, model.params || {})
 
       const configRng = makeLCG((rng() * 0x7fffffff) | 0)
@@ -96,7 +96,7 @@ class ProgressiveStrategy {
 
   #transitionToPromote() {
     // Sort probe results
-    const sorted = [...this.#probeResults]
+    const sorted = this.#probeResults.filter(result => result.status !== 'failed')
     if (this.#greaterIsBetter) {
       sorted.sort((a, b) => b.meanScore - a.meanScore)
     } else {

@@ -243,3 +243,28 @@ npm run test:browser # IIFE/ESM + real Tranfi-WASM preprocessing in Chromium
 ## License
 
 Apache-2.0
+
+## Validation and search ownership
+
+An explicit `task` is recorded in candidate parameters before IDs are generated,
+passed through fitting and refitting, and checked against fitted capabilities.
+Model packages own task-aware default search spaces. Search cannot silently
+replace integer-valued regression with classification.
+
+`cv` also accepts an explicit fold array or a core `ResamplingPlan`. Progressive
+screening reuses its first fold; training budgets only sample within its training
+indices. OOF ensemble construction requires complete, non-repeated test coverage;
+use `ensemble: false` for evaluation-only partial plans.
+
+Scoring uses core Measure response and direction, including probability methods
+and minimizing losses. Leaderboards, archives, and search promotion preserve that
+direction. Plain callable scorers continue to maximize hard/response predictions.
+Caruana only refines weights for its implemented MSE/R2 or log-loss objective;
+other metrics keep their greedy weights.
+
+New model families provide `defaultPortfolio(task)` or callers provide `portfolio`.
+The existing `getPortfolio()` recipes remain public data in `src/portfolio.json`;
+they are active warm starts, not dead model-specific execution branches. Python
+keeps its native parameter recipes beside `_portfolio.py`. No model import is
+needed in the search engine. The current executor is serial; the worker scheduler
+and shared-buffer routing described by some type interfaces remain planned.

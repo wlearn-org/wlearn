@@ -1,3 +1,5 @@
+const { subsetRows, subsetLabels } = require('@wlearn/core')
+const { taskParams, validateEstimatorTask, resolveCv } = require('@wlearn/core')
 const { stratifiedKFold, kFold, normalizeX, normalizeY, ValidationError } = require('@wlearn/core')
 const {
   classColumnMap, requireProbabilityModel, validateProbabilityOutput,
@@ -16,9 +18,7 @@ async function getOofPredictions(estimatorSpecs, X, y, {
   const yn = normalizeY(y)
   const n = Xn.rows
 
-  const folds = task === 'classification'
-    ? stratifiedKFold(yn, cv, { shuffle: true, seed })
-    : kFold(n, cv, { shuffle: true, seed })
+  const folds = resolveCv(cv, yn, { task, seed, requireComplete: true })
 
   // Discover classes for classification
   let classes = null
@@ -41,14 +41,15 @@ async function getOofPredictions(estimatorSpecs, X, y, {
     }
 
     for (const { train, test } of folds) {
-      const Xtrain = _subsetX(Xn, train)
-      const ytrain = _subsetY(yn, train)
-      const Xtest = _subsetX(Xn, test)
+      const Xtrain = subsetRows(Xn, train)
+      const ytrain = subsetLabels(yn, train)
+      const Xtest = subsetRows(Xn, test)
 
-      const model = await EstimatorClass.create(params || {})
+      const model = await EstimatorClass.create(taskParams(params, task))
       let operationError = null
       try {
         await model.fit(Xtrain, ytrain)
+        validateEstimatorTask(model, task)
         if (task === 'classification') {
           const label = `OOF estimator "${name}"`
           requireProbabilityModel(model, label)
@@ -87,27 +88,6 @@ async function getOofPredictions(estimatorSpecs, X, y, {
   }
 
   return { oofPreds, classes }
-}
-
-// --- Internal helpers (same as core/cv.js) ---
-
-function _subsetX(X, indices) {
-  const { data, cols } = X
-  const rows = indices.length
-  const out = new Float64Array(rows * cols)
-  for (let i = 0; i < rows; i++) {
-    const srcOff = indices[i] * cols
-    out.set(data.subarray(srcOff, srcOff + cols), i * cols)
-  }
-  return { data: out, rows, cols }
-}
-
-function _subsetY(y, indices) {
-  const out = new (y.constructor)(indices.length)
-  for (let i = 0; i < indices.length; i++) {
-    out[i] = y[indices[i]]
-  }
-  return out
 }
 
 module.exports = { getOofPredictions }

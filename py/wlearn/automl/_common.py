@@ -1,26 +1,11 @@
 """Shared utilities matching JS automl/common.js."""
 
+import inspect
 import time
 
-import numpy as np
-
 from ._candidate import make_candidate_id, seed_for
-
-
-def detect_task(y):
-    """Detect task type from labels.
-
-    Classification if: integer dtype, or all values are integers and <= 20 unique.
-    """
-    if hasattr(y, 'dtype') and np.issubdtype(y.dtype, np.integer):
-        return 'classification'
-    unique = set()
-    for v in y:
-        v_float = float(v)
-        if v_float != round(v_float):
-            return 'regression'
-        unique.add(v_float)
-    return 'classification' if len(unique) <= 20 else 'regression'
+from ..task import infer_task_kind as detect_task
+from ..measure import get_scorer
 
 
 def partial_shuffle(indices, k, rng):
@@ -37,10 +22,22 @@ def partial_shuffle(indices, k, rng):
 
 
 def scorer_greater_is_better(scoring):
-    """All built-in scorers are greater-is-better."""
-    return True
+    return getattr(get_scorer(scoring), 'direction', 'maximize') != 'minimize'
 
 
 def now():
     """High-resolution timer in milliseconds."""
     return time.perf_counter() * 1000
+
+
+def default_search_space(model):
+    """Keep explicit spaces intact; pass task to model-owned methods that accept it."""
+    if model.get('searchSpace') is not None:
+        return model['searchSpace']
+    cls = model['cls']
+    method = getattr(cls, 'default_search_space', None) or getattr(cls, 'defaultSearchSpace', None)
+    if method is None:
+        return {}
+    if 'task' in inspect.signature(method).parameters:
+        return method(task=model.get('params', {}).get('task'))
+    return method()

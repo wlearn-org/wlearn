@@ -281,7 +281,7 @@ describe('preprocessed candidate ownership', () => {
       failFit = true
       await assert.rejects(() => search.refitBest(X, y), error => error === fitError)
       assert.deepEqual(events, [
-        'preprocessor:create', 'model:create:{}',
+        'preprocessor:create', 'model:create:{"task":"classification"}',
         'preprocessor:fit', 'model:fit',
         'model:dispose', 'preprocessor:dispose',
       ])

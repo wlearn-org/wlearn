@@ -25,7 +25,12 @@ function caruanaSelect(oofPredictions, yTrue, {
     throw new ValidationError('caruanaSelect: need at least 1 candidate')
   }
 
+  if (!Number.isSafeInteger(maxSize) || maxSize < 1 || n < 1) {
+    throw new ValidationError('caruanaSelect: maxSize and row count must be positive')
+  }
   const scorerFn = getScorer(scoring)
+  const maximize = scorerFn.direction !== 'minimize'
+  const objective = scorerFn.measure?.id
 
   // Determine prediction size per sample
   const predSize = oofPredictions[0].length / n
@@ -60,7 +65,7 @@ function caruanaSelect(oofPredictions, yTrue, {
 
   for (let t = 0; t < maxSize; t++) {
     let bestIdx = -1
-    let bestScore = -Infinity
+    let bestScore = maximize ? -Infinity : Infinity
 
     for (let i = 0; i < nCandidates; i++) {
       // Trial: ((t) * current + P[i]) / (t + 1)
@@ -68,7 +73,7 @@ function caruanaSelect(oofPredictions, yTrue, {
       const trialScore = _score(
         trial, yn, scorerFn, task, nClasses, n, classLabels
       )
-      if (trialScore > bestScore) {
+      if (maximize ? trialScore > bestScore : trialScore < bestScore) {
         bestScore = trialScore
         bestIdx = i
       }
@@ -101,7 +106,12 @@ function caruanaSelect(oofPredictions, yTrue, {
     scores: new Float64Array(scores),
   }
 
-  if (refineWeights && uniqueIndices.length > 1) {
+  // Refinement only optimizes the objective it actually implements. Other
+  // metrics keep the greedy weights instead of silently switching losses.
+  const canRefine = task === 'regression'
+    ? ['mse', 'neg_mse', 'r2'].includes(objective)
+    : objective === 'log_loss'
+  if (refineWeights && canRefine && uniqueIndices.length > 1) {
     const selectedOofs = Array.from(uniqueIndices, idx => oofPredictions[idx])
     result.weights = optimizeWeights(selectedOofs, yn, weights, {
       task, classes: classLabels
@@ -122,8 +132,10 @@ function _trialPredictions(current, candidate, tCount, tTotal) {
 }
 
 function _score(preds, yTrue, scorerFn, task, nClasses, n, classes) {
-  if (task === 'regression') {
-    return scorerFn(yTrue, preds)
+  if (task === 'regression' || (scorerFn.response && scorerFn.response !== 'response')) {
+    const score = scorerFn(yTrue, preds, { classes: classes ?? undefined })
+    if (!Number.isFinite(score)) throw new ValidationError('Scorer must return a finite number')
+    return score
   }
   // Classification: convert proba to hard predictions via argmax
   const hardPreds = new Float64Array(n)
@@ -137,7 +149,9 @@ function _score(preds, yTrue, scorerFn, task, nClasses, n, classes) {
     }
     hardPreds[i] = classes[bestC]
   }
-  return scorerFn(yTrue, hardPreds)
+  const score = scorerFn(yTrue, hardPreds)
+  if (!Number.isFinite(score)) throw new ValidationError('Scorer must return a finite number')
+  return score
 }
 
 function _resolveClasses(yTrue, nClasses, classes) {

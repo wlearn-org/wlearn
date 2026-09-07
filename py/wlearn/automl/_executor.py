@@ -5,11 +5,12 @@ import math
 import numpy as np
 
 from ..archive import Archive
+from ..task import validate_estimator_task
 from ..errors import ValidationError
 from ._leaderboard import Leaderboard
 from ._common import make_candidate_id, now, seed_for, partial_shuffle
-from ._cv import get_scorer
-from ._rng import make_lcg
+from ..measure import get_scorer, score_estimator
+from ..rng import make_lcg
 
 
 class Executor:
@@ -36,13 +37,13 @@ class Executor:
         self._time_limit_ms = time_limit_ms
         self._seed = seed
         self._start_time = now()
-        self._leaderboard = Leaderboard()
+        self._leaderboard = Leaderboard(direction=getattr(self._scorer_fn, 'direction', 'maximize'))
         self._metric = scoring if isinstance(scoring, str) else 'score'
         self._archive = Archive(
             id='automl',
             measures=[self._metric],
             primary_measure=self._metric,
-            direction='maximize',
+            direction=getattr(self._scorer_fn, 'direction', 'maximize'),
             metadata={
                 'source': 'wlearn.automl',
                 'seed': seed,
@@ -111,8 +112,8 @@ class Executor:
             operation_error = None
             try:
                 model.fit(X_train, y_train)
-                preds = model.predict(X_test)
-                scores[f] = self._scorer_fn(y_test, preds)
+                validate_estimator_task(model, candidate['model']['params'].get('task'))
+                scores[f] = score_estimator(model, X_test, y_test, self._scorer_fn)
             except Exception as error:
                 operation_error = error
                 raise
@@ -254,4 +255,7 @@ class Executor:
                 strategy.report(result)
             except Exception as exc:
                 self.record_failure(task, exc)
+                strategy.report({'candidateId': task['candidateId'],
+                                 'candidate': task['candidate'],
+                                 'status': 'failed', 'meanScore': None})
         return {'leaderboard': self._leaderboard, 'archive': self._archive}

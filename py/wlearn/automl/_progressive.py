@@ -2,15 +2,14 @@
 
 from copy import deepcopy
 
-import math
 
-import numpy as np
 
 from ..errors import ValidationError
+from ..task import task_params
+from ..resampling import resolve_cv
 from ._common import detect_task, scorer_greater_is_better
 from ._candidate import normalize_model_specs
 from ._candidate_pipeline import fit_candidate
-from ._cv import stratified_k_fold, k_fold, get_scorer
 from ._executor import Executor
 from ._strategy_progressive import ProgressiveStrategy
 
@@ -40,29 +39,17 @@ class ProgressiveSearch:
 
     def fit(self, X, y):
         task = self._task or detect_task(y)
+        models = [{**spec, 'params': task_params(spec.get('params'), task)} for spec in self._models]
         scoring = self._scoring or (
             'accuracy' if task == 'classification' else 'r2')
         greater_is_better = scorer_greater_is_better(scoring)
 
-        # Probe folds: 2-fold, use only first
-        if task == 'classification':
-            probe_folds = stratified_k_fold(y, 2, do_shuffle=True,
-                                            seed=self._seed)
-        else:
-            probe_folds = k_fold(len(y), 2, do_shuffle=True,
-                                 seed=self._seed)
-        single_fold = [probe_folds[0]]
-
-        # Full folds for promoted candidates
-        if task == 'classification':
-            full_folds = stratified_k_fold(y, self._cv, do_shuffle=True,
-                                           seed=self._seed + 1)
-        else:
-            full_folds = k_fold(len(y), self._cv, do_shuffle=True,
-                                seed=self._seed + 1)
+        # Probe the caller's first fold to preserve group boundaries.
+        full_folds = resolve_cv(self._cv, y, task=task, seed=self._seed)
+        single_fold = [full_folds[0]]
 
         strategy = ProgressiveStrategy(
-            self._models,
+            models,
             n_iter=self._n_iter,
             seed=self._seed,
             promote_count=self._promote_count,
@@ -98,12 +85,7 @@ class ProgressiveSearch:
                 strategy.report({
                     'candidateId': cand['candidateId'],
                     'candidate': cand['candidate'],
-                    'meanScore': -float('inf'),
-                    'foldScores': np.zeros(1),
-                    'stdScore': 0,
-                    'fitTimeMs': 0,
-                    'nTrainUsed': 0,
-                    'nTest': 0,
+                    'status': 'failed', 'meanScore': None,
                 })
 
         # Phase 2: full evaluation of promoted candidates

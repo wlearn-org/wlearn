@@ -25,7 +25,7 @@ class RandomStrategy {
     const seen = new Map()
 
     for (const model of normalizeModelSpecs(models)) {
-      const space = model.searchSpace || model.cls.defaultSearchSpace?.() || {}
+      const space = model.searchSpace || model.cls.defaultSearchSpace?.(model.params?.task) || {}
       const effectiveSpace = effectiveSearchSpace(space, model.params || {})
 
       const configRng = makeLCG((rng() * 0x7fffffff) | 0)
