@@ -129,7 +129,19 @@ export type PreprocessScale = false | 'standard' | 'minmax'
 export type PreprocessUnknownCategory = null | 'error' | 'all_zero' | 'sentinel'
 export type PreprocessAllMissing = null | 'error' | 'zero'
 
+export interface PreprocessColumnConfig {
+  kind?: 'numeric' | 'categorical' | 'infer'
+  categories?: number[]
+  impute?: 'auto' | 'mean' | 'median' | 'zero' | false
+  encode?: 'auto' | 'onehot' | 'label' | false
+  scale?: PreprocessScale
+  maxCategories?: number
+  unknownCategory?: Exclude<PreprocessUnknownCategory, null>
+  allMissing?: Exclude<PreprocessAllMissing, null>
+}
+
 export interface PreprocessResolvedConfig {
+  columns?: Record<`x${number}`, PreprocessColumnConfig>
   impute: {
     numeric: PreprocessNumericImpute
     categorical: PreprocessCategoricalImpute
@@ -145,6 +157,7 @@ export interface PreprocessResolvedConfig {
 }
 
 export interface PreprocessConfig {
+  columns?: Record<`x${number}`, PreprocessColumnConfig>
   impute?: 'auto' | 'mean' | 'median' | 'zero' | false
   encode?: 'auto' | 'onehot' | 'label' | false
   scale?: PreprocessScale

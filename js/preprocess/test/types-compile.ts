@@ -26,6 +26,7 @@ async function compileContract(): Promise<void> {
     impute: 'auto',
     encode: 'onehot',
     scale: 'standard',
+    columns: { x0: { kind: "numeric", scale: false }, x1: { categories: [0, 2, 5] } },
     maxCategories: 20
   })
   const output = preprocessor.fitTransform({

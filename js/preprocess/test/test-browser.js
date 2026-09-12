@@ -42,6 +42,17 @@ function chromiumExecutablePath() {
 function testBody(apiExpression) {
   return `
 async function exercise(api) {
+  var fixed = await api.Preprocessor.create({columns: {
+    x0: {kind: 'numeric', scale: false}, x1: {categories: [5, 0, 2]}
+  }})
+  fixed.fit([[1, 2], [2, 2]])
+  var fixedLoaded = await api.Preprocessor.load(fixed.save())
+  var fixedOutput = Array.from(fixedLoaded.transform([[3, 5], [4, 99]]).data)
+  if (JSON.stringify(fixedOutput) !== JSON.stringify([3, 0, 0, 1, 4, 0, 0, 0])) {
+    throw new Error('fixed dictionary column policy mismatch')
+  }
+  fixed.dispose()
+  fixedLoaded.dispose()
   if (typeof api.StandardScaler !== 'function' ||
       typeof api.MinMaxScaler !== 'function') {
     throw new Error('missing compatibility scaler exports')

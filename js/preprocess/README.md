@@ -163,3 +163,34 @@ this package.
 ## License
 
 Apache-2.0
+
+Per-column overrides use canonical input IDs (`x0`, `x1`, …):
+
+```js
+const pre = await Preprocessor.create({
+  scale: 'standard',
+  columns: {
+    x0: { kind: 'numeric', scale: false },
+    x1: { categories: [0, 2, 5] },
+    x2: { kind: 'categorical', encode: 'label' }
+  }
+})
+```
+
+Each column inherits global options except those explicitly overridden. Supported
+column options are `kind`, `categories`, `impute`, `encode`, `scale`, `maxCategories`,
+`allMissing`, and `unknownCategory`. `kind` is `numeric`, `categorical`, or `infer`.
+A `categories` array implies `categorical`; it must contain unique finite numbers
+and is sorted numerically. The adapter uses float64 category tags. Encoding keeps
+all declared categories, including those absent during fitting, so output width and
+ordinals remain stable across refits. Unknown training values follow the encoder
+policy and do not compete for the mode; a zero fallback must be in the dictionary.
+Fixed categories require encoding or mode imputation. String categories are not
+supported.
+
+`setParams({ columns: … })` replaces the override map; an empty map removes it.
+Global updates affect inherited options and preserve explicit column overrides.
+Any successful parameter update clears fitted state. Column IDs outside the fitted
+input width fail validation. Omitted or empty overrides preserve existing resolved
+configuration and bundle bytes. Python accepts the same mapping through
+`Preprocessor(columns={...})` or `Preprocessor(config)`.

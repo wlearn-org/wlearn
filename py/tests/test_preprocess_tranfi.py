@@ -323,3 +323,157 @@ def _deep_copy(value):
     if isinstance(value, list):
         return [_deep_copy(child) for child in value]
     return value
+
+
+def test_cancelled_preprocessing_does_not_read_input():
+    class Unreadable(np.ndarray):
+        def __getitem__(self, key):
+            raise AssertionError("cancelled input was read")
+
+    token = tranfi.TransformCancelToken()
+    processor = Preprocessor(impute=False, encode=False, scale=False,
+                             runtime_options={'cancel_token': token})
+    processor.fit(np.ones((2, 2)))
+    token.request()
+    X = np.ones((100, 2)).view(Unreadable)
+    for operation in (processor.fit, processor.transform):
+        with pytest.raises(CancelledError) as caught:
+            operation(X)
+        assert caught.value.engineCode == 109
+    processor.dispose()
+
+
+@pytest.mark.parametrize('layout', ['c', 'f', 'reverse', 'stride', 'readonly', 'f32'])
+def test_numpy_transport_layout_and_output_lifetime(layout):
+    source = np.arange(80, dtype=np.float64).reshape(20, 4) / 3
+    source[0, 0] = np.nan
+    X = source
+    if layout == 'f':
+        X = np.asfortranarray(source)
+    elif layout == 'reverse':
+        X = source[::-1, ::-1]
+    elif layout == 'stride':
+        X = source[::2, ::2]
+    elif layout == 'readonly':
+        X = source.copy()
+        X.flags.writeable = False
+    elif layout == 'f32':
+        X = source.astype(np.float32)
+    processor = Preprocessor(impute=False, encode=False, scale=False)
+    processor.fit(X)
+    result = processor.transform(X)
+    second = processor.transform(X)
+    processor.dispose()
+    np.testing.assert_array_equal(result, X.astype(np.float64))
+    result[1, 0] = -999
+    assert second[1, 0] != -999
+    assert X[1, 0] != -999
+
+
+def test_cancellation_during_numpy_conversion(monkeypatch):
+    token = tranfi.TransformCancelToken()
+    processor = Preprocessor(impute=False, encode=False, scale=False,
+                             runtime_options={'cancel_token': token})
+    processor.fit(np.ones((2, 1)))
+    original = np.isinf
+    blocks = []
+
+    def cancel_after_validation(block):
+        blocks.append(block.size)
+        token.request()
+        return original(block)
+
+    monkeypatch.setattr(np, 'isinf', cancel_after_validation)
+    with pytest.raises(CancelledError) as caught:
+        processor.transform(np.ones((30000, 1)))
+    assert caught.value.engineCode == 109
+    assert blocks == [8192]
+    processor.dispose()
+
+
+def test_column_policies_fixed_dictionary_and_refit():
+    config = {'scale': 'standard', 'columns': {
+        'x0': {'kind': 'numeric', 'scale': False},
+        'x1': {'categories': [5, 0, 2]},
+        'x2': {'kind': 'categorical', 'encode': 'label'},
+    }}
+    pre = Preprocessor(config)
+    pre.fit([[1, 2, 7], [2, 2, 8]])
+    np.testing.assert_array_equal(pre.transform([[3, 5, 8], [4, 99, 9]]),
+                                  [[3, 0, 0, 1, 1], [4, 0, 0, 0, -1]])
+    saved = pre.save()
+    restored = Preprocessor.load(saved)
+    assert restored.save() == saved
+    assert restored.get_params()['columns']['x1']['categories'] == [0, 2, 5]
+    pre.fit([[3, 0, 7], [4, 5, 8]])
+    assert pre.output_cols == 5
+    pre.set_params({'scale': 'minmax'})
+    assert not pre.is_fitted
+    pre.fit([[1, 2, 7], [2, 2, 8]])
+    assert pre.transform([[3, 5, 8]])[0, 0] == 3
+    pre.set_params({'columns': {}})
+    assert 'columns' not in pre.get_params()
+    pre.dispose()
+    restored.dispose()
+
+
+@pytest.mark.parametrize('columns', [
+    {'x01': {}}, {'x-1': {}}, {'x0': {'kind': 'string'}},
+    {'x0': {'categories': []}}, {'x0': {'categories': [1, 1]}},
+    {'x0': {'categories': [True]}}, {'x0': {'categories': [math.inf]}},
+    {'x0': {'kind': 'infer', 'categories': [0, 1]}},
+    {'x0': {'maxOutputColumns': 2}},
+])
+def test_column_policy_validation(columns):
+    with pytest.raises(ValidationError):
+        Preprocessor(columns=columns)
+
+
+def test_column_policy_missing_input_and_disabled_dictionary():
+    pre = Preprocessor(columns={'x1': {'kind': 'numeric'}})
+    with pytest.raises(ValidationError, match='x1'):
+        pre.fit([[1], [2]])
+    pre.dispose()
+    with pytest.raises(ValidationError):
+        Preprocessor(impute=False, encode=False, columns={'x0': {'categories': [0, 1]}})
+
+
+def test_column_dictionary_large_integer_is_validation_error():
+    with pytest.raises(ValidationError):
+        Preprocessor(columns={'x0': {'categories': [10 ** 1000]}})
+
+
+def test_column_overrides_inherit_updates_and_preserve_fit_on_invalid_patch():
+    pre = Preprocessor(columns={'x0': {'kind': 'numeric'}}).fit([[1], [3]])
+    original = pre.save()
+    with pytest.raises(ValidationError):
+        pre.set_params({'columns': {'x0': {'categories': [1, 1]}}})
+    assert pre.save() == original
+    pre.set_params({'scale': 'minmax'})
+    np.testing.assert_array_equal(pre.fit_transform([[1], [3]]), [[0], [1]])
+    pre.dispose()
+
+
+def test_column_policies_respect_host_limits_before_fit():
+    limits = {'maxCategoriesPerColumn': 2, 'maxTotalCategories': 3}
+    with pytest.raises(ResourceLimitError):
+        Preprocessor(max_categories=2, columns={'x0': {'categories': [0, 1, 2]}},
+                     runtime_options={'limits': limits})
+    with pytest.raises(ResourceLimitError):
+        Preprocessor(max_categories=2, columns={
+            'x0': {'categories': [0, 1]}, 'x1': {'categories': [0, 1]}},
+            runtime_options={'limits': limits})
+    with pytest.raises(ResourceLimitError):
+        Preprocessor(max_categories=2, columns={'x0': {'maxCategories': 3}},
+                     runtime_options={'limits': limits})
+
+
+def test_column_inference_threshold_and_imputation_overrides():
+    pre = Preprocessor(columns={
+        'x0': {'maxCategories': 2, 'impute': 'median'},
+        'x1': {'kind': 'categorical', 'impute': False, 'encode': 'label'},
+    })
+    pre.fit([[1, 0.5], [2, 1.5], [9, 0.5]])
+    np.testing.assert_array_equal(pre.transform([[math.nan, math.nan], [3, 1.5]]),
+                                  [[2, -1], [3, 1]])
+    pre.dispose()

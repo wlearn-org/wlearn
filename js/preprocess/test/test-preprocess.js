@@ -386,3 +386,134 @@ test('cancellation and unsupported runtime preserve fitted-plan ownership', {
   assert.deepEqual(Array.from(preprocessor.transform([[4.5]]).data), [4.5])
   preprocessor.dispose()
 })
+
+test('pre-cancelled preprocessing does not read matrix values', { skip: skipWithoutTranfi }, async () => {
+  const cancelFlag = new Int32Array(new SharedArrayBuffer(4))
+  const processor = await Preprocessor.create(
+    { impute: false, encode: false, scale: false }, { cancelFlag }
+  )
+  processor.fit([[1, 2], [3, 4]])
+  Atomics.store(cancelFlag, 0, 1)
+  const row = [1, 2]
+  Object.defineProperty(row, 0, { get() { throw new Error('cancelled input was read') } })
+  for (const operation of ['fit', 'transform']) {
+    assert.throws(() => processor[operation]([row]), error => error.engineCode === 109)
+  }
+  processor.dispose()
+})
+
+test('cancellation interrupts matrix conversion', { skip: skipWithoutTranfi }, async () => {
+  const cancelFlag = new Int32Array(new SharedArrayBuffer(4))
+  const processor = await Preprocessor.create(
+    { impute: false, encode: false, scale: false }, { cancelFlag }
+  )
+  processor.fit([[1]])
+  let reads = 0
+  const row = [1]
+  Object.defineProperty(row, 0, { get() {
+    reads++
+    Atomics.store(cancelFlag, 0, 1)
+    return 1
+  } })
+  assert.throws(() => processor.transform(Array(30000).fill(row)),
+    error => error.engineCode === 109)
+  assert(reads > 0 && reads <= 8192)
+  processor.dispose()
+})
+
+test('WASM cancellation and returned buffer ownership', { skip: skipWithoutTranfi }, async () => {
+  const path = require('node:path')
+  const createTranfi = process.env.TRANFI_JS_PATH
+    ? require(path.join(process.env.TRANFI_JS_PATH, 'wasm'))
+    : require('tranfi/wasm')
+  const backend = await createTranfi()
+  const { createPreprocessAPI } = require('../src/factory.js')
+  const api = createPreprocessAPI(() => backend, 'wasm')
+  const cancelToken = backend.createTransformCancelToken()
+  const processor = await api.Preprocessor.create(
+    { impute: false, encode: false, scale: false }, { cancelToken }
+  )
+  processor.fit([[1], [2]])
+  const result = processor.transform([[3], [4]])
+  const second = processor.transform([[5], [6]])
+  assert.equal(cancelToken.requested, false)
+  cancelToken.request()
+  assert.equal(cancelToken.requested, true)
+  const row = [1]
+  Object.defineProperty(row, 0, { get() { throw new Error('cancelled input was read') } })
+  assert.throws(() => processor.transform([row]), error => error.engineCode === 109)
+  processor.dispose()
+  cancelToken.close()
+  assert.deepEqual([...result.data], [3, 4])
+  result.data[0] = 99
+  assert.deepEqual([...second.data], [5, 6])
+})
+
+test('column policies preserve fixed widths and explicit kinds', { skip: skipWithoutTranfi }, async () => {
+  const pre = await Preprocessor.create({ scale: 'standard', columns: {
+    x0: { kind: 'numeric', scale: false },
+    x1: { categories: [5, 0, 2] },
+    x2: { kind: 'categorical', encode: 'label' }
+  } })
+  pre.fit([[1, 2, 7], [2, 2, 8]])
+  assert.deepEqual(Array.from(pre.transform([[3, 5, 8], [4, 99, 9]]).data),
+    [3, 0, 0, 1, 1, 4, 0, 0, 0, -1])
+  const saved = pre.save()
+  const restored = await Preprocessor.load(saved)
+  assert.deepEqual(restored.save(), saved)
+  assert.deepEqual(restored.getParams().columns.x1.categories, [0, 2, 5])
+  pre.fit([[3, 0, 7], [4, 5, 8]])
+  assert.equal(pre.outputSchema.length, 5)
+  pre.setParams({ scale: 'minmax' })
+  assert.equal(pre.isFitted, false)
+  pre.fit([[1, 2, 7], [2, 2, 8]])
+  assert.equal(pre.transform([[3, 5, 8]]).data[0], 3)
+  pre.setParams({ columns: {} })
+  assert.equal(Object.hasOwn(pre.getParams(), 'columns'), false)
+  pre.dispose()
+  restored.dispose()
+})
+
+test('validates column policies without a backend', () => {
+  for (const columns of [
+    { x01: {} }, { 'x-1': {} }, { x0: { kind: 'string' } },
+    { x0: { categories: [] } }, { x0: { categories: [1, 1] } },
+    { x0: { categories: [true] } }, { x0: { categories: [Infinity] } },
+    { x0: { kind: 'infer', categories: [0, 1] } },
+    { x0: { maxOutputColumns: 2 } }
+  ]) assert.throws(() => resolvePreprocessConfig({ columns }), core.ValidationError)
+  assert.throws(() => resolvePreprocessConfig({ impute: false, encode: false,
+    columns: { x0: { categories: [0, 1] } } }), core.ValidationError)
+})
+
+test('column overrides inherit global updates and reject invalid patches atomically', { skip: skipWithoutTranfi }, async () => {
+  const pre = await Preprocessor.create({ columns: { x0: { kind: 'numeric' } } })
+  pre.fit([[1], [3]])
+  const original = pre.save()
+  assert.throws(() => pre.setParams({ columns: { x0: { categories: [1, 1] } } }), core.ValidationError)
+  assert.deepEqual(pre.save(), original)
+  pre.setParams({ scale: 'minmax' })
+  assert.deepEqual(Array.from(pre.fitTransform([[1], [3]]).data), [0, 1])
+  pre.setParams({ columns: { x1: { kind: 'numeric' } } })
+  assert.throws(() => pre.fit([[1], [3]]), /x1/)
+  pre.dispose()
+})
+
+test('column policies respect host limits before fit', { skip: skipWithoutTranfi }, async () => {
+  const limits = { maxCategoriesPerColumn: 2, maxTotalCategories: 3 }
+  for (const columns of [
+    { x0: { categories: [0, 1, 2] } },
+    { x0: { categories: [0, 1] }, x1: { categories: [0, 1] } },
+    { x0: { maxCategories: 3 } }
+  ]) await assert.rejects(Preprocessor.create({ maxCategories: 2, columns }, { limits }), core.ResourceLimitError)
+})
+
+test('column inference threshold and imputation overrides', { skip: skipWithoutTranfi }, async () => {
+  const pre = await Preprocessor.create({ columns: {
+    x0: { maxCategories: 2, impute: 'median' },
+    x1: { kind: 'categorical', impute: false, encode: 'label' }
+  } })
+  pre.fit([[1, 0.5], [2, 1.5], [9, 0.5]])
+  assert.deepEqual(Array.from(pre.transform([[NaN, NaN], [3, 1.5]]).data), [2, -1, 3, 1])
+  pre.dispose()
+})

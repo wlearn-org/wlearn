@@ -43,7 +43,8 @@ const REQUEST_KEYS = new Set([
   'maxOutputColumns',
   'maxOutputElements',
   'scale',
-  'unknownCategory'
+  'unknownCategory',
+  'columns'
 ])
 
 const DEFAULTS = Object.freeze({
@@ -109,7 +110,9 @@ function createPreprocessAPI(defaultBackend, backendName) {
         operation: 'fit',
         allowZeroRows: false,
         expectedCols: null,
-        limits: this._effectiveLimits
+        limits: this._effectiveLimits,
+        runtime: this._runtimeOptions,
+        backend: this._backendModule
       })
       const schema = inputSchema(matrix.cols)
       const recipeSpec = buildRecipe(this._config, matrix.cols)
@@ -152,7 +155,9 @@ function createPreprocessAPI(defaultBackend, backendName) {
         operation: 'transform',
         allowZeroRows: true,
         expectedCols: this._inputSchema.length,
-        limits: this._effectiveLimits
+        limits: this._effectiveLimits,
+        runtime: this._runtimeOptions,
+        backend: this._backendModule
       })
       let apply = null
       try {
@@ -168,7 +173,8 @@ function createPreprocessAPI(defaultBackend, backendName) {
           dtype: 'float64',
           rows: result.rows,
           cols: result.columns,
-          data: new Float64Array(result.data)
+          // Tranfi returns a JS-owned buffer independent of the apply session.
+          data: result.data
         }
       } catch (error) {
         throw mapError(error, 'apply')
@@ -416,6 +422,11 @@ function normalizeRuntimeOptions(options, backendName) {
   if (backendName === 'wasm' && options.cancelFlag !== undefined) {
     throw new ValidationError('The WASM backend uses cancelToken, not cancelFlag.')
   }
+  if (options.cancelFlag != null &&
+      (!(options.cancelFlag instanceof Int32Array) || options.cancelFlag.length < 1 ||
+       Object.prototype.toString.call(options.cancelFlag.buffer) !== '[object SharedArrayBuffer]')) {
+    throw new ValidationError('cancelFlag must be a nonempty SharedArrayBuffer-backed Int32Array.')
+  }
   const result = {}
   if (options.limits !== undefined) result.limits = { ...options.limits }
   if (options.cancelFlag !== undefined) result.cancelFlag = options.cancelFlag
@@ -436,14 +447,16 @@ function resolveConfig(config, requireResolved = false) {
   assertPlainObject(config, 'preprocess config')
   const resolvedInput = isPlainObject(config.impute)
   if (requireResolved || resolvedInput || Object.prototype.hasOwnProperty.call(config, 'policyVersion')) {
-    assertExactKeys(config, RESOLVED_KEYS, 'resolved preprocess config')
+    assertExactKeys(config, Object.hasOwn(config, 'columns') ? [...RESOLVED_KEYS, 'columns'] : RESOLVED_KEYS, 'resolved preprocess config')
     return validateResolvedConfig(config)
   }
   for (const key of Object.keys(config)) {
     if (!REQUEST_KEYS.has(key)) throw new ValidationError(`Unknown preprocess config key "${key}".`)
   }
   const request = { ...DEFAULTS, ...config }
-  return resolveRequestConfig(request, config)
+  const resolved = resolveRequestConfig(request, config)
+  if (Object.hasOwn(config, 'columns')) resolved.columns = config.columns
+  return validateResolvedConfig(resolved)
 }
 
 function resolveSetParams(current, patch) {
@@ -536,7 +549,7 @@ function resolveRequestConfig(request, supplied) {
 }
 
 function validateResolvedConfig(config) {
-  assertExactKeys(config, RESOLVED_KEYS, 'resolved preprocess config')
+  assertExactKeys(config, Object.hasOwn(config, 'columns') ? [...RESOLVED_KEYS, 'columns'] : RESOLVED_KEYS, 'resolved preprocess config')
   assertPlainObject(config.impute, 'resolved preprocess config.impute')
   assertExactKeys(config.impute, ['categorical', 'numeric'], 'resolved preprocess config.impute')
   const numeric = config.impute.numeric
@@ -565,7 +578,54 @@ function validateResolvedConfig(config) {
     throw new ValidationError('resolved allMissing must be error or zero.')
   }
   validateUnknownPolicy(config.encode, config.unknownCategory)
-  return cloneJSON(config)
+  const { columns, ...base } = config
+  const result = cloneJSON(base)
+  if (Object.hasOwn(config, 'columns')) {
+    const normalized = resolveColumns(result, columns)
+    if (Object.keys(normalized).length) result.columns = normalized
+  }
+  return result
+}
+
+function resolveColumns(base, columns) {
+  assertPlainObject(columns, 'columns')
+  // Store explicit overrides so global updates still apply to inherited options.
+  const result = {}
+  const allowed = new Set(['kind', 'categories', 'impute', 'encode', 'scale',
+    'allMissing', 'unknownCategory', 'maxCategories'])
+  for (const [source, patch] of Object.entries(columns)) {
+    if (!/^x(?:0|[1-9][0-9]*)$/.test(source) || !Number.isSafeInteger(Number(source.slice(1)))) {
+      throw new ValidationError('columns keys must be canonical x0, x1, etc.')
+    }
+    assertPlainObject(patch, `column policy ${source}`)
+    if (Object.keys(patch).some(key => !allowed.has(key))) {
+      throw new ValidationError(`Invalid column policy for ${source}.`)
+    }
+    const hasCategories = Object.hasOwn(patch, 'categories')
+    const kind = Object.hasOwn(patch, 'kind') ? patch.kind : hasCategories ? 'categorical' : 'infer'
+    if (!['numeric', 'categorical', 'infer'].includes(kind)) {
+      throw new ValidationError(`Invalid kind for ${source}.`)
+    }
+    const { kind: ignoredKind, categories, ...operations } = patch
+    const local = resolveSetParams(base, operations)
+    const normalized = { ...operations, kind }
+    if (hasCategories) {
+      if (kind !== 'categorical' || !Array.isArray(categories) || !categories.length ||
+          Array.from(categories).some(value => typeof value !== 'number' || !Number.isFinite(value))) {
+        throw new ValidationError(`${source} categories must be finite numbers for a categorical column.`)
+      }
+      const values = categories.map(value => value === 0 ? 0 : value).sort((a, b) => a - b)
+      if (values.some((value, index) => index > 0 && value === values[index - 1])) {
+        throw new ValidationError(`${source} categories must be unique.`)
+      }
+      if (local.encode === false && local.impute.categorical === false) {
+        throw new ValidationError('Fixed categories require encoding or mode imputation.')
+      }
+      normalized.categories = values
+    }
+    result[source] = normalized
+  }
+  return result
 }
 
 function validateUnknownPolicy(encode, unknown) {
@@ -580,7 +640,7 @@ function validateUnknownPolicy(encode, unknown) {
   }
 }
 
-function buildRecipe(config, columns) {
+function recipeColumn(config, index, policy) {
   const numericImpute = config.impute.numeric === false
     ? { op: 'none', constant: null, allMissing: null }
     : config.impute.numeric === 'zero'
@@ -608,6 +668,32 @@ function buildRecipe(config, columns) {
       sentinelLabel: config.unknownCategory === 'sentinel' ? -1 : null
     }
   }
+  const kind = policy.kind || 'infer'
+  if (Object.hasOwn(policy, 'categories')) {
+    const bits = new DataView(new ArrayBuffer(8))
+    categoricalEncode.categories = policy.categories.map(value => {
+      bits.setFloat64(0, value, false)
+      return { t: 'f64', v: bits.getUint32(0).toString(16).padStart(8, '0') +
+        bits.getUint32(4).toString(16).padStart(8, '0') }
+    })
+  }
+  return {
+    sourceId: `x${index}`,
+    kind: kind === 'infer'
+      ? { op: 'infer', value: null, rule: 'finite-integer-cardinality-v1', maxCategories: config.maxCategories }
+      : { op: 'declared', value: kind, rule: null, maxCategories: null },
+    numeric: kind === 'categorical' ? null : { impute: numericImpute, normalize },
+    categorical: kind === 'numeric' ? null : { impute: categoricalImpute, encode: categoricalEncode }
+  }
+}
+
+function buildRecipe(config, columns) {
+  const { columns: policies = {}, ...base } = config
+  for (const source of Object.keys(policies)) {
+    if (Number(source.slice(1)) >= columns) {
+      throw new ValidationError(`Column policy ${source} is outside the input width.`)
+    }
+  }
   return {
     format: 'tranfi.transform-recipe',
     version: 1,
@@ -617,27 +703,35 @@ function buildRecipe(config, columns) {
       maxOutputColumns: config.maxOutputColumns,
       maxOutputElementsPerApply: config.maxOutputElements
     },
-    columns: Array.from({ length: columns }, (_, index) => ({
-      sourceId: `x${index}`,
-      kind: {
-        op: 'infer',
-        value: null,
-        rule: 'finite-integer-cardinality-v1',
-        maxCategories: config.maxCategories
-      },
-      numeric: {
-        impute: { ...numericImpute },
-        normalize: { ...normalize }
-      },
-      categorical: {
-        impute: { ...categoricalImpute },
-        encode: { ...categoricalEncode }
-      }
-    }))
+    columns: Array.from({ length: columns }, (_, index) => {
+      const policy = policies[`x${index}`]
+      if (!policy) return recipeColumn(base, index, {})
+      const { kind, categories, ...operations } = policy
+      return recipeColumn(resolveSetParams(base, operations), index, policy)
+    })
+  }
+}
+
+function checkCancelled(runtime, backend) {
+  const flag = runtime.cancelFlag
+  const token = runtime.cancelToken
+  if (token && !(token instanceof backend.TransformCancelToken)) {
+    throw new ValidationError('cancelToken must be a TransformCancelToken.')
+  }
+  let requested = false
+  try { requested = token && token.requested } catch (error) {
+    throw mapError(error, 'transport')
+  }
+  if ((flag && Atomics.load(flag, 0) !== 0) || requested) {
+    throw mapError(new backend.TranfiTransformError(
+      109, 'Tranfi preprocessing cancelled during input conversion.'
+    ), 'transport')
   }
 }
 
 function normalizeMatrix(X, options) {
+  const poll = () => checkCancelled(options.runtime, options.backend)
+  poll()
   let rows
   let cols
   let get
@@ -651,6 +745,7 @@ function normalizeMatrix(X, options) {
     }
     cols = X[0].length
     for (let row = 0; row < rows; row++) {
+      if (row % 8192 === 0) poll()
       if (!Array.isArray(X[row]) || X[row].length !== cols) {
         throw new ValidationError('Matrix must be rectangular.')
       }
@@ -702,9 +797,13 @@ function normalizeMatrix(X, options) {
   if (columnBytes > options.limits.maxAllocationBytes) {
     throw new ResourceLimitError(`${options.operation} column exceeds Tranfi allocation limit.`)
   }
-  const columns = Array.from({ length: cols }, () => new Float64Array(rows))
+  const columns = Array.from({ length: cols }, () => {
+    poll()
+    return new Float64Array(rows)
+  })
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
+      if ((row * cols + col) % 8192 === 0) poll()
       const value = get(row, col)
       if (typeof value !== 'number' || !Number.isFinite(value) && !Number.isNaN(value)) {
         throw new ValidationError('Matrix values must be finite numbers or NaN.')
@@ -712,6 +811,7 @@ function normalizeMatrix(X, options) {
       columns[col][row] = value
     }
   }
+  poll()
   return { rows, cols, columns }
 }
 
@@ -840,6 +940,16 @@ function assertConfigWithinHostLimits(config, limits) {
       config.maxOutputColumns > limits.maxOutputColumns ||
       config.maxOutputElements > limits.maxOutputElementsPerCall) {
     throw new ResourceLimitError('Preprocess semantic limits exceed the active Tranfi host profile.')
+  }
+  let totalCategories = 0
+  for (const policy of Object.values(config.columns || {})) {
+    const count = policy.categories ? policy.categories.length : 0
+    totalCategories += count
+    if (count > limits.maxCategoriesPerColumn || totalCategories > limits.maxTotalCategories ||
+        (policy.kind === 'infer' && (policy.maxCategories ?? config.maxCategories) >
+          Math.min(limits.maxCategoriesPerColumn, limits.maxTotalCategories))) {
+      throw new ResourceLimitError('Column policy exceeds the active Tranfi category limits.')
+    }
   }
 }
 

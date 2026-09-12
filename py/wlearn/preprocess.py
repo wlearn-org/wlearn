@@ -7,6 +7,8 @@ import importlib
 import json
 import math
 import numbers
+import re
+import struct
 
 import numpy as np
 
@@ -32,7 +34,7 @@ _RESOLVED_KEYS = frozenset((
 ))
 _REQUEST_KEYS = frozenset((
     'allMissing', 'encode', 'impute', 'maxCategories',
-    'maxOutputColumns', 'maxOutputElements', 'scale', 'unknownCategory',
+    'maxOutputColumns', 'maxOutputElements', 'scale', 'unknownCategory', 'columns',
 ))
 _DEFAULTS = {
     'impute': 'auto',
@@ -81,7 +83,7 @@ class Preprocessor:
             impute=_UNSET, encode=_UNSET, scale=_UNSET,
             max_categories=_UNSET, unknown_category=_UNSET,
             all_missing=_UNSET, max_output_columns=_UNSET,
-            max_output_elements=_UNSET):
+            max_output_elements=_UNSET, columns=_UNSET):
         keyword_values = {
             'impute': impute,
             'encode': encode,
@@ -91,6 +93,7 @@ class Preprocessor:
             'allMissing': all_missing,
             'maxOutputColumns': max_output_columns,
             'maxOutputElements': max_output_elements,
+            'columns': columns,
         }
         supplied = {key: value for key, value in keyword_values.items()
                     if value is not _UNSET}
@@ -117,7 +120,8 @@ class Preprocessor:
         self._ensure_alive()
         matrix = _normalize_matrix(
             X, operation='fit', allow_zero_rows=False,
-            expected_cols=None, limits=self._effective_limits)
+            expected_cols=None, limits=self._effective_limits,
+            runtime=self._runtime_options)
         schema = _input_schema(matrix['cols'])
         recipe_spec = _build_recipe(self._config, matrix['cols'])
         recipe = analyzer = plan = None
@@ -160,7 +164,7 @@ class Preprocessor:
         matrix = _normalize_matrix(
             X, operation='transform', allow_zero_rows=True,
             expected_cols=len(self._input_schema),
-            limits=self._effective_limits)
+            limits=self._effective_limits, runtime=self._runtime_options)
         apply = None
         try:
             apply = self._plan.apply(
@@ -176,7 +180,8 @@ class Preprocessor:
                     result.dtype != 'float64'):
                 raise BackendError(
                     'Tranfi returned an invalid dense transform result.')
-            return np.asarray(result.data, dtype=np.float64).copy().reshape(
+            # NumPy retains the owned Python buffer after the apply session closes.
+            return np.asarray(result.data, dtype=np.float64).reshape(
                 result.rows, result.columns)
         except Exception as error:
             _raise_mapped(error, 'apply')
@@ -429,7 +434,8 @@ def _resolve_config(config, require_resolved=False):
         raise ValidationError('preprocess config must be a dict.')
     is_resolved = isinstance(config.get('impute'), dict)
     if require_resolved or is_resolved or 'policyVersion' in config:
-        _assert_exact_keys(config, _RESOLVED_KEYS, 'resolved preprocess config')
+        _assert_exact_keys(config, _RESOLVED_KEYS | ({'columns'} if 'columns' in config else set()),
+                           'resolved preprocess config')
         return _validate_resolved_config(config)
     unknown = set(config).difference(_REQUEST_KEYS)
     if unknown:
@@ -437,7 +443,10 @@ def _resolve_config(config, require_resolved=False):
             f'Unknown preprocess config key "{sorted(unknown)[0]}".')
     request = dict(_DEFAULTS)
     request.update(config)
-    return _resolve_request_config(request, config)
+    resolved = _resolve_request_config(request, config)
+    if 'columns' in config:
+        resolved['columns'] = config['columns']
+    return _validate_resolved_config(resolved)
 
 
 def _resolve_set_params(current, patch):
@@ -536,7 +545,8 @@ def _resolve_request_config(request, supplied):
 
 
 def _validate_resolved_config(config):
-    _assert_exact_keys(config, _RESOLVED_KEYS, 'resolved preprocess config')
+    _assert_exact_keys(config, _RESOLVED_KEYS | ({'columns'} if 'columns' in config else set()),
+                           'resolved preprocess config')
     impute = config['impute']
     if not isinstance(impute, dict):
         raise ValidationError(
@@ -576,7 +586,54 @@ def _validate_resolved_config(config):
             'resolved allMissing must be error or zero.')
     _validate_unknown_policy(
         config['encode'], config['unknownCategory'])
-    return _clone_json(config)
+    result = _clone_json({key: value for key, value in config.items() if key != 'columns'})
+    if 'columns' in config:
+        columns = _resolve_columns(result, config['columns'])
+        if columns:
+            result['columns'] = columns
+    return result
+
+
+def _resolve_columns(base, columns):
+    if not isinstance(columns, dict):
+        raise ValidationError('columns must be a dict keyed by x0, x1, etc.')
+    # Store explicit overrides so later global updates still apply to inherited options.
+    result = {}
+    allowed = {'kind', 'categories', 'impute', 'encode', 'scale',
+               'allMissing', 'unknownCategory', 'maxCategories'}
+    for source, patch in columns.items():
+        if (not isinstance(source, str) or not re.fullmatch(r'x(?:0|[1-9][0-9]*)', source)
+                or len(source) > 17 or int(source[1:]) > _MAX_SAFE):
+            raise ValidationError('columns keys must be canonical x0, x1, etc.')
+        if not isinstance(patch, dict) or set(patch).difference(allowed):
+            raise ValidationError(f'Invalid column policy for {source}.')
+        kind = patch.get('kind', 'categorical' if 'categories' in patch else 'infer')
+        if kind not in ('numeric', 'categorical', 'infer'):
+            raise ValidationError(f'Invalid kind for {source}.')
+        operations = {key: value for key, value in patch.items()
+                      if key not in ('kind', 'categories')}
+        local = _resolve_set_params(base, operations)
+        normalized = dict(operations, kind=kind)
+        if 'categories' in patch:
+            values = patch['categories']
+            if (kind != 'categorical' or not isinstance(values, list) or not values
+                    or any(isinstance(v, bool) or not isinstance(v, (int, float))
+                           for v in values)):
+                raise ValidationError(f'{source} categories must be finite numbers for a categorical column.')
+            try:
+                values = [0.0 if v == 0 else float(v) for v in values]
+            except OverflowError as error:
+                raise ValidationError(f'{source} categories must fit finite float64.') from error
+            if not all(math.isfinite(value) for value in values):
+                raise ValidationError(f'{source} categories must fit finite float64.')
+            values.sort()
+            if any(a == b for a, b in zip(values, values[1:])):
+                raise ValidationError(f'{source} categories must be unique.')
+            if local['encode'] is False and local['impute']['categorical'] is False:
+                raise ValidationError('Fixed categories require encoding or mode imputation.')
+            normalized['categories'] = values
+        result[source] = normalized
+    return result
 
 
 def _validate_unknown_policy(encode, unknown):
@@ -591,7 +648,7 @@ def _validate_unknown_policy(encode, unknown):
             'label encoding requires unknownCategory error or sentinel.')
 
 
-def _build_recipe(config, columns):
+def _recipe_column(config, index, policy):
     numeric = config['impute']['numeric']
     if numeric is False:
         numeric_impute = {
@@ -629,6 +686,38 @@ def _build_recipe(config, columns):
             'sentinelLabel': (
                 -1 if config['unknownCategory'] == 'sentinel' else None),
         }
+    kind = policy.get('kind', 'infer')
+    if 'categories' in policy:
+        categorical_encode['categories'] = [
+            {'t': 'f64', 'v': struct.pack('>d', value).hex()}
+            for value in policy['categories']]
+    return {
+        'sourceId': f'x{index}',
+        'kind': ({'op': 'infer', 'value': None,
+                  'rule': 'finite-integer-cardinality-v1',
+                  'maxCategories': config['maxCategories']}
+                 if kind == 'infer' else
+                 {'op': 'declared', 'value': kind, 'rule': None, 'maxCategories': None}),
+        'numeric': None if kind == 'categorical' else {
+            'impute': numeric_impute, 'normalize': normalize},
+        'categorical': None if kind == 'numeric' else {
+            'impute': categorical_impute, 'encode': categorical_encode},
+    }
+
+
+def _build_recipe(config, columns):
+    policies = config.get('columns', {})
+    for source in policies:
+        if int(source[1:]) >= columns:
+            raise ValidationError(f'Column policy {source} is outside the input width.')
+    base = {key: value for key, value in config.items() if key != 'columns'}
+    fields = []
+    for index in range(columns):
+        policy = policies.get(f'x{index}', {})
+        local = _resolve_set_params(base, {
+            key: value for key, value in policy.items() if key not in ('kind', 'categories')
+        }) if policy else base
+        fields.append(_recipe_column(local, index, policy))
     return {
         'format': 'tranfi.transform-recipe',
         'version': 1,
@@ -638,28 +727,22 @@ def _build_recipe(config, columns):
             'maxOutputColumns': config['maxOutputColumns'],
             'maxOutputElementsPerApply': config['maxOutputElements'],
         },
-        'columns': [{
-            'sourceId': f'x{index}',
-            'kind': {
-                'op': 'infer',
-                'value': None,
-                'rule': 'finite-integer-cardinality-v1',
-                'maxCategories': config['maxCategories'],
-            },
-            'numeric': {
-                'impute': dict(numeric_impute),
-                'normalize': dict(normalize),
-            },
-            'categorical': {
-                'impute': dict(categorical_impute),
-                'encode': dict(categorical_encode),
-            },
-        } for index in range(columns)],
+        'columns': fields,
     }
 
 
+def _check_cancelled(runtime):
+    token = runtime.get('cancel_token')
+    if token is not None and token.requested:
+        _raise_mapped(_load_tranfi().TranfiTransformError(
+            109, 'Tranfi preprocessing cancelled during input conversion.'),
+            'transport')
+
+
 def _normalize_matrix(X, *, operation, allow_zero_rows,
-                      expected_cols, limits):
+                      expected_cols, limits, runtime=None):
+    runtime = runtime or {}
+    _check_cancelled(runtime)
     if isinstance(X, np.ndarray):
         if X.ndim != 2 or X.dtype not in (np.dtype('float32'),
                                           np.dtype('float64')):
@@ -675,7 +758,9 @@ def _normalize_matrix(X, *, operation, allow_zero_rows,
         if not isinstance(X[0], (list, tuple)) or len(X[0]) == 0:
             raise ValidationError('Matrix rows must be nonempty sequences.')
         cols = len(X[0])
-        for row in X:
+        for index, row in enumerate(X):
+            if index % 8192 == 0:
+                _check_cancelled(runtime)
             if not isinstance(row, (list, tuple)) or len(row) != cols:
                 raise ValidationError('Matrix must be rectangular.')
         source = X
@@ -705,19 +790,41 @@ def _normalize_matrix(X, *, operation, allow_zero_rows,
     if column_bytes > limits['max_allocation_bytes']:
         raise ResourceLimitError(
             f'{operation} column exceeds Tranfi allocation limit.')
-    columns = [array('d') for _ in range(cols)]
-    for row in range(rows):
+    columns = []
+    if isinstance(source, np.ndarray):
+        source = np.asarray(source)
         for col in range(cols):
-            value = source[row][col]
-            if (isinstance(value, (bool, np.bool_)) or
-                    not isinstance(value, numbers.Real)):
-                raise ValidationError(
-                    'Matrix values must be finite numbers or NaN.')
-            value = float(value)
-            if math.isinf(value):
-                raise ValidationError(
-                    'Matrix values must be finite numbers or NaN.')
-            columns[col].append(value)
+            _check_cancelled(runtime)
+            values = np.empty(rows, dtype=np.float64)
+            # Bounded blocks keep validation temporaries small and let a
+            # cancellation request interrupt large/strided host copies.
+            for start in range(0, rows, 8192):
+                _check_cancelled(runtime)
+                block = source[start:start + 8192, col]
+                if np.isinf(block).any():
+                    raise ValidationError(
+                        'Matrix values must be finite numbers or NaN.')
+                values[start:start + 8192] = block
+            columns.append(values)
+    else:
+        for _ in range(cols):
+            _check_cancelled(runtime)
+            columns.append(array('d'))
+        for row in range(rows):
+            for col in range(cols):
+                if (row * cols + col) % 8192 == 0:
+                    _check_cancelled(runtime)
+                value = source[row][col]
+                if (isinstance(value, (bool, np.bool_)) or
+                        not isinstance(value, numbers.Real)):
+                    raise ValidationError(
+                        'Matrix values must be finite numbers or NaN.')
+                value = float(value)
+                if math.isinf(value):
+                    raise ValidationError(
+                        'Matrix values must be finite numbers or NaN.')
+                columns[col].append(value)
+    _check_cancelled(runtime)
     return {'rows': rows, 'cols': cols, 'columns': columns}
 
 
@@ -887,6 +994,16 @@ def _assert_config_within_host_limits(config, limits):
             limits['max_output_elements_per_call']):
         raise ResourceLimitError(
             'Preprocess semantic limits exceed the active Tranfi host profile.')
+    total_categories = 0
+    for policy in config.get('columns', {}).values():
+        count = len(policy.get('categories', []))
+        total_categories += count
+        if (count > limits['max_categories_per_column'] or
+                total_categories > limits['max_total_categories'] or
+                (policy.get('kind') == 'infer' and
+                 policy.get('maxCategories', config['maxCategories']) >
+                 min(limits['max_categories_per_column'], limits['max_total_categories']))):
+            raise ResourceLimitError('Column policy exceeds the active Tranfi category limits.')
 
 
 def _raise_mapped(error, phase):
