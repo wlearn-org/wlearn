@@ -640,9 +640,13 @@ def score_estimator(model, X, y, scoring):
         method = 'predict_proba'
     if method is None or not callable(getattr(model, method, None)):
         raise ValidationError(f'Scoring response "{response}" requires {method}')
-    args = getattr(scorer, 'measure', None)
-    args = args.metadata.get('predictionArgs', []) if args is not None else []
-    values = getattr(model, method)(X, *args)
+    measure = getattr(scorer, 'measure', None)
+    metadata = measure.metadata if measure is not None else {}
+    args = metadata.get('predictionArgs', [])
+    kwargs = metadata.get('predictionKwargs', {})
+    if not isinstance(args, (list, tuple)) or not isinstance(kwargs, dict):
+        raise ValidationError('Prediction arguments must be a sequence and keyword mapping')
+    values = getattr(model, method)(X, *args, **kwargs)
     caps = getattr(model, 'capabilities', {})
     task_kind = 'multilabel' if caps.get('multilabel') else 'multioutput' if caps.get('multioutput') else None
     opts = {'task_kind': task_kind}

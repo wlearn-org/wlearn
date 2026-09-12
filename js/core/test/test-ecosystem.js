@@ -422,3 +422,14 @@ it('scalar target normalization rejects matrices and object coercion', () => {
     assert.throws(() => normalizeY(y), ValidationError)
   }
 })
+
+it('Pipeline preserves structured prediction options after the level argument', () => {
+  const { Pipeline } = require('../src/index.js')
+  const model = { fit() { return this }, predictQuantiles(x, levels, options) {
+    assert.deepEqual(options, { bound: 'upper' })
+    return createPrediction({ rows: 1, taskKind: 'regression', quantileLevels: levels, quantiles: [2] })
+  } }
+  const pipeline = new Pipeline([['model', model]])
+  pipeline.fit([[1]], [1])
+  assert.deepEqual(Array.from(pipeline.predictQuantiles([[1]], [.5], { bound: 'upper' }).quantiles), [2])
+})

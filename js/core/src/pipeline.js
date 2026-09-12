@@ -157,17 +157,17 @@ class Pipeline {
    * @throws {ValidationError} If the last step does not support `predictProba`.
    */
   predictProba(X, opts) { return this.#predictMethod('predictProba', X, opts) }
-  predictQuantiles(X, levels) { return this.#predictMethod('predictQuantiles', X, levels) }
-  predictInterval(X, coverage) { return this.#predictMethod('predictInterval', X, coverage) }
-  predictSet(X, coverage) { return this.#predictMethod('predictSet', X, coverage) }
-  predictRegion(X, coverage) { return this.#predictMethod('predictRegion', X, coverage) }
+  predictQuantiles(X, levels, opts) { return this.#predictMethod('predictQuantiles', X, levels, opts) }
+  predictInterval(X, coverage, opts) { return this.#predictMethod('predictInterval', X, coverage, opts) }
+  predictSet(X, coverage, opts) { return this.#predictMethod('predictSet', X, coverage, opts) }
+  predictRegion(X, coverage, opts) { return this.#predictMethod('predictRegion', X, coverage, opts) }
   predictDistribution(X, opts) { return this.#predictMethod('predictDistribution', X, opts) }
 
-  #predictMethod(method, X, opts) {
+  #predictMethod(method, X, ...args) {
     this.#ensureFitted()
     const last = this.#steps[this.#steps.length - 1].estimator
     if (typeof last[method] !== 'function') throw new ValidationError(`Last step does not support ${method}`)
-    return lift(this.#transformThrough(X), value => last[method](value, opts))
+    return lift(this.#transformThrough(X), value => last[method](value, ...args))
   }
 
   /**

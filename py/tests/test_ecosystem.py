@@ -475,3 +475,25 @@ def test_explicit_cv_can_validate_a_row_count_without_allocating_dummy_targets()
     assert len(resolve_cv(cv, 4, task='regression', require_complete=True)) == 2
     with pytest.raises(ValidationError, match='labels'):
         resolve_cv(2, 4, task='classification')
+
+
+def test_scoring_and_pipeline_preserve_prediction_keyword_options():
+    from wlearn.pipeline import Pipeline
+    from wlearn.measure import score_estimator
+
+    class Model:
+        capabilities = dict(regressor=True)
+
+        def fit(self, X, y):
+            return self
+
+        def predict_quantiles(self, X, levels, *, bound):
+            assert bound == 'upper'
+            return create_prediction(rows=1, task_kind='regression', quantile_levels=levels, quantiles=[2])
+
+    measure = dict(id='test.options', task_kinds=['regression'], direction='minimize', response='quantiles',
+                   metadata=dict(predictionArgs=[[.5]], predictionKwargs=dict(bound='upper')),
+                   fn=lambda **ctx: float(ctx['prediction'].quantiles[0]))
+    assert score_estimator(Model(), [[1]], [1], measure) == 2
+    pipeline = Pipeline([('model', Model())]).fit([[1]], [1])
+    assert score_estimator(pipeline, [[1]], [1], measure) == 2

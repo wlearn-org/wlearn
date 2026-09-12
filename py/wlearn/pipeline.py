@@ -94,17 +94,17 @@ class Pipeline:
             raise ValidationError(f'Last step does not support {method}')
         return getattr(last, method)(self._transform_through(X), *args, **kwargs)
 
-    def predict_quantiles(self, X, levels):
-        return self._predict_method('predict_quantiles', X, levels)
+    def predict_quantiles(self, X, levels, **kwargs):
+        return self._predict_method('predict_quantiles', X, levels, **kwargs)
 
-    def predict_interval(self, X, coverage=0.9):
-        return self._predict_method('predict_interval', X, coverage)
+    def predict_interval(self, X, coverage=0.9, **kwargs):
+        return self._predict_method('predict_interval', X, coverage, **kwargs)
 
-    def predict_set(self, X, coverage=0.9):
-        return self._predict_method('predict_set', X, coverage)
+    def predict_set(self, X, coverage=0.9, **kwargs):
+        return self._predict_method('predict_set', X, coverage, **kwargs)
 
-    def predict_region(self, X, coverage=0.9):
-        return self._predict_method('predict_region', X, coverage)
+    def predict_region(self, X, coverage=0.9, **kwargs):
+        return self._predict_method('predict_region', X, coverage, **kwargs)
 
     def predict_distribution(self, X, **kwargs):
         return self._predict_method('predict_distribution', X, **kwargs)

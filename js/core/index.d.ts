@@ -76,10 +76,10 @@ export declare class Pipeline implements Estimator {
   predict(X: Matrix | number[][], opts?: Record<string, unknown>): MaybePromise<Targets>
   predictProba(X: Matrix | number[][]): MaybePromise<Float64Array>
   score(X: Matrix | number[][], y: TargetInput): MaybePromise<number>
-  predictQuantiles(X: Matrix | number[][], levels: ArrayLike<number>): MaybePromise<Prediction>
-  predictInterval(X: Matrix | number[][], coverage?: number | ArrayLike<number>): MaybePromise<Prediction>
-  predictSet(X: Matrix | number[][], coverage?: number | ArrayLike<number>): MaybePromise<Prediction>
-  predictRegion(X: Matrix | number[][], coverage?: number | ArrayLike<number>): MaybePromise<Prediction>
+  predictQuantiles(X: Matrix | number[][], levels: ArrayLike<number>, opts?: Record<string, unknown>): MaybePromise<Prediction>
+  predictInterval(X: Matrix | number[][], coverage?: number | ArrayLike<number>, opts?: Record<string, unknown>): MaybePromise<Prediction>
+  predictSet(X: Matrix | number[][], coverage?: number | ArrayLike<number>, opts?: Record<string, unknown>): MaybePromise<Prediction>
+  predictRegion(X: Matrix | number[][], coverage?: number | ArrayLike<number>, opts?: Record<string, unknown>): MaybePromise<Prediction>
   predictDistribution(X: Matrix | number[][], opts?: Record<string, unknown>): MaybePromise<Prediction>
   save(): Uint8Array
   dispose(): void
