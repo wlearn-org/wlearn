@@ -1,6 +1,7 @@
 const { ValidationError } = require('./errors.js')
 const { makeLCG, shuffle } = require('./rng.js')
 const { normalizeY } = require('./matrix.js')
+const { targetRows } = require('./targets.js')
 const { kFold, stratifiedKFold, trainTestSplit } = require('./cv.js')
 const { inferTaskKind } = require('./task.js')
 
@@ -15,8 +16,10 @@ function serializeCv(cv) {
   }))
 }
 
-function resolveCv(cv, y, { task = inferTaskKind(y), seed = 42, requireComplete = false } = {}) {
-  const n = y.length
+function resolveCv(cv, y, { task = typeof y === 'number' ? 'regression' : inferTaskKind(y), seed = 42, requireComplete = false } = {}) {
+  const n = typeof y === 'number' ? y : targetRows(y)
+  if (!Number.isSafeInteger(n) || n < 1) throw new ValidationError('CV requires a positive row count')
+  if (typeof y === 'number' && task === 'classification') throw new ValidationError('Stratified CV requires class labels')
   let source
   if (typeof cv === 'number') {
     source = task === 'classification'

@@ -3,6 +3,7 @@
 import numpy as np
 
 from .errors import ValidationError
+from .targets import normalize_targets
 from .rng import make_lcg, shuffle
 
 
@@ -136,6 +137,9 @@ def cross_val_score(cls, X, y, cv=5, scoring='accuracy', seed=42, params=None, t
 
     from .resampling import resolve_cv
     task = task or params.get('task') or infer_task_kind(y)
+    X, y = np.asarray(X), normalize_targets(y, task)
+    if X.ndim != 2 or len(X) != len(y):
+        raise ValidationError('X and target rows must match')
     folds = resolve_cv(cv, y, task=task, seed=seed)
 
     scores = np.zeros(len(folds), dtype=np.float64)

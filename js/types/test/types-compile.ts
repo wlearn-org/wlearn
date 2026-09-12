@@ -4,7 +4,7 @@ import type {
   Estimator,
   MaybePromise,
   Pipeline,
-  Task
+  Task, Targets
 } from '@wlearn/types'
 
 const version: 1 = wlearnTypes.BUNDLE_VERSION
@@ -20,7 +20,7 @@ declare const estimator: Estimator
 declare const pipeline: Pipeline
 declare const archive: Archive
 declare const task: Task
-const prediction: MaybePromise<Int32Array | Float32Array | Float64Array> =
+const prediction: MaybePromise<Targets> =
   estimator.predict(task.X)
 
 void version

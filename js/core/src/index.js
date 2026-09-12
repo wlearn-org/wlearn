@@ -14,6 +14,8 @@ const {
 // matrix
 const { normalizeX, normalizeY, makeDense, validateMatrix, subsetRows, subsetLabels } = require('./matrix.js')
 
+const { isTargetMatrix, normalizeTargets, targetRows, subsetTargets, validateSampleWeight } = require('./targets.js')
+
 // hash
 const { sha256Sync } = require('./hash.js')
 
@@ -86,6 +88,7 @@ module.exports = {
   ResourceLimitError, CancelledError, BackendError,
   // matrix
   normalizeX, normalizeY, makeDense, validateMatrix, subsetRows, subsetLabels,
+  isTargetMatrix, normalizeTargets, targetRows, subsetTargets, validateSampleWeight,
   // hash
   sha256Sync,
   // bundle

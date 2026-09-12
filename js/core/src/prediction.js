@@ -1,165 +1,170 @@
 const { ValidationError } = require('./errors.js')
-const { normalizeY } = require('./matrix.js')
 
-const PREDICTION_FIELDS = ['response', 'proba', 'score', 'decision', 'interval', 'quantiles']
+const PREDICTION_FIELDS = ['response', 'proba', 'score', 'decision', 'interval', 'quantiles', 'sets', 'samples', 'region']
+const ARRAY_FIELDS = ['truth', 'response', 'proba', 'score', 'decision', 'interval', 'quantiles', 'classes', 'sets', 'samples', 'quantileLevels', 'coverageLevels']
 
-function _toFloat64(x, name) {
-  if (x == null) return undefined
-  if (x instanceof Float64Array) return x
-  if (x instanceof Float32Array || x instanceof Int32Array || Array.isArray(x)) {
-    return new Float64Array(x)
+function numericArray(value, name) {
+  if (!(Array.isArray(value) || value instanceof Float64Array || value instanceof Float32Array || value instanceof Int32Array || value instanceof Uint8Array)) {
+    throw new ValidationError(`Prediction.${name} must be a flat numeric array`)
   }
-  throw new ValidationError(`Prediction.${name} must be an array or typed array`)
+  for (const v of value) if (typeof v !== 'number') throw new ValidationError(`Prediction.${name} must be a flat numeric array`)
+  return ArrayBuffer.isView(value) ? value : Float64Array.from(value)
 }
 
-function _inferRows(prediction) {
-  if (prediction.truth) return prediction.truth.length
-  if (prediction.response) return prediction.response.length
-  if (prediction.score) return prediction.score.length
-  if (prediction.decision) return prediction.decision.length
-  if (prediction.rowIds) return prediction.rowIds.length
-  if (prediction.probaRows) return prediction.probaRows
-  if (prediction.proba && prediction.classes && prediction.classes.length > 0) {
-    return prediction.proba.length / prediction.classes.length
+function positive(value, name) {
+  if (!Number.isSafeInteger(value) || value < 1) throw new ValidationError(`Prediction.${name} must be a positive safe integer`)
+  return value
+}
+
+function size(...dims) {
+  const n = dims.reduce((a, b) => a * b, 1)
+  return positive(n, 'size')
+}
+
+function levels(value, name, endpoints = false) {
+  numericArray(value, name)
+  if (!value.length) throw new ValidationError(`Prediction.${name} must be non-empty`)
+  let previous = -Infinity
+  for (const v of value) {
+    if (!Number.isFinite(v) || (endpoints ? v < 0 || v > 1 : v <= 0 || v >= 1) || v <= previous) {
+      throw new ValidationError(`Prediction.${name} must contain strictly increasing probabilities`)
+    }
+    previous = v
   }
+  return value.length
+}
+
+function inferRows(p) {
+  const t = p.targetCount ?? 1
+  if (p.rows != null) return p.rows
+  if (p.truth != null) return p.truth.length / t
+  if (p.response != null) return p.response.length / t
+  if (p.score != null) return p.score.length / t
+  if (p.decision != null) return p.decision.length / t
+  if (p.rowIds != null) return p.rowIds.length
+  if (p.probaRows != null) return p.probaRows
+  if (p.proba != null) return p.proba.length / (p.taskKind === 'multilabel' ? t : p.classes?.length)
+  if (p.quantiles != null) return p.quantiles.length / (t * p.quantileLevels?.length)
+  if (p.interval != null) return p.interval.length / (t * p.coverageLevels?.length * 2)
   return undefined
 }
 
-function createPrediction({
-  taskId,
-  rowIds,
-  truth,
-  response,
-  proba,
-  probaRows,
-  score,
-  decision,
-  interval,
-  quantiles,
-  classes,
-  featureSchemaHash,
-  modelArtifactHash,
-  warnings = [],
-  metadata = {}
-} = {}) {
-  const prediction = {
-    warnings: [...warnings],
-    metadata: { ...metadata }
+function createPrediction(opts = {}) {
+  const p = { warnings: [...(opts.warnings || [])], metadata: { ...(opts.metadata || {}) } }
+  for (const key of ['taskId', 'taskKind', 'rows', 'targetCount', 'targetNames', 'rowIds', 'probaRows', 'sampleCount', 'sampleKind', 'region', 'featureSchemaHash', 'modelArtifactHash']) {
+    if (opts[key] != null) p[key] = opts[key]
   }
-  if (taskId) prediction.taskId = String(taskId)
-  if (rowIds) prediction.rowIds = rowIds
-  if (truth != null) prediction.truth = normalizeY(truth)
-  if (response != null) prediction.response = normalizeY(response)
-  if (proba != null) prediction.proba = _toFloat64(proba, 'proba')
-  if (probaRows != null) prediction.probaRows = probaRows
-  if (score != null) prediction.score = _toFloat64(score, 'score')
-  if (decision != null) prediction.decision = _toFloat64(decision, 'decision')
-  if (interval != null) prediction.interval = _toFloat64(interval, 'interval')
-  if (quantiles != null) prediction.quantiles = _toFloat64(quantiles, 'quantiles')
-  if (classes != null) prediction.classes = normalizeY(classes)
-  if (featureSchemaHash) prediction.featureSchemaHash = String(featureSchemaHash)
-  if (modelArtifactHash) prediction.modelArtifactHash = String(modelArtifactHash)
-  return validatePrediction(prediction)
+  for (const key of ARRAY_FIELDS) if (opts[key] != null) p[key] = numericArray(opts[key], key)
+  validatePrediction(p)
+  p.rows = inferRows(p)
+  return p
 }
 
-function validatePrediction(prediction) {
-  if (!prediction || typeof prediction !== 'object') {
-    throw new ValidationError('Prediction must be an object')
-  }
-
-  let hasField = false
-  for (const field of PREDICTION_FIELDS) {
-    if (prediction[field] != null) hasField = true
-  }
-  if (!hasField) {
+function validatePrediction(p) {
+  if (!p || typeof p !== 'object' || !PREDICTION_FIELDS.some(f => p[f] != null)) {
     throw new ValidationError('Prediction must contain at least one prediction field')
   }
-
-  const rows = _inferRows(prediction)
-  if (rows == null || rows < 1) {
-    throw new ValidationError('Prediction row count could not be inferred')
+  const t = positive(p.targetCount ?? 1, 'targetCount')
+  if (p.taskKind != null && !['classification', 'regression', 'multioutput', 'multilabel'].includes(p.taskKind)) {
+    throw new ValidationError('Prediction.taskKind is unsupported')
   }
-  if (!Number.isInteger(rows)) {
-    throw new ValidationError(`Prediction row count must be an integer, got ${rows}`)
+  if (t > 1 && !['multioutput', 'multilabel'].includes(p.taskKind)) {
+    throw new ValidationError('Multiple targets require taskKind multioutput or multilabel')
   }
-
-  for (const field of ['truth', 'response', 'score', 'decision']) {
-    if (prediction[field] && prediction[field].length !== rows) {
-      throw new ValidationError(`Prediction.${field} length (${prediction[field].length}) must match row count (${rows})`)
-    }
+  if (p.targetNames != null && (!Array.isArray(p.targetNames) || p.targetNames.length !== t ||
+      p.targetNames.some(v => typeof v !== 'string' || !v.length) || new Set(p.targetNames).size !== t)) {
+    throw new ValidationError('Prediction.targetNames must uniquely name every target')
   }
-  for (const field of ['interval', 'quantiles']) {
-    if (prediction[field] && prediction[field].length % rows !== 0) {
-      throw new ValidationError(`Prediction.${field} length (${prediction[field].length}) must be divisible by row count (${rows})`)
-    }
-  }
-  if (prediction.rowIds && prediction.rowIds.length !== rows) {
-    throw new ValidationError(`Prediction.rowIds length (${prediction.rowIds.length}) must match row count (${rows})`)
-  }
-  if (prediction.proba) {
-    const nClasses = prediction.classes ? prediction.classes.length : undefined
-    if (prediction.probaRows != null && (!Number.isInteger(prediction.probaRows) || prediction.probaRows < 1)) {
-      throw new ValidationError('Prediction.probaRows must be a positive integer')
-    }
-    if (prediction.probaRows != null && prediction.probaRows !== rows) {
-      throw new ValidationError(`Prediction.probaRows (${prediction.probaRows}) must match row count (${rows})`)
-    }
-    if (prediction.classes && prediction.classes.length === 0) {
-      throw new ValidationError('Prediction.classes must be non-empty')
-    }
-    if (nClasses && prediction.proba.length !== rows * nClasses) {
-      throw new ValidationError(`Prediction.proba length (${prediction.proba.length}) must equal rows * classes (${rows * nClasses})`)
-    }
-    if (!nClasses && prediction.probaRows && prediction.proba.length % prediction.probaRows !== 0) {
-      throw new ValidationError(`Prediction.proba length (${prediction.proba.length}) must be divisible by probaRows (${prediction.probaRows})`)
+  const rows = positive(inferRows(p), 'rows')
+  const nt = size(rows, t)
+  if (p.rowIds != null && p.rowIds.length !== rows) throw new ValidationError('Prediction.rowIds length must match rows')
+  if (p.probaRows != null && positive(p.probaRows, 'probaRows') !== rows) throw new ValidationError('Prediction.probaRows must match rows')
+  function field(name, n, extended = false) {
+    if (p[name] == null) return
+    const v = numericArray(p[name], name)
+    if (v.length !== n) throw new ValidationError(`Prediction.${name} length must equal ${n}`)
+    for (const x of v) if (extended ? Number.isNaN(x) : !Number.isFinite(x)) {
+      throw new ValidationError(`Prediction.${name} ${extended ? 'must not contain NaN' : 'must be finite'}`)
     }
   }
-  if (prediction.classes) {
-    const labels = Array.from(prediction.classes)
-    if (labels.some(value => !Number.isFinite(value)) || new Set(labels).size !== labels.length) {
+  for (const name of ['truth', 'response', 'score', 'decision']) field(name, nt)
+  if (p.taskKind === 'multilabel') {
+    for (const name of ['truth', 'response']) if (p[name] != null) {
+      for (const v of p[name]) if (v !== 0 && v !== 1) throw new ValidationError(`Multilabel ${name} values must be 0 or 1`)
+    }
+    if (p.classes != null) throw new ValidationError('Multilabel predictions use target axes, not a shared class axis')
+  }
+  if (p.classes != null) {
+    const cls = numericArray(p.classes, 'classes')
+    if (!cls.length || new Set(cls).size !== cls.length || Array.from(cls).some(v => !Number.isFinite(v))) {
       throw new ValidationError('Prediction.classes must contain unique finite labels')
     }
   }
-  if (prediction.proba) {
-    const cols = prediction.proba.length / rows
-    if (!Number.isInteger(cols) || cols < 1) {
-      throw new ValidationError('Prediction.proba must contain complete probability rows')
-    }
-    for (let row = 0; row < rows; row++) {
+  if (p.proba != null) {
+    const cols = p.taskKind === 'multilabel' ? t : p.classes?.length ?? p.proba.length / rows
+    positive(cols, 'probability columns')
+    if (p.taskKind === 'multioutput') throw new ValidationError('Multioutput regression has no class probabilities')
+    field('proba', size(rows, cols))
+    for (let r = 0; r < rows; r++) {
       let sum = 0
-      for (let col = 0; col < cols; col++) {
-        const value = prediction.proba[row * cols + col]
-        if (!Number.isFinite(value) || value < 0 || value > 1) {
-          throw new ValidationError('Prediction.proba values must be finite and in [0, 1]')
-        }
-        sum += value
+      for (let c = 0; c < cols; c++) {
+        const v = p.proba[r * cols + c]
+        if (v < 0 || v > 1) throw new ValidationError('Prediction.proba values must be in [0, 1]')
+        sum += v
       }
-      // Allow Float32 backend rounding without accepting unnormalized scores.
-      if (Math.abs(sum - 1) > 1e-6) {
-        throw new ValidationError('Prediction.proba rows must sum to 1')
-      }
+      // Float32 outputs need rounding tolerance; independent labels have no row sum constraint.
+      if (p.taskKind !== 'multilabel' && Math.abs(sum - 1) > 1e-6) throw new ValidationError('Prediction.proba rows must sum to 1')
     }
   }
-  return prediction
-}
-
-function predictionRows(prediction) {
-  validatePrediction(prediction)
-  return _inferRows(prediction)
-}
-
-function predictionField(prediction, field) {
-  validatePrediction(prediction)
-  if (!PREDICTION_FIELDS.includes(field) && field !== 'truth') {
-    throw new ValidationError(`Unknown prediction field "${field}"`)
+  if (p.quantileLevels != null) levels(p.quantileLevels, 'quantileLevels', true)
+  if (p.coverageLevels != null) levels(p.coverageLevels, 'coverageLevels')
+  if (p.quantiles != null) {
+    const q = levels(p.quantileLevels, 'quantileLevels', true)
+    field('quantiles', size(nt, q), true)
+    // Layout [row, target, level]. A quantile function must be nondecreasing.
+    for (let i = 0; i < p.quantiles.length; i++) if (i % q && p.quantiles[i] < p.quantiles[i - 1]) {
+      throw new ValidationError('Prediction.quantiles must be nondecreasing within each target')
+    }
   }
-  return prediction[field]
+  if (p.interval != null) {
+    const k = levels(p.coverageLevels, 'coverageLevels')
+    field('interval', size(nt, k, 2), true)
+    for (let i = 0; i < p.interval.length; i += 2) {
+      const lo = p.interval[i], hi = p.interval[i + 1]
+      // [+Infinity, -Infinity] denotes the empty set; [-Infinity, +Infinity] all real values.
+      if (lo > hi && !(lo === Infinity && hi === -Infinity)) throw new ValidationError('Prediction.interval has reversed bounds')
+    }
+  }
+  if (p.sets != null) {
+    const k = levels(p.coverageLevels, 'coverageLevels')
+    const cols = p.taskKind === 'multilabel' ? size(t, 2) : positive(p.classes?.length, 'classes length')
+    field('sets', size(rows, k, cols))
+    for (const v of p.sets) if (v !== 0 && v !== 1) throw new ValidationError('Prediction.sets entries must be 0 or 1')
+  }
+  if (p.samples != null) {
+    const n = positive(p.sampleCount, 'sampleCount')
+    if (!['outcome', 'mean'].includes(p.sampleKind)) throw new ValidationError('Prediction.sampleKind must be outcome or mean')
+    field('samples', size(rows, n, t))
+  }
+  if (p.region != null) {
+    const k = levels(p.coverageLevels, 'coverageLevels')
+    if (p.region.kind !== 'ellipsoid') throw new ValidationError('Prediction.region kind must be ellipsoid')
+    for (const [key, n] of [['centers', nt], ['precision', size(t, t)], ['radii', size(rows, k)]]) {
+      const v = numericArray(p.region[key], `region.${key}`)
+      if (v.length !== n || Array.from(v).some(x => key === 'radii' ? Number.isNaN(x) || x < 0 : !Number.isFinite(x))) {
+        throw new ValidationError(`Prediction.region.${key} has invalid dimensions or values`)
+      }
+    }
+    // Positive definiteness is checked by the numerical region owner before construction/import.
+  }
+  return p
 }
 
-module.exports = {
-  PREDICTION_FIELDS,
-  createPrediction,
-  validatePrediction,
-  predictionRows,
-  predictionField
+function predictionRows(p) { validatePrediction(p); return inferRows(p) }
+function predictionField(p, field) {
+  validatePrediction(p)
+  if (!PREDICTION_FIELDS.includes(field) && field !== 'truth') throw new ValidationError(`Unknown prediction field "${field}"`)
+  return p[field]
 }
+
+module.exports = { PREDICTION_FIELDS, createPrediction, validatePrediction, predictionRows, predictionField }

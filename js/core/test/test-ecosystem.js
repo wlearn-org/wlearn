@@ -131,7 +131,7 @@ describe('Prediction and measure primitives', () => {
   it('validates interval and quantile row alignment', () => {
     assert.doesNotThrow(() => createPrediction({
       rowIds: ['a', 'b'],
-      interval: new Float64Array([0, 1, 2, 3])
+      interval: new Float64Array([0, 1, 2, 3]), coverageLevels: [0.9]
     }))
     assert.throws(() => createPrediction({
       rowIds: ['a', 'b'],
@@ -350,4 +350,62 @@ describe('Archive primitives', () => {
     assert.equal(record.trialId, 'x-fold-1-42')
     assert.equal(record.batch, 1)
   })
+})
+
+it('uncertainty fields require level metadata and reject invalid numeric values', () => {
+  for (const fields of [
+    { quantiles: [1, 2, 3, 4] },
+    { interval: [1, 2, 3, 4] },
+    { quantiles: [1, 2, 3, 4], quantileLevels: [0.9, 0.1] },
+    { quantiles: [2, 1, 3, 4], quantileLevels: [0.1, 0.9] },
+    { quantiles: [NaN, 2, 3, 4], quantileLevels: [0.1, 0.9] },
+    { interval: [1, 2, 3, NaN], coverageLevels: [0.9] }
+  ]) assert.throws(() => createPrediction({ truth: [1, 2], ...fields }), ValidationError)
+})
+
+it('uncertainty shapes distinguish rows, targets and quantile or coverage levels', () => {
+  const { predictionRows } = require('../src/index.js')
+  const p = createPrediction({
+    rows: 2, taskKind: 'multioutput', targetCount: 2, targetNames: ['a', 'b'],
+    quantiles: [1, 2, 10, 20, 3, 4, 30, 40], quantileLevels: [0.1, 0.9]
+  })
+  assert.equal(predictionRows(p), 2)
+  assert.equal(p.targetCount, 2)
+  assert.deepEqual(Array.from(p.quantileLevels), [0.1, 0.9])
+  assert.throws(() => createPrediction({ ...p, rows: 3 }), ValidationError)
+  assert.throws(() => createPrediction({ ...p, targetNames: ['a', 'a'] }), ValidationError)
+  assert.doesNotThrow(() => createPrediction({ rows: 1, interval: [-Infinity, Infinity], coverageLevels: [0.99] }))
+})
+
+it('multilabel probabilities use independent columns and explicit target axes', () => {
+  const p = createPrediction({ rows: 2, taskKind: 'multilabel', targetCount: 2,
+    truth: [0, 1, 1, 1], proba: [0.2, 0.9, 0.8, 0.7] })
+  assert.equal(p.taskKind, 'multilabel')
+  assert.throws(() => createPrediction({ ...p, truth: [0, 2, 1, 1] }), ValidationError)
+})
+
+it('matrix targets require an explicit multioutput or multilabel task', () => {
+  const targets = [[1, 2], [3, 4], [5, 6]]
+  const task = createTask({ X, y: targets, kind: 'multioutput' })
+  assert.equal(task.y.rows, 3)
+  assert.equal(task.y.cols, 2)
+  assert.deepEqual(Array.from(task.y.data), [1, 2, 3, 4, 5, 6])
+  assert.throws(() => createTask({ X, y: targets }), ValidationError)
+  assert.throws(() => createTask({ X, y: targets, kind: 'regression' }), ValidationError)
+  assert.throws(() => createTask({ X, y: targets, kind: 'multilabel' }), ValidationError)
+})
+
+it('multioutput scoring averages target scores without mixing target offsets', () => {
+  const { getScorer } = require('../src/index.js')
+  const p = createPrediction({ rows: 2, taskKind: 'multioutput', targetCount: 2,
+    truth: [0, 100, 2, 104], response: [1, 102, 1, 102] })
+  assert.equal(evaluateMeasure('r2', p), 0)
+  assert.equal(getScorer('mse')([[0, 100], [2, 104]], [[1, 102], [1, 102]], { taskKind: 'multioutput', sampleWeight: [1, 3] }), 2.5)
+})
+
+it('scalar target normalization rejects matrices and object coercion', () => {
+  const { normalizeY } = require('../src/index.js')
+  for (const y of [[[1, 2], [3, 4]], { data: Float64Array.of(1, 2), rows: 1, cols: 2 }, 3]) {
+    assert.throws(() => normalizeY(y), ValidationError)
+  }
 })

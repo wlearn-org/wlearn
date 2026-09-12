@@ -1,7 +1,8 @@
 const { subsetRows, subsetLabels } = require('./matrix.js')
 const { ValidationError } = require('./errors.js')
 const { makeLCG, shuffle } = require('./rng.js')
-const { normalizeX, normalizeY } = require('./matrix.js')
+const { normalizeX } = require('./matrix.js')
+const { normalizeTargets, subsetTargets, targetRows } = require('./targets.js')
 const { getScorer, scoreEstimator } = require('./measure.js')
 const { inferTaskKind, taskParams, validateEstimatorTask } = require('./task.js')
 
@@ -111,7 +112,8 @@ async function crossValScore(EstimatorClass, X, y, {
   task,
 } = {}) {
   const Xn = normalizeX(X)
-  const yn = normalizeY(y)
+  const yn = normalizeTargets(y, task || params.task)
+  if (targetRows(yn) !== Xn.rows) throw new ValidationError('X and target rows must match')
   const scorerFn = getScorer(scoring)
 
   const resolvedTask = task || params.task || inferTaskKind(yn)
@@ -123,9 +125,9 @@ async function crossValScore(EstimatorClass, X, y, {
   for (let f = 0; f < folds.length; f++) {
     const { train, test } = folds[f]
     const Xtrain = subsetRows(Xn, train)
-    const ytrain = subsetLabels(yn, train)
+    const ytrain = subsetTargets(yn, train)
     const Xtest = subsetRows(Xn, test)
-    const ytest = subsetLabels(yn, test)
+    const ytest = subsetTargets(yn, test)
 
     const model = await EstimatorClass.create(taskParams(params, resolvedTask))
     let operationError = null

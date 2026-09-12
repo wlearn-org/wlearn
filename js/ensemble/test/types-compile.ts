@@ -1,5 +1,7 @@
 import {
   BaggedEstimator,
+  MultiOutputRegressor,
+  MultiLabelClassifier,
   StackingEnsemble,
   VotingEnsemble,
   caruanaSelect,
@@ -15,6 +17,13 @@ const X = [[0], [1], [2], [3]]
 const y = new Int32Array([0, 0, 1, 1])
 
 async function compileSurface(): Promise<void> {
+  const heads = await MultiOutputRegressor.create({ estimator: spec, targetNames: ['a', 'b'] })
+  await heads.fit(X, [[1, 2], [2, 3], [3, 4], [4, 5]], { sampleWeight: [1, 1, 2, 2] })
+  heads.predictQuantiles(X, [0.1, 0.9])
+  const labels = await MultiLabelClassifier.create({ estimator: spec })
+  await labels.fit(X, [[0, 0], [0, 1], [1, 0], [1, 1]])
+  labels.predictProba(X)
+
   const vote = await VotingEnsemble.create({ estimators: [spec] })
   await vote.fit(X, y)
   vote.setParams({ voting: 'hard' })

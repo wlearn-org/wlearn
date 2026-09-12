@@ -134,6 +134,7 @@ def test_prediction_validates_interval_and_quantile_alignment():
     create_prediction(
         row_ids=['a', 'b'],
         interval=np.array([0.0, 1.0, 2.0, 3.0], dtype=np.float64),
+        coverage_levels=[0.9],
     )
     with pytest.raises(ValidationError):
         create_prediction(
@@ -392,3 +393,61 @@ def test_cv_validates_reserved_validation_rows():
     with pytest.raises(ValidationError, match='overlap'):
         resolve_cv([{'train': [0, 1], 'test': [2, 3], 'validate': [1]}],
                    np.arange(4, dtype=float))
+
+
+@pytest.mark.parametrize('fields', [
+    {'quantiles': [1, 2, 3, 4]},
+    {'interval': [1, 2, 3, 4]},
+    {'quantiles': [1, 2, 3, 4], 'quantile_levels': [0.9, 0.1]},
+    {'quantiles': [2, 1, 3, 4], 'quantile_levels': [0.1, 0.9]},
+    {'quantiles': [np.nan, 2, 3, 4], 'quantile_levels': [0.1, 0.9]},
+    {'interval': [1, 2, 3, np.nan], 'coverage_levels': [0.9]},
+])
+def test_uncertainty_metadata_and_values(fields):
+    with pytest.raises(ValidationError):
+        create_prediction(truth=[1, 2], **fields)
+
+
+def test_uncertainty_shape_axes():
+    from wlearn.prediction import prediction_rows
+    p = create_prediction(rows=2, task_kind='multioutput', target_count=2,
+                          target_names=['a', 'b'], quantile_levels=[0.1, 0.9],
+                          quantiles=[1, 2, 10, 20, 3, 4, 30, 40])
+    assert prediction_rows(p) == 2
+    assert p.target_count == 2
+    create_prediction(rows=1, interval=[-np.inf, np.inf], coverage_levels=[0.99])
+
+
+def test_multilabel_probabilities_are_independent():
+    p = create_prediction(rows=2, task_kind='multilabel', target_count=2,
+                          truth=[0, 1, 1, 1], proba=[0.2, 0.9, 0.8, 0.7])
+    assert p.task_kind == 'multilabel'
+    with pytest.raises(ValidationError):
+        create_prediction(rows=2, task_kind='multilabel', target_count=2,
+                          truth=[0, 2, 1, 1], proba=[0.2, 0.9, 0.8, 0.7])
+
+
+def test_matrix_targets_require_explicit_task():
+    targets = np.array([[1, 2], [3, 4], [5, 6]], dtype=float)
+    task = create_task(X=X, y=targets, kind='multioutput')
+    assert task.y.shape == (3, 2)
+    for kind in [None, 'regression', 'multilabel']:
+        with pytest.raises(ValidationError):
+            create_task(X=X, y=targets, kind=kind)
+
+
+def test_multioutput_scoring_averages_targets():
+    from wlearn.measure import get_scorer
+    p = create_prediction(rows=2, task_kind='multioutput', target_count=2,
+                          truth=[0, 100, 2, 104], response=[1, 102, 1, 102])
+    assert evaluate_measure('r2', p) == 0
+    assert get_scorer('mse')([[0, 100], [2, 104]], [[1, 102], [1, 102]],
+                             task_kind='multioutput', sample_weight=[1, 3]) == 2.5
+
+
+def test_prediction_direct_validation_accepts_flat_lists_and_wraps_ragged_errors():
+    from wlearn.prediction import Prediction, validate_prediction
+    validate_prediction(Prediction(rows=1, task_kind='multilabel', target_count=2,
+                                   response=[0, 1]))
+    with pytest.raises(ValidationError):
+        create_prediction(response=[[1], [2, 3]])

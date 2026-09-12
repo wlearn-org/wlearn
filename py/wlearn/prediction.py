@@ -1,8 +1,12 @@
-"""Structured prediction objects for scoring and reporting."""
+"""Prediction arrays use row-major [row, target, level] axes.
 
+Intervals add a final lower/upper axis. Classification sets use [row, level,
+class]; multilabel sets use [row, level, label, state]. Samples use [row, draw,
+target]. Numerical region owners validate positive definiteness.
+"""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from numbers import Integral
 from typing import Any
 
@@ -10,14 +14,18 @@ import numpy as np
 
 from .errors import ValidationError
 
-
-PREDICTION_FIELDS = ('response', 'proba', 'score', 'decision', 'interval', 'quantiles')
+PREDICTION_FIELDS = ('response', 'proba', 'score', 'decision', 'interval', 'quantiles', 'sets', 'samples', 'region')
+_ARRAY_FIELDS = ('truth', 'response', 'proba', 'score', 'decision', 'interval', 'quantiles', 'classes', 'sets', 'samples', 'quantile_levels', 'coverage_levels')
 
 
 @dataclass
 class Prediction:
     task_id: str | None = None
-    row_ids: np.ndarray | list[str] | None = None
+    task_kind: str | None = None
+    rows: int | None = None
+    target_count: int = 1
+    target_names: list[str] | None = None
+    row_ids: Any = None
     truth: np.ndarray | None = None
     response: np.ndarray | None = None
     proba: np.ndarray | None = None
@@ -26,125 +34,178 @@ class Prediction:
     decision: np.ndarray | None = None
     interval: np.ndarray | None = None
     quantiles: np.ndarray | None = None
+    quantile_levels: np.ndarray | None = None
+    coverage_levels: np.ndarray | None = None
     classes: np.ndarray | None = None
+    sets: np.ndarray | None = None
+    samples: np.ndarray | None = None
+    sample_count: int | None = None
+    sample_kind: str | None = None
+    region: dict | None = None
     feature_schema_hash: str | None = None
     model_artifact_hash: str | None = None
     warnings: list[Any] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-def _labels(x: Any) -> np.ndarray:
-    arr = np.asarray(x)
-    if arr.ndim != 1:
-        raise ValidationError('Prediction labels must be 1D')
+def _array(value, name):
+    try:
+        arr = np.asarray(value)
+    except (TypeError, ValueError) as error:
+        raise ValidationError(f'Prediction.{name} must be a flat numeric array') from error
+    if arr.ndim != 1 or arr.dtype.kind not in 'fiu':
+        raise ValidationError(f'Prediction.{name} must be a flat numeric array')
     return arr
 
 
-def _float_array(x: Any, name: str) -> np.ndarray:
-    arr = np.asarray(x, dtype=np.float64)
-    if arr.ndim != 1:
-        raise ValidationError(f'Prediction.{name} must be flat')
-    return arr
+def _positive(value, name):
+    if isinstance(value, bool) or not isinstance(value, Integral) or not 1 <= value <= 2**53 - 1:
+        raise ValidationError(f'Prediction.{name} must be a positive safe integer')
+    return int(value)
 
 
-def _infer_rows(prediction: Prediction) -> int | None:
-    if prediction.truth is not None:
-        return len(prediction.truth)
-    if prediction.response is not None:
-        return len(prediction.response)
-    if prediction.score is not None:
-        return len(prediction.score)
-    if prediction.decision is not None:
-        return len(prediction.decision)
-    if prediction.row_ids is not None:
-        return len(prediction.row_ids)
-    if prediction.proba_rows is not None:
-        return prediction.proba_rows
-    if prediction.proba is not None and prediction.classes is not None and len(prediction.classes) > 0:
-        rows = len(prediction.proba) / len(prediction.classes)
-        return int(rows) if rows.is_integer() else None
+def _levels(value, name, endpoints=False):
+    a = np.asarray(_array(value, name), dtype=np.float64)
+    valid = np.all((a >= 0) & (a <= 1)) if endpoints else np.all((a > 0) & (a < 1))
+    if not len(a) or not valid or not np.all(np.isfinite(a)) or np.any(np.diff(a) <= 0):
+        raise ValidationError(f'Prediction.{name} must contain strictly increasing probabilities')
+    return len(a)
+
+
+def _infer_rows(p):
+    if p.rows is not None:
+        return p.rows
+    t = p.target_count
+    for key in ('truth', 'response', 'score', 'decision'):
+        if getattr(p, key) is not None:
+            n, d = len(getattr(p, key)), t
+            return n // d if n % d == 0 else None
+    if p.row_ids is not None:
+        return len(p.row_ids)
+    if p.proba_rows is not None:
+        return p.proba_rows
+    if p.proba is not None:
+        d = t if p.task_kind == 'multilabel' else len(p.classes) if p.classes is not None else 0
+        return len(p.proba) // d if d and len(p.proba) % d == 0 else None
+    for key, level, factor in [('quantiles', 'quantile_levels', 1), ('interval', 'coverage_levels', 2)]:
+        a, b = getattr(p, key), getattr(p, level)
+        if a is not None and b is not None and len(b):
+            d = t * len(b) * factor
+            return len(a) // d if len(a) % d == 0 else None
     return None
 
 
-def create_prediction(**kwargs: Any) -> Prediction:
-    pred = Prediction(
-        task_id=kwargs.get('task_id'),
-        row_ids=kwargs.get('row_ids'),
-        truth=None if kwargs.get('truth') is None else _labels(kwargs.get('truth')),
-        response=None if kwargs.get('response') is None else _labels(kwargs.get('response')),
-        proba=None if kwargs.get('proba') is None else _float_array(kwargs.get('proba'), 'proba'),
-        proba_rows=kwargs.get('proba_rows'),
-        score=None if kwargs.get('score') is None else _float_array(kwargs.get('score'), 'score'),
-        decision=None if kwargs.get('decision') is None else _float_array(kwargs.get('decision'), 'decision'),
-        interval=None if kwargs.get('interval') is None else _float_array(kwargs.get('interval'), 'interval'),
-        quantiles=None if kwargs.get('quantiles') is None else _float_array(kwargs.get('quantiles'), 'quantiles'),
-        classes=None if kwargs.get('classes') is None else _labels(kwargs.get('classes')),
-        feature_schema_hash=kwargs.get('feature_schema_hash'),
-        model_artifact_hash=kwargs.get('model_artifact_hash'),
-        warnings=list(kwargs.get('warnings') or []),
-        metadata=dict(kwargs.get('metadata') or {}),
-    )
-    return validate_prediction(pred)
+def create_prediction(**kwargs):
+    p = Prediction(**{f.name: kwargs[f.name] for f in fields(Prediction) if f.name in kwargs})
+    for name in _ARRAY_FIELDS:
+        if getattr(p, name) is not None:
+            setattr(p, name, _array(getattr(p, name), name))
+    p.warnings, p.metadata = list(p.warnings or []), dict(p.metadata or {})
+    validate_prediction(p)
+    p.rows = _infer_rows(p)
+    return p
 
 
-def validate_prediction(prediction: Prediction) -> Prediction:
-    if not isinstance(prediction, Prediction):
-        raise ValidationError('Prediction must be a Prediction')
-    if not any(getattr(prediction, field) is not None for field in PREDICTION_FIELDS):
+def validate_prediction(p):
+    if not isinstance(p, Prediction) or not any(getattr(p, f) is not None for f in PREDICTION_FIELDS):
         raise ValidationError('Prediction must contain at least one prediction field')
-    rows = _infer_rows(prediction)
-    if rows is None or rows < 1:
-        raise ValidationError('Prediction row count could not be inferred')
-    if not isinstance(rows, Integral):
-        raise ValidationError('Prediction row count must be an integer')
+    t = _positive(p.target_count, 'target_count')
+    if p.task_kind is not None and p.task_kind not in ('classification', 'regression', 'multioutput', 'multilabel'):
+        raise ValidationError('Prediction.task_kind is unsupported')
+    if t > 1 and p.task_kind not in ('multioutput', 'multilabel'):
+        raise ValidationError('Multiple targets require task_kind multioutput or multilabel')
+    if p.target_names is not None:
+        names = p.target_names
+        if not isinstance(names, list) or len(names) != t or any(not isinstance(v, str) or not v for v in names) or len(set(names)) != t:
+            raise ValidationError('Prediction.target_names must uniquely name every target')
+    rows = _positive(_infer_rows(p), 'rows')
+    nt = _positive(rows * t, 'size')
+    if p.row_ids is not None and len(p.row_ids) != rows:
+        raise ValidationError('Prediction.row_ids length must match rows')
+    if p.proba_rows is not None and _positive(p.proba_rows, 'proba_rows') != rows:
+        raise ValidationError('Prediction.proba_rows must match rows')
 
-    for field_name in ('truth', 'response', 'score', 'decision'):
-        value = getattr(prediction, field_name)
-        if value is not None and len(value) != rows:
-            raise ValidationError(f'Prediction.{field_name} length must match row count')
-    for field_name in ('interval', 'quantiles'):
-        value = getattr(prediction, field_name)
-        if value is not None and len(value) % rows != 0:
-            raise ValidationError(f'Prediction.{field_name} length must be divisible by row count')
-    if prediction.row_ids is not None and len(prediction.row_ids) != rows:
-        raise ValidationError('Prediction.row_ids length must match row count')
+    def check(name, n, extended=False):
+        value = getattr(p, name)
+        if value is None:
+            return
+        value = _array(value, name)
+        if len(value) != _positive(n, 'size'):
+            raise ValidationError(f'Prediction.{name} length must equal {n}')
+        invalid = np.any(np.isnan(value)) if extended else not np.all(np.isfinite(value))
+        if invalid:
+            message = 'must not contain NaN' if extended else 'must be finite'
+            raise ValidationError(f'Prediction.{name} {message}')
 
-    if prediction.proba is not None:
-        if prediction.proba_rows is not None:
-            if not isinstance(prediction.proba_rows, Integral) or prediction.proba_rows < 1:
-                raise ValidationError('Prediction.proba_rows must be a positive integer')
-            if prediction.proba_rows != rows:
-                raise ValidationError('Prediction.proba_rows must match row count')
-        if prediction.classes is not None:
-            if len(prediction.classes) == 0:
-                raise ValidationError('Prediction.classes must be non-empty')
-            if len(prediction.proba) != rows * len(prediction.classes):
-                raise ValidationError('Prediction.proba length must equal rows * classes')
-        elif prediction.proba_rows is not None and len(prediction.proba) % prediction.proba_rows != 0:
-            raise ValidationError('Prediction.proba length must be divisible by proba_rows')
-    if prediction.classes is not None:
-        labels = prediction.classes
-        if not np.all(np.isfinite(labels)) or len(np.unique(labels)) != len(labels):
+    for name in ('truth', 'response', 'score', 'decision'):
+        check(name, nt)
+    if p.task_kind == 'multilabel':
+        for name in ('truth', 'response'):
+            a = getattr(p, name)
+            if a is not None and np.any((np.asarray(a) != 0) & (np.asarray(a) != 1)):
+                raise ValidationError(f'Multilabel {name} values must be 0 or 1')
+        if p.classes is not None:
+            raise ValidationError('Multilabel predictions use target axes, not a shared class axis')
+    if p.classes is not None:
+        a = _array(p.classes, 'classes')
+        if not len(a) or len(np.unique(a)) != len(a) or not np.all(np.isfinite(a)):
             raise ValidationError('Prediction.classes must contain unique finite labels')
-    if prediction.proba is not None:
-        values = prediction.proba
-        if values.ndim != 1 or len(values) == 0 or len(values) % rows:
-            raise ValidationError('Prediction.proba must contain complete probability rows')
-        if not np.all(np.isfinite(values)) or np.any(values < 0) or np.any(values > 1):
-            raise ValidationError('Prediction.proba values must be finite and in [0, 1]')
-        # Same tolerance as JS for Float32 backend rounding.
-        if np.any(np.abs(values.reshape(rows, -1).sum(axis=1) - 1) > 1e-6):
+    if p.proba is not None:
+        if p.task_kind == 'multioutput':
+            raise ValidationError('Multioutput regression has no class probabilities')
+        cols = t if p.task_kind == 'multilabel' else len(p.classes) if p.classes is not None else len(p.proba) // rows
+        check('proba', rows * _positive(cols, 'probability columns'))
+        a = np.asarray(p.proba).reshape(rows, cols)
+        if np.any((a < 0) | (a > 1)):
+            raise ValidationError('Prediction.proba values must be in [0, 1]')
+        if p.task_kind != 'multilabel' and np.any(np.abs(a.sum(axis=1) - 1) > 1e-6):
             raise ValidationError('Prediction.proba rows must sum to 1')
-    return prediction
+    if p.quantile_levels is not None:
+        _levels(p.quantile_levels, 'quantile_levels', True)
+    if p.coverage_levels is not None:
+        _levels(p.coverage_levels, 'coverage_levels')
+    if p.quantiles is not None:
+        q = _levels(p.quantile_levels, 'quantile_levels', True)
+        check('quantiles', nt * q, True)
+        a = np.asarray(p.quantiles).reshape(nt, q)
+        if np.any(a[:, 1:] < a[:, :-1]):
+            raise ValidationError('Prediction.quantiles must be nondecreasing within each target')
+    if p.interval is not None:
+        k = _levels(p.coverage_levels, 'coverage_levels')
+        check('interval', nt * k * 2, True)
+        a = np.asarray(p.interval).reshape(-1, 2)
+        empty = (a[:, 0] == np.inf) & (a[:, 1] == -np.inf)
+        if np.any((a[:, 0] > a[:, 1]) & ~empty):
+            raise ValidationError('Prediction.interval has reversed bounds')
+    if p.sets is not None:
+        k = _levels(p.coverage_levels, 'coverage_levels')
+        cols = t * 2 if p.task_kind == 'multilabel' else _positive(len(p.classes) if p.classes is not None else 0, 'classes length')
+        check('sets', rows * k * cols)
+        a = np.asarray(p.sets)
+        if np.any((a != 0) & (a != 1)):
+            raise ValidationError('Prediction.sets entries must be 0 or 1')
+    if p.samples is not None:
+        n = _positive(p.sample_count, 'sample_count')
+        if p.sample_kind not in ('outcome', 'mean'):
+            raise ValidationError('Prediction.sample_kind must be outcome or mean')
+        check('samples', rows * n * t)
+    if p.region is not None:
+        k = _levels(p.coverage_levels, 'coverage_levels')
+        if not isinstance(p.region, dict) or p.region.get('kind') != 'ellipsoid':
+            raise ValidationError('Prediction.region kind must be ellipsoid')
+        for key, n in [('centers', nt), ('precision', t*t), ('radii', rows*k)]:
+            a = _array(p.region.get(key), 'region.'+key)
+            valid = not np.any(np.isnan(a) | (a < 0)) if key == 'radii' else np.all(np.isfinite(a))
+            if len(a) != n or not valid:
+                raise ValidationError(f'Prediction.region.{key} has invalid dimensions or values')
+    return p
 
 
-def prediction_rows(prediction: Prediction) -> int:
-    rows = _infer_rows(validate_prediction(prediction))
-    assert rows is not None
-    return rows
+def prediction_rows(prediction):
+    return _infer_rows(validate_prediction(prediction))
 
 
-def prediction_field(prediction: Prediction, field_name: str) -> Any:
+def prediction_field(prediction, field_name):
     validate_prediction(prediction)
     if field_name not in PREDICTION_FIELDS and field_name != 'truth':
         raise ValidationError(f'Unknown prediction field "{field_name}"')

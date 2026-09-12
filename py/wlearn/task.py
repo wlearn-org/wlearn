@@ -8,11 +8,12 @@ from typing import Any
 import numpy as np
 
 from .errors import ValidationError
+from .targets import normalize_targets
 
 
 def task_params(params, task):
-    if task not in ('classification', 'regression'):
-        raise ValidationError('Estimator task must be classification or regression')
+    if task not in ('classification', 'regression', 'multioutput', 'multilabel'):
+        raise ValidationError('Unsupported estimator task')
     params = dict(params or {})
     if params.get('task') is not None and params['task'] != task:
         raise ValidationError(f'Estimator task conflicts with requested task "{task}"')
@@ -21,6 +22,8 @@ def task_params(params, task):
 
 def validate_estimator_task(model, task):
     caps = getattr(model, 'capabilities', {}) or {}
+    if task in ('multioutput', 'multilabel') and not caps.get(task):
+        raise ValidationError(f'Estimator must declare {task} capability')
     if ((task == 'regression' and caps.get('classifier') and not caps.get('regressor'))
             or (task == 'classification' and caps.get('regressor') and not caps.get('classifier'))):
         raise ValidationError(f'Fitted estimator capabilities conflict with requested task "{task}"')
@@ -35,6 +38,7 @@ TASK_KINDS = (
     'survival',
     'forecasting',
     'multioutput',
+    'multilabel',
     'anomaly',
 )
 
@@ -179,7 +183,7 @@ def create_task(
     metadata: dict[str, Any] | None = None,
 ) -> Task:
     Xn = _matrix(X)
-    yn = None if y is None else _labels(y)
+    yn = None if y is None else normalize_targets(y, kind)
     task_kind = kind or infer_task_kind(yn)
     if task_kind not in TASK_KINDS:
         raise ValidationError(f'Unsupported task kind "{task_kind}"')
@@ -225,7 +229,7 @@ def validate_task(task: Task) -> Task:
         raise ValidationError(f'Unsupported task kind "{task.kind}"')
     Xn = _matrix(task.X)
     validate_feature_schema(task.feature_schema, cols=Xn.shape[1], rows=Xn.shape[0])
-    if task.y is not None and len(task.y) != Xn.shape[0]:
+    if task.y is not None and len(normalize_targets(task.y, task.kind)) != Xn.shape[0]:
         raise ValidationError('Task.y length must match Task.X rows')
     if task.groups is not None and len(task.groups) != Xn.shape[0]:
         raise ValidationError('Task.groups length must match Task.X rows')

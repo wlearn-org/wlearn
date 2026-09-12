@@ -5,7 +5,10 @@ const { caruanaSelect } = require('./selection.js')
 const { getOofPredictions } = require('./oof.js')
 const { optimizeWeights, projectSimplex } = require('./weights.js')
 
+const { MultiOutputRegressor, MultiLabelClassifier } = require('./multioutput.js')
+
 module.exports = {
+  MultiOutputRegressor, MultiLabelClassifier,
   VotingEnsemble,
   StackingEnsemble,
   BaggedEstimator,

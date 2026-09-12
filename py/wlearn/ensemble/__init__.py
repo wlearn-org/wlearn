@@ -6,3 +6,5 @@ from ._bagging import BaggedEstimator
 from ._selection import caruana_select
 from ._oof import get_oof_predictions
 from ._weights import optimize_weights, project_simplex
+
+from ._multioutput import MultiOutputRegressor, MultiLabelClassifier

@@ -1,4 +1,5 @@
 import type {
+  EstimatorSpec, Prediction, TargetInput, FitOptions,
   BaggedEstimatorParams,
   BaggedEstimatorMutableParams,
   Capabilities,
@@ -114,3 +115,38 @@ export declare function optimizeWeights(
   initWeights: ArrayLike<number>,
   opts?: WeightOptimizationOpts
 ): Float64Array
+
+export interface MultiTargetParams {
+  estimator?: EstimatorSpec
+  targetNames?: string[]
+  task?: 'multioutput' | 'multilabel'
+}
+
+declare class MultiTarget {
+  constructor(params?: MultiTargetParams)
+  static create(params?: MultiTargetParams): Promise<MultiTarget>
+  fit(X: DenseMatrix | number[][], y: TargetInput, opts?: FitOptions): Promise<this>
+  predict(X: DenseMatrix | number[][]): MaybePromise<DenseMatrix>
+  predictQuantiles(X: DenseMatrix | number[][], levels: ArrayLike<number>): MaybePromise<Prediction>
+  score(X: DenseMatrix | number[][], y: TargetInput): MaybePromise<number>
+  save(): Uint8Array
+  static load(bytes: Uint8Array, opts?: { loaderOptions?: Record<string, unknown> }): Promise<MultiTarget>
+  dispose(): void
+  getParams(): Record<string, unknown>
+  setParams(params: Pick<MultiTargetParams, 'estimator' | 'targetNames'>): this
+  readonly capabilities: Capabilities
+  readonly isFitted: boolean
+  readonly targetNames: string[] | null
+  readonly targetCount: number | null
+}
+
+export declare class MultiOutputRegressor extends MultiTarget {
+  static create(params?: MultiTargetParams): Promise<MultiOutputRegressor>
+  static load(bytes: Uint8Array, opts?: { loaderOptions?: Record<string, unknown> }): Promise<MultiOutputRegressor>
+}
+
+export declare class MultiLabelClassifier extends MultiTarget {
+  static create(params?: MultiTargetParams): Promise<MultiLabelClassifier>
+  static load(bytes: Uint8Array, opts?: { loaderOptions?: Record<string, unknown> }): Promise<MultiLabelClassifier>
+  predictProba(X: DenseMatrix | number[][]): MaybePromise<DenseMatrix>
+}

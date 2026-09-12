@@ -265,3 +265,36 @@ The current Pipeline executes a sequential list of steps. TensorRef and graph
 interfaces describe future routing; they are not the current Pipeline executor.
 Matrix normalization and CV require dense inputs; sparse-capable model APIs must
 handle CSR through their declared capability.
+
+### Structured uncertainty and multiple targets
+
+`createPrediction` validates flat row-major arrays with explicit metadata:
+
+| Field | Layout | Required metadata |
+| --- | --- | --- |
+| `quantiles` | row, target, level | `quantileLevels` |
+| `interval` | row, target, coverage, lower/upper | `coverageLevels` |
+| `sets` (classification) | row, coverage, class | `coverageLevels`, `classes` |
+| `sets` (multilabel) | row, coverage, label, state | `coverageLevels`, `targetCount` |
+| `samples` | row, draw, target | `sampleCount`, `sampleKind: 'outcome'` or `'mean'` |
+
+Use `rows`, `targetCount` (default 1), and optional unique `targetNames` to
+identify axes. Levels are strictly increasing; quantiles cannot cross. Infinite
+interval endpoints express conservative support, and `[Infinity, -Infinity]`
+represents the empty set. Ellipsoid regions carry centers, a shared precision
+matrix and radii; the numerical producer must validate positive definiteness.
+
+Matrix targets require the explicit task kind `multioutput` or `multilabel`.
+`normalizeTargets`, `subsetTargets`, Task and `crossValScore` preserve those axes.
+Weights have one entry per row. Multilabel probabilities are independent columns;
+multiclass probability rows sum to one. Multioutput R², MSE and MAE average the
+per-target scores. Multilabel measures include `subset_accuracy`, `hamming_loss`
+and `multilabel_log_loss`.
+
+Pipeline routes `predictQuantiles`, `predictInterval`, `predictSet`,
+`predictRegion` and `predictDistribution` through its fitted transforms to a
+capable final estimator. Arguments and asynchronous results are preserved.
+Measures can require structured prediction fields; `metadata.predictionArgs`
+supplies positional arguments after X when `scoreEstimator` invokes that method.
+The core provides validation and routing; numerical uncertainty methods live in
+an optional package.

@@ -1,4 +1,5 @@
 import type {
+  TargetInput, Targets, SupervisedTaskKind,
   ArchiveJSON,
   BundleManifest,
   BundleTOCEntry,
@@ -71,10 +72,15 @@ export declare class Pipeline implements Estimator {
     steps: PipelineStep[],
     options?: { provenance?: Record<string, unknown> | null }
   )
-  fit(X: Matrix | number[][], y: Labels | number[], opts?: FitOptions): MaybePromise<this>
-  predict(X: Matrix | number[][]): MaybePromise<Labels>
+  fit(X: Matrix | number[][], y: TargetInput, opts?: FitOptions): MaybePromise<this>
+  predict(X: Matrix | number[][], opts?: Record<string, unknown>): MaybePromise<Targets>
   predictProba(X: Matrix | number[][]): MaybePromise<Float64Array>
-  score(X: Matrix | number[][], y: Labels | number[]): MaybePromise<number>
+  score(X: Matrix | number[][], y: TargetInput): MaybePromise<number>
+  predictQuantiles(X: Matrix | number[][], levels: ArrayLike<number>): MaybePromise<Prediction>
+  predictInterval(X: Matrix | number[][], coverage?: number | ArrayLike<number>): MaybePromise<Prediction>
+  predictSet(X: Matrix | number[][], coverage?: number | ArrayLike<number>): MaybePromise<Prediction>
+  predictRegion(X: Matrix | number[][], coverage?: number | ArrayLike<number>): MaybePromise<Prediction>
+  predictDistribution(X: Matrix | number[][], opts?: Record<string, unknown>): MaybePromise<Prediction>
   save(): Uint8Array
   dispose(): void
   getParams(): Record<string, unknown>
@@ -251,17 +257,17 @@ export declare function trainTestSplit(
   opts?: { testSize?: number; shuffle?: boolean; seed?: number }
 ): CVFold
 export declare function getScorer(scoring: Scoring): ResolvedScorer
-export declare function scoreEstimator(model: Estimator, X: DenseMatrix | number[][], y: Labels, scoring: Scoring): Promise<number>
-export declare function taskParams(params: Record<string, unknown> | undefined, task: TaskType): Record<string, unknown>
-export declare function validateEstimatorTask<T extends { readonly capabilities: Capabilities }>(model: T, task: TaskType): T
-export declare function resolveCv(cv: CVSpec, y: Labels, opts?: {
-  task?: TaskType; seed?: number; requireComplete?: boolean
+export declare function scoreEstimator(model: Estimator, X: DenseMatrix | number[][], y: TargetInput, scoring: Scoring): Promise<number>
+export declare function taskParams(params: Record<string, unknown> | undefined, task: SupervisedTaskKind): Record<string, unknown>
+export declare function validateEstimatorTask<T extends { readonly capabilities: Capabilities }>(model: T, task: SupervisedTaskKind): T
+export declare function resolveCv(cv: CVSpec, y: TargetInput | number, opts?: {
+  task?: SupervisedTaskKind; seed?: number; requireComplete?: boolean
 }): CVFold[]
 export declare function serializeCv(cv: CVSpec): number | Array<{ train: number[]; test: number[] }>
 export declare function crossValScore(
   EstimatorClass: EstimatorClass,
   X: DenseMatrix | number[][],
-  y: Labels | number[],
+  y: TargetInput,
   opts?: CrossValScoreOpts
 ): Promise<Float64Array>
 
@@ -285,7 +291,7 @@ export declare function createTask(opts: {
   id?: string
   kind?: TaskKind
   X: DenseMatrix | number[][]
-  y?: Labels | number[]
+  y?: TargetInput
   featureSchema?: FeatureSchema
   targetSchema?: TargetSchema
   rowIds?: Int32Array | string[]
@@ -459,3 +465,9 @@ export declare function createModelClass(
 
 export declare function subsetRows(X: DenseMatrix | number[][], indices: Int32Array | number[]): DenseMatrix
 export declare function subsetLabels(y: Labels | number[], indices: Int32Array | number[]): Labels
+
+export declare function isTargetMatrix(y: unknown): y is DenseMatrix | number[][]
+export declare function normalizeTargets(y: TargetInput, kind?: SupervisedTaskKind): Targets
+export declare function targetRows(y: TargetInput): number
+export declare function subsetTargets(y: Targets, indices: Int32Array | number[]): Targets
+export declare function validateSampleWeight(weights: Labels | number[], rows: number): Labels | number[]

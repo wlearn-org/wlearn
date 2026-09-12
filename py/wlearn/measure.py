@@ -9,10 +9,11 @@ import numpy as np
 
 from .errors import ValidationError
 from .prediction import Prediction, create_prediction, validate_prediction
+from .targets import normalize_targets
 
 
 MEASURE_DIRECTIONS = ('maximize', 'minimize')
-MEASURE_RESPONSES = ('response', 'proba', 'score', 'decision', 'distribution')
+MEASURE_RESPONSES = ('response', 'proba', 'score', 'decision', 'distribution', 'quantiles', 'interval', 'sets', 'region', 'samples')
 
 
 @dataclass
@@ -75,6 +76,8 @@ def list_measures() -> list[str]:
 def evaluate_measure(measure_or_id: str | MeasureDef, prediction: Prediction, **opts: Any) -> float:
     measure = get_measure_def(measure_or_id) if isinstance(measure_or_id, str) else define_measure(measure_or_id)
     validate_prediction(prediction)
+    if prediction.task_kind is not None and prediction.task_kind not in measure.task_kinds:
+        raise ValidationError(f'Measure {measure.id} does not support {prediction.task_kind}')
     truth = opts.get('truth', prediction.truth)
     if measure.requires_truth and truth is None:
         raise ValidationError(f'Measure "{measure.id}" requires truth labels')
@@ -594,12 +597,27 @@ def get_scorer(scoring):
     measure = get_measure_def(scoring) if isinstance(scoring, str) else define_measure(scoring)
 
     def scorer(truth, values, **opts):
+        yn = normalize_targets(truth, opts.get('task_kind'))
+        shape = dict(rows=len(yn), target_count=yn.shape[1], task_kind=opts.get('task_kind')) if yn.ndim == 2 else dict(rows=len(yn))
         field_name = measure.response
         classes = opts.get('classes')
-        if field_name == 'score' and classes is not None and len(values) == len(truth) * len(classes):
-            field_name = 'proba'
-        value = evaluate_measure(measure, create_prediction(
-            truth=truth, **{field_name: values}, classes=classes), **opts)
+        if isinstance(values, Prediction):
+            data = vars(values).copy()
+        else:
+            values = np.asarray(values)
+            if values.ndim == 2 and (len(values) != len(yn) or yn.ndim == 2 and values.shape[1] != yn.shape[1]):
+                raise ValidationError('Score prediction target shape mismatch')
+            if field_name == 'score' and classes is not None and values.size == len(yn) * len(classes):
+                field_name = 'proba'
+            data = {field_name: values.reshape(-1)}
+        data.update(shape)
+        data['truth'] = yn.reshape(-1)
+        if classes is not None:
+            data['classes'] = classes
+        for key in ('quantile_levels', 'coverage_levels', 'task_kind'):
+            if opts.get(key) is not None:
+                data[key] = opts[key]
+        value = evaluate_measure(measure, create_prediction(**data), **opts)
         if not np.isfinite(value):
             raise ValidationError(f'Scorer "{measure.id}" must return a finite number')
         return value
@@ -614,14 +632,21 @@ def score_estimator(model, X, y, scoring):
     scorer = get_scorer(scoring)
     response = getattr(scorer, 'response', 'response')
     method = {'response': 'predict', 'proba': 'predict_proba',
-              'score': 'decision_function', 'decision': 'decision_function'}.get(response)
+              'score': 'decision_function', 'decision': 'decision_function',
+              'quantiles': 'predict_quantiles', 'interval': 'predict_interval',
+              'sets': 'predict_set', 'region': 'predict_region',
+              'samples': 'predict_distribution', 'distribution': 'predict_distribution'}.get(response)
     if response == 'score' and not callable(getattr(model, method, None)):
         method = 'predict_proba'
     if method is None or not callable(getattr(model, method, None)):
         raise ValidationError(f'Scoring response "{response}" requires {method}')
-    values = np.asarray(getattr(model, method)(X)).reshape(-1)
-    opts = {}
-    if method == 'predict_proba':
+    args = getattr(scorer, 'measure', None)
+    args = args.metadata.get('predictionArgs', []) if args is not None else []
+    values = getattr(model, method)(X, *args)
+    caps = getattr(model, 'capabilities', {})
+    task_kind = 'multilabel' if caps.get('multilabel') else 'multioutput' if caps.get('multioutput') else None
+    opts = {'task_kind': task_kind}
+    if method == 'predict_proba' and task_kind != 'multilabel':
         classes = getattr(model, 'classes', None)
         if callable(classes):
             classes = classes()
@@ -634,9 +659,47 @@ def score_estimator(model, X, y, scoring):
     return float(value)
 
 
+def _target_mean(fn, **kw):
+    p = kw['prediction']
+    t = p.target_count
+    if t == 1:
+        return fn(**kw)
+    truth = np.asarray(kw['truth']).reshape(-1, t)
+    if kw['response'] is None:
+        raise ValidationError('Regression scoring requires response')
+    response = np.asarray(kw['response']).reshape(-1, t)
+    return float(np.mean([fn(truth=truth[:, c], response=response[:, c], opts=kw['opts']) for c in range(t)]))
+
+
+def _multilabel_score(kind, truth, response, proba, prediction, opts, **_):
+    if prediction.task_kind != 'multilabel':
+        raise ValidationError('Multilabel scoring requires explicit task and target axes')
+    t = prediction.target_count
+    truth = np.asarray(truth).reshape(-1, t)
+    a = proba if kind == 'log_loss' else response
+    if a is None:
+        raise ValidationError('Missing multilabel prediction field')
+    a = np.asarray(a).reshape(truth.shape)
+    if kind == 'log_loss':
+        a = np.clip(a, 1e-15, 1 - 1e-15)
+        values = -np.mean(np.where(truth, np.log(a), np.log1p(-a)), axis=1)
+    elif kind == 'subset_accuracy':
+        values = np.all(truth == a, axis=1).astype(float)
+    else:
+        values = np.mean(truth != a, axis=1)
+    return _mae(np.zeros(len(values)), values, opts)
+
+
 def register_builtin_measures() -> None:
     if _REGISTRY:
         return
+    for id, kind, response, direction in [
+        ('subset_accuracy', 'subset_accuracy', 'response', 'maximize'),
+        ('hamming_loss', 'hamming_loss', 'response', 'minimize'),
+        ('multilabel_log_loss', 'log_loss', 'proba', 'minimize'),
+    ]:
+        register_measure(MeasureDef(id, ['multilabel'], direction, response,
+                                   lambda _kind=kind, **kw: _multilabel_score(_kind, **kw), supports_sample_weight=True))
     register_measure(MeasureDef('accuracy', ['classification'], 'maximize', 'response', _accuracy, supports_sample_weight=True))
     register_measure(MeasureDef('precision', ['classification'], 'maximize', 'response', _precision, supports_sample_weight=True))
     register_measure(MeasureDef('recall', ['classification'], 'maximize', 'response', _recall, supports_sample_weight=True))
@@ -659,11 +722,11 @@ def register_builtin_measures() -> None:
         _roc_auc_ovo,
         supports_sample_weight=True,
     ))
-    register_measure(MeasureDef('r2', ['regression'], 'maximize', 'response', _r2, supports_sample_weight=True))
-    register_measure(MeasureDef('mse', ['regression'], 'minimize', 'response', _mse, supports_sample_weight=True))
-    register_measure(MeasureDef('neg_mse', ['regression'], 'maximize', 'response', lambda **kw: -_mse(**kw), supports_sample_weight=True))
-    register_measure(MeasureDef('mae', ['regression'], 'minimize', 'response', _mae, supports_sample_weight=True))
-    register_measure(MeasureDef('neg_mae', ['regression'], 'maximize', 'response', lambda **kw: -_mae(**kw), supports_sample_weight=True))
+    register_measure(MeasureDef('r2', ['regression', 'multioutput'], 'maximize', 'response', lambda **kw: _target_mean(_r2, **kw), supports_sample_weight=True))
+    register_measure(MeasureDef('mse', ['regression', 'multioutput'], 'minimize', 'response', lambda **kw: _target_mean(_mse, **kw), supports_sample_weight=True))
+    register_measure(MeasureDef('neg_mse', ['regression', 'multioutput'], 'maximize', 'response', lambda **kw: -_target_mean(_mse, **kw), supports_sample_weight=True))
+    register_measure(MeasureDef('mae', ['regression', 'multioutput'], 'minimize', 'response', lambda **kw: _target_mean(_mae, **kw), supports_sample_weight=True))
+    register_measure(MeasureDef('neg_mae', ['regression', 'multioutput'], 'maximize', 'response', lambda **kw: -_target_mean(_mae, **kw), supports_sample_weight=True))
 
 
 register_builtin_measures()

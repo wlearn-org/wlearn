@@ -11,6 +11,8 @@ const {
   rocAuc
 } = require('./metrics.js')
 const { createPrediction, validatePrediction } = require('./prediction.js')
+const { normalizeTargets, isTargetMatrix } = require('./targets.js')
+const { normalizeX } = require('./matrix.js')
 
 // The callable form retains the original two-array scorer contract. Named and
 // structured measures additionally carry the response and optimization direction.
@@ -18,33 +20,49 @@ function getScorer(scoring) {
   if (typeof scoring === 'function') return scoring
   const measure = typeof scoring === 'string' ? getMeasureDef(scoring) : defineMeasure(scoring)
   const scorer = (truth, values, opts = {}) => {
-    const field = measure.response === 'score' && opts.classes &&
-      values.length === truth.length * opts.classes.length ? 'proba' : measure.response
+    const yn = normalizeTargets(truth, opts.taskKind)
+    const multiple = isTargetMatrix(yn)
+    const shape = multiple ? { rows: yn.rows, targetCount: yn.cols, taskKind: opts.taskKind } : { rows: yn.length }
+    const flatTruth = multiple ? yn.data : yn
+    let field = measure.response
+    const structured = values && !isTargetMatrix(values) && !ArrayBuffer.isView(values) && !Array.isArray(values) && typeof values === 'object'
+    if (isTargetMatrix(values)) {
+      const matrix = normalizeX(values)
+      if (matrix.rows !== shape.rows || (multiple && matrix.cols !== shape.targetCount)) throw new ValidationError('Score prediction target shape mismatch')
+      values = matrix.data
+    }
+    if (field === 'score' && opts.classes && values.length === shape.rows * opts.classes.length) field = 'proba'
+    const data = structured ? values : { [field]: values }
     const value = evaluateMeasure(measure, createPrediction({
-      truth, [field]: values, classes: opts.classes
+      ...data, ...shape, truth: flatTruth, classes: opts.classes ?? data.classes,
+      taskKind: opts.taskKind ?? data.taskKind,
+      quantileLevels: opts.quantileLevels ?? data.quantileLevels,
+      coverageLevels: opts.coverageLevels ?? data.coverageLevels
     }), opts)
     if (!Number.isFinite(value)) throw new ValidationError(`Scorer "${measure.id}" must return a finite number`)
     return value
   }
+
   return Object.assign(scorer, { measure, direction: measure.direction, response: measure.response })
 }
 
 async function scoreEstimator(model, X, y, scoring) {
   const scorer = getScorer(scoring)
   const response = scorer.response || 'response'
-  let method = { response: 'predict', proba: 'predictProba', score: 'decisionFunction', decision: 'decisionFunction' }[response]
+  let method = { response: 'predict', proba: 'predictProba', score: 'decisionFunction', decision: 'decisionFunction', quantiles: 'predictQuantiles', interval: 'predictInterval', sets: 'predictSet', region: 'predictRegion', samples: 'predictDistribution', distribution: 'predictDistribution' }[response]
   if (response === 'score' && typeof model[method] !== 'function') method = 'predictProba'
   if (!method || typeof model[method] !== 'function') {
     throw new ValidationError(`Scoring response "${response}" requires ${method || 'a supported prediction method'}`)
   }
-  const values = await model[method](X)
-  const classes = method === 'predictProba'
+  const values = await model[method](X, ...(scorer.measure?.metadata?.predictionArgs || []))
+  const taskKind = model.capabilities?.multilabel ? 'multilabel' : model.capabilities?.multioutput ? 'multioutput' : undefined
+  const classes = method === 'predictProba' && taskKind !== 'multilabel'
     ? (typeof model.classes === 'function' ? model.classes() : model.classes)
     : undefined
-  if (method === 'predictProba' && !classes) {
+  if (method === 'predictProba' && taskKind !== 'multilabel' && !classes) {
     throw new ValidationError('Probability scoring requires the model class order')
   }
-  const value = scorer(y, values, { classes })
+  const value = scorer(y, values, { classes, taskKind })
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     throw new ValidationError('Scorer must return a finite number')
   }
@@ -52,7 +70,7 @@ async function scoreEstimator(model, X, y, scoring) {
 }
 
 const MEASURE_DIRECTIONS = ['maximize', 'minimize']
-const MEASURE_RESPONSES = ['response', 'proba', 'score', 'decision', 'distribution']
+const MEASURE_RESPONSES = ['response', 'proba', 'score', 'decision', 'distribution', 'quantiles', 'interval', 'sets', 'region', 'samples']
 const registry = new Map()
 
 function defineMeasure(def) {
@@ -113,6 +131,7 @@ function evaluateMeasure(measureOrId, prediction, opts = {}) {
   const measure = typeof measureOrId === 'string' ? getMeasureDef(measureOrId) : defineMeasure(measureOrId)
   validatePrediction(prediction)
 
+  if (prediction.taskKind && !measure.taskKinds.includes(prediction.taskKind)) throw new ValidationError(`Measure ${measure.id} does not support ${prediction.taskKind}`)
   const truth = opts.truth || prediction.truth
   if (measure.requiresTruth && !truth) {
     throw new ValidationError(`Measure "${measure.id}" requires truth labels`)
@@ -218,8 +237,49 @@ function _aucScoreFromPrediction(score, proba, truth, prediction, opts = {}) {
   return _binaryScoreFromPrediction(score, proba, truth, _classesOpt(prediction, opts))
 }
 
+function targetMean(metric, { truth, response, prediction, opts }) {
+  _requireField(response, 'regression', 'response')
+  const t = prediction.targetCount ?? 1
+  if (t === 1) return metric(truth, response, opts)
+  const rows = truth.length / t
+  let sum = 0
+  for (let c = 0; c < t; c++) {
+    const y = new Float64Array(rows), p = new Float64Array(rows)
+    for (let r = 0; r < rows; r++) { y[r] = truth[r * t + c]; p[r] = response[r * t + c] }
+    sum += metric(y, p, opts)
+  }
+  return sum / t
+}
+
+function multilabelScore(kind, { truth, response, proba, prediction, opts }) {
+  if (prediction.taskKind !== 'multilabel') throw new ValidationError('Multilabel scoring requires explicit task and target axes')
+  const t = prediction.targetCount ?? 1, rows = truth.length / t
+  const values = kind === 'log_loss' ? proba : response
+  _requireField(values, kind, kind === 'log_loss' ? 'proba' : 'response')
+  const rowLoss = new Float64Array(rows)
+  for (let r = 0; r < rows; r++) {
+    let total = 0
+    for (let c = 0; c < t; c++) {
+      const i = r * t + c
+      if (kind === 'log_loss') {
+        const p = Math.max(1e-15, Math.min(1 - 1e-15, values[i]))
+        total -= truth[i] ? Math.log(p) : Math.log1p(-p)
+      } else if (truth[i] !== values[i]) total++
+    }
+    rowLoss[r] = kind === 'subset_accuracy' ? Number(total === 0) : total / t
+  }
+  return meanAbsoluteError(new Float64Array(rows), rowLoss, opts)
+}
+
 function registerBuiltinMeasures() {
   if (registry.size > 0) return
+
+  for (const [id, kind, response, direction] of [
+    ['subset_accuracy', 'subset_accuracy', 'response', 'maximize'],
+    ['hamming_loss', 'hamming_loss', 'response', 'minimize'],
+    ['multilabel_log_loss', 'log_loss', 'proba', 'minimize']
+  ]) registerMeasure({ id, taskKinds: ['multilabel'], direction, response, supportsSampleWeight: true,
+    fn: ctx => multilabelScore(kind, ctx) })
 
   registerMeasure({
     id: 'accuracy',
@@ -304,43 +364,43 @@ function registerBuiltinMeasures() {
   })
   registerMeasure({
     id: 'r2',
-    taskKinds: ['regression'],
+    taskKinds: ['regression', 'multioutput'],
     direction: 'maximize',
     response: 'response',
     supportsSampleWeight: true,
-    fn: ({ truth, response, opts }) => r2Score(truth, _requireField(response, 'r2', 'response'), opts)
+    fn: ctx => targetMean(r2Score, ctx)
   })
   registerMeasure({
     id: 'mse',
-    taskKinds: ['regression'],
+    taskKinds: ['regression', 'multioutput'],
     direction: 'minimize',
     response: 'response',
     supportsSampleWeight: true,
-    fn: ({ truth, response, opts }) => meanSquaredError(truth, _requireField(response, 'mse', 'response'), opts)
+    fn: ctx => targetMean(meanSquaredError, ctx)
   })
   registerMeasure({
     id: 'neg_mse',
-    taskKinds: ['regression'],
+    taskKinds: ['regression', 'multioutput'],
     direction: 'maximize',
     response: 'response',
     supportsSampleWeight: true,
-    fn: ({ truth, response, opts }) => -meanSquaredError(truth, _requireField(response, 'neg_mse', 'response'), opts)
+    fn: ctx => -targetMean(meanSquaredError, ctx)
   })
   registerMeasure({
     id: 'mae',
-    taskKinds: ['regression'],
+    taskKinds: ['regression', 'multioutput'],
     direction: 'minimize',
     response: 'response',
     supportsSampleWeight: true,
-    fn: ({ truth, response, opts }) => meanAbsoluteError(truth, _requireField(response, 'mae', 'response'), opts)
+    fn: ctx => targetMean(meanAbsoluteError, ctx)
   })
   registerMeasure({
     id: 'neg_mae',
-    taskKinds: ['regression'],
+    taskKinds: ['regression', 'multioutput'],
     direction: 'maximize',
     response: 'response',
     supportsSampleWeight: true,
-    fn: ({ truth, response, opts }) => -meanAbsoluteError(truth, _requireField(response, 'neg_mae', 'response'), opts)
+    fn: ctx => -targetMean(meanAbsoluteError, ctx)
   })
 }
 

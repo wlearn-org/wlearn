@@ -1,6 +1,8 @@
 const { ValidationError } = require('./errors.js')
 const { normalizeX, normalizeY, validateMatrix } = require('./matrix.js')
 
+const { normalizeTargets, targetRows, isTargetMatrix } = require('./targets.js')
+
 const TASK_KINDS = [
   'classification',
   'regression',
@@ -9,12 +11,13 @@ const TASK_KINDS = [
   'survival',
   'forecasting',
   'multioutput',
+  'multilabel',
   'anomaly'
 ]
 
 function taskParams(params = {}, task) {
-  if (!['classification', 'regression'].includes(task)) {
-    throw new ValidationError('Estimator task must be classification or regression')
+  if (!['classification', 'regression', 'multioutput', 'multilabel'].includes(task)) {
+    throw new ValidationError('Unsupported estimator task')
   }
   if (params.task != null && params.task !== task) {
     throw new ValidationError(`Estimator task "${params.task}" conflicts with requested task "${task}"`)
@@ -24,6 +27,7 @@ function taskParams(params = {}, task) {
 
 function validateEstimatorTask(model, task) {
   const caps = model.capabilities || {}
+  if ((task === 'multioutput' || task === 'multilabel') && caps[task] !== true) throw new ValidationError(`Estimator must declare ${task} capability`)
   if ((task === 'regression' && caps.classifier === true && caps.regressor !== true) ||
       (task === 'classification' && caps.regressor === true && caps.classifier !== true)) {
     throw new ValidationError(`Fitted estimator capabilities conflict with requested task "${task}"`)
@@ -33,6 +37,7 @@ function validateEstimatorTask(model, task) {
 
 function inferTaskKind(y) {
   if (y == null) return 'clustering'
+  if (isTargetMatrix(y)) throw new ValidationError('Matrix targets require an explicit multioutput or multilabel task')
   const yn = normalizeY(y)
   if (yn instanceof Int32Array) return 'classification'
 
@@ -138,14 +143,14 @@ function createTask({
 }) {
   if (X == null) throw new ValidationError('Task requires X')
   const Xn = validateMatrix(normalizeX(X))
-  const yn = y == null ? undefined : normalizeY(y)
+  const yn = y == null ? undefined : normalizeTargets(y, kind)
   const taskKind = kind || inferTaskKind(yn)
 
   if (!TASK_KINDS.includes(taskKind)) {
     throw new ValidationError(`Unsupported task kind "${taskKind}"`)
   }
-  if (yn && yn.length !== Xn.rows) {
-    throw new ValidationError(`Task y length (${yn.length}) must match X rows (${Xn.rows})`)
+  if (yn && targetRows(yn) !== Xn.rows) {
+    throw new ValidationError(`Task y length (${targetRows(yn)}) must match X rows (${Xn.rows})`)
   }
 
   const groupValues = groups == null ? undefined : normalizeY(groups)
@@ -195,7 +200,7 @@ function validateTask(task) {
   }
   validateMatrix(task.X)
   validateFeatureSchema(task.featureSchema, task.X.cols, task.X.rows)
-  if (task.y && task.y.length !== task.X.rows) {
+  if (task.y && targetRows(normalizeTargets(task.y, task.kind)) !== task.X.rows) {
     throw new ValidationError('Task.y length must match Task.X.rows')
   }
   if (task.groups && task.groups.length !== task.X.rows) {

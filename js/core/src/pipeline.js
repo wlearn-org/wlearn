@@ -4,7 +4,8 @@ const { encodeBundle, validateBundle } = require('./bundle.js')
 const {
   register, load: registryLoad, assertRequiredLoaders
 } = require('./registry.js')
-const { isPromiseLike } = require('./lift.js')
+const { isPromiseLike, lift } = require('./lift.js')
+const { targetRows, validateSampleWeight } = require('./targets.js')
 
 const PIPELINE_TYPE_ID = 'wlearn.pipeline@1'
 let registered = false
@@ -57,7 +58,7 @@ class Pipeline {
     let current = X
     for (let i = 0; i < this.#steps.length - 1; i++) {
       const est = this.#steps[i].estimator
-      current = est.transform(current)
+      current = lift(current, value => est.transform(value))
     }
     return current
   }
@@ -104,18 +105,7 @@ class Pipeline {
     }
     let weighted = null
     if (opts.sampleWeight != null) {
-      const weights = opts.sampleWeight
-      if (!(Array.isArray(weights) || ArrayBuffer.isView(weights)) || weights.length !== y?.length || !weights.length) {
-        throw new ValidationError('sampleWeight must have one entry per target')
-      }
-      let total = 0
-      for (const weight of weights) {
-        if (typeof weight !== 'number' || !Number.isFinite(weight) || weight < 0) {
-          throw new ValidationError('sampleWeight must be finite and nonnegative')
-        }
-        total += weight
-      }
-      if (!(total > 0) || !Number.isFinite(total)) throw new ValidationError('sampleWeight must have a finite positive sum')
+      const weights = validateSampleWeight(opts.sampleWeight, targetRows(y))
       const last = this.#steps[this.#steps.length - 1]
       if (!last.estimator.capabilities?.sampleWeight) {
         throw new ValidationError(`Pipeline step "${last.name}" does not support sampleWeight`)
@@ -158,11 +148,7 @@ class Pipeline {
    * @param {Object} X - Feature matrix.
    * @returns {Float64Array|Int32Array|Promise<Float64Array|Int32Array>}
    */
-  predict(X) {
-    this.#ensureFitted()
-    const transformed = this.#transformThrough(X)
-    return this.#steps[this.#steps.length - 1].estimator.predict(transformed)
-  }
+  predict(X, opts) { return this.#predictMethod('predict', X, opts) }
 
   /**
    * Transform through intermediate steps, then call `predictProba` on the last step.
@@ -170,14 +156,18 @@ class Pipeline {
    * @returns {Float64Array|Promise<Float64Array>} Class probability estimates.
    * @throws {ValidationError} If the last step does not support `predictProba`.
    */
-  predictProba(X) {
+  predictProba(X, opts) { return this.#predictMethod('predictProba', X, opts) }
+  predictQuantiles(X, levels) { return this.#predictMethod('predictQuantiles', X, levels) }
+  predictInterval(X, coverage) { return this.#predictMethod('predictInterval', X, coverage) }
+  predictSet(X, coverage) { return this.#predictMethod('predictSet', X, coverage) }
+  predictRegion(X, coverage) { return this.#predictMethod('predictRegion', X, coverage) }
+  predictDistribution(X, opts) { return this.#predictMethod('predictDistribution', X, opts) }
+
+  #predictMethod(method, X, opts) {
     this.#ensureFitted()
     const last = this.#steps[this.#steps.length - 1].estimator
-    if (typeof last.predictProba !== 'function') {
-      throw new ValidationError('Last step does not support predictProba')
-    }
-    const transformed = this.#transformThrough(X)
-    return last.predictProba(transformed)
+    if (typeof last[method] !== 'function') throw new ValidationError(`Last step does not support ${method}`)
+    return lift(this.#transformThrough(X), value => last[method](value, opts))
   }
 
   /**
@@ -189,7 +179,7 @@ class Pipeline {
   score(X, y) {
     this.#ensureFitted()
     const transformed = this.#transformThrough(X)
-    return this.#steps[this.#steps.length - 1].estimator.score(transformed, y)
+    return lift(transformed, value => this.#steps[this.#steps.length - 1].estimator.score(value, y))
   }
 
   /**

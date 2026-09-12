@@ -2029,3 +2029,87 @@ def test_composites_reject_a_child_that_ignores_regression_task():
             model.dispose()
     with pytest.raises(ValidationError, match='capabilities conflict'):
         get_oof_predictions([spec], X, y, cv=2, task='regression')
+
+
+class TestMultiTarget:
+    def test_regression_target_axes_and_persistence(self):
+        from wlearn import load, register
+        from wlearn.bundle import validate_bundle
+        from wlearn.ensemble import MultiOutputRegressor
+        register('test.mock@1', MockModel._from_bundle)
+        X = np.arange(4, dtype=float).reshape(-1, 1)
+        y = np.array([[1, 10], [2, 20], [3, 30], [4, 40]])
+        m = MultiOutputRegressor(('mean', MockModel), target_names=['small', 'large']).fit(X, y)
+        np.testing.assert_array_equal(m.predict(X), np.tile([2.5, 25], (4, 1)))
+        assert m.score(X, y) == 0
+        copy = load(m.save())
+        np.testing.assert_array_equal(copy.predict(X), m.predict(X))
+        assert validate_bundle(copy.save())[0] == validate_bundle(m.save())[0]
+        with pytest.raises(ValidationError, match='specification'):
+            copy.fit(X, y)
+        copy.set_params({'estimator': ('mean', MockModel)})
+        with pytest.raises(NotFittedError):
+            copy.predict(X)
+        copy.fit(X, y)
+        pipe = Pipeline([('heads', copy)]).fit(X, y)
+        restored = load(pipe.save())
+        np.testing.assert_array_equal(restored.predict(X), m.predict(X))
+        restored.dispose()
+        pipe.dispose()
+        m.dispose()
+        with pytest.raises(DisposedError):
+            m.predict(X)
+
+    def test_multilabel_constant_heads_and_weights(self):
+        from wlearn import load, register
+        from wlearn.ensemble import MultiLabelClassifier
+        class Binary(MockModel):
+            @property
+            def capabilities(self):
+                return {**super().capabilities, 'classifier': True, 'regressor': False,
+                        'predictProba': True, 'sampleWeight': True}
+            def fit(self, X, y, sample_weight=None):
+                np.testing.assert_array_equal(sample_weight, [1, 2, 3, 4])
+                return super().fit(X, y)
+        register('test.mock@1', MockModel._from_bundle)
+        X = np.arange(4, dtype=float).reshape(-1, 1)
+        y = np.array([[0, 0, 1], [1, 0, 1], [0, 0, 1], [1, 0, 1]])
+        m = MultiLabelClassifier(('binary', Binary, {'classOrder': 'descending'}))
+        pipe = Pipeline([('heads', m)]).fit(X, y, sample_weight=[1, 2, 3, 4])
+        p = pipe.predict_proba(X)
+        np.testing.assert_array_equal(p[:, 1], 0)
+        np.testing.assert_array_equal(p[:, 2], 1)
+        copy = load(m.save())
+        np.testing.assert_array_equal(copy.predict_proba(X), p)
+        copy.dispose()
+        pipe.dispose()
+
+    def test_all_constant_and_malformed_manifest(self):
+        from wlearn import load
+        from wlearn.bundle import validate_bundle, encode_bundle
+        from wlearn.ensemble import MultiLabelClassifier
+        X = np.arange(4, dtype=float).reshape(-1, 1)
+        y = np.tile([0, 1], (4, 1))
+        m = MultiLabelClassifier(('binary', MockModel)).fit(X, y)
+        manifest, toc, _ = validate_bundle(m.save())
+        assert len(toc) == 0
+        copy = load(m.save())
+        assert copy.score(X, y) == 1
+        manifest['params']['constants'][0] = None
+        with pytest.raises(ValidationError):
+            load(encode_bundle(manifest, []))
+        copy.dispose()
+        m.dispose()
+
+
+def test_multitarget_public_cv_and_measure():
+    from wlearn.cv import cross_val_score
+    from wlearn.measure import get_scorer
+    from wlearn.ensemble import MultiOutputRegressor
+    X = np.arange(4, dtype=float).reshape(-1, 1)
+    y = np.array([[1, 10], [2, 20], [3, 30], [4, 40]])
+    scores = cross_val_score(MultiOutputRegressor, X, y, task='multioutput', cv=2,
+                             scoring='mse', params={'estimator': ('mean', MockModel)})
+    assert scores.shape == (2,) and np.isfinite(scores).all()
+    assert get_scorer('hamming_loss')([[0, 1], [1, 1]], [[0, 0], [1, 1]], task_kind='multilabel') == 0.25
+    assert get_scorer('subset_accuracy')([[0, 1], [1, 1]], [[0, 0], [1, 1]], task_kind='multilabel') == 0.5

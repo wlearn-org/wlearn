@@ -1,7 +1,6 @@
 from copy import deepcopy
-import math
-import numbers
 
+from .targets import target_rows, validate_sample_weight
 from .errors import ValidationError, NotFittedError, DisposedError
 from .bundle import encode_bundle, validate_bundle, write_bundle_output
 from .registry import (
@@ -42,15 +41,7 @@ class Pipeline:
         """
         self._ensure_alive()
         if sample_weight is not None:
-            try:
-                valid = len(sample_weight) == len(y) and len(sample_weight) > 0
-                valid = valid and all(isinstance(w, numbers.Real) and not isinstance(w, bool) and math.isfinite(w) and w >= 0 for w in sample_weight)
-                total = math.fsum(float(w) for w in sample_weight) if valid else 0
-                valid = valid and total > 0 and math.isfinite(total)
-            except (TypeError, ValueError, OverflowError):
-                valid = False
-            if not valid:
-                raise ValidationError('sample_weight must have one finite nonnegative entry per target and positive finite sum')
+            sample_weight = validate_sample_weight(sample_weight, target_rows(y))
             name, final = self._steps[-1]
             if not _capabilities(final).get('sampleWeight', False):
                 raise ValidationError(f'Pipeline step "{name}" does not support sample_weight')
@@ -80,12 +71,12 @@ class Pipeline:
             current = est.transform(current)
         return current
 
-    def predict(self, X):
+    def predict(self, X, **kwargs):
         """Transform through intermediates, predict with last step."""
         self._ensure_fitted()
         transformed = self._transform_through(X)
         _, last = self._steps[-1]
-        return last.predict(transformed)
+        return last.predict(transformed, **kwargs)
 
     def predict_proba(self, X):
         """Transform through intermediates, predict_proba with last step."""
@@ -95,6 +86,28 @@ class Pipeline:
             raise ValidationError('Last step does not support predict_proba')
         transformed = self._transform_through(X)
         return last.predict_proba(transformed)
+
+    def _predict_method(self, method, X, *args, **kwargs):
+        self._ensure_fitted()
+        last = self._steps[-1][1]
+        if not callable(getattr(last, method, None)):
+            raise ValidationError(f'Last step does not support {method}')
+        return getattr(last, method)(self._transform_through(X), *args, **kwargs)
+
+    def predict_quantiles(self, X, levels):
+        return self._predict_method('predict_quantiles', X, levels)
+
+    def predict_interval(self, X, coverage=0.9):
+        return self._predict_method('predict_interval', X, coverage)
+
+    def predict_set(self, X, coverage=0.9):
+        return self._predict_method('predict_set', X, coverage)
+
+    def predict_region(self, X, coverage=0.9):
+        return self._predict_method('predict_region', X, coverage)
+
+    def predict_distribution(self, X, **kwargs):
+        return self._predict_method('predict_distribution', X, **kwargs)
 
     def score(self, X, y):
         """Transform through intermediates, score with last step."""

@@ -32,6 +32,9 @@ export interface CSRMatrix {
 
 export type Matrix = DenseMatrix | CSRMatrix
 export type Labels = Int32Array | Float32Array | Float64Array
+export type Targets = Labels | DenseMatrix
+export type TargetInput = Targets | number[] | number[][]
+export type SupervisedTaskKind = 'classification' | 'regression' | 'multioutput' | 'multilabel'
 
 export interface TensorRef {
   location: 'host' | 'wasm'
@@ -67,9 +70,9 @@ export interface FitOptions {
 }
 
 export interface Estimator {
-  fit(X: Matrix | number[][], y: Labels | number[], opts?: FitOptions): MaybePromise<this>
-  predict(X: Matrix | number[][]): MaybePromise<Labels>
-  score(X: Matrix | number[][], y: Labels | number[]): MaybePromise<number>
+  fit(X: Matrix | number[][], y: TargetInput, opts?: FitOptions): MaybePromise<this>
+  predict(X: Matrix | number[][]): MaybePromise<Targets>
+  score(X: Matrix | number[][], y: TargetInput): MaybePromise<number>
   save(): Uint8Array
   dispose(): void
   getParams(): Record<string, unknown>
@@ -79,6 +82,7 @@ export interface Estimator {
 }
 
 export interface Classifier extends Estimator {
+  predict(X: Matrix | number[][]): MaybePromise<Labels>
   predictProba(X: Matrix | number[][]): MaybePromise<Float64Array>
   readonly classes: Int32Array
 }
@@ -104,10 +108,10 @@ export interface Transformer {
 export type PipelineStep = [name: string, estimator: Estimator | Transformer]
 
 export interface Pipeline extends Estimator {
-  fit(X: Matrix | number[][], y: Labels | number[], opts?: FitOptions): MaybePromise<this>
-  predict(X: Matrix | number[][]): MaybePromise<Labels>
+  fit(X: Matrix | number[][], y: TargetInput, opts?: FitOptions): MaybePromise<this>
+  predict(X: Matrix | number[][]): MaybePromise<Targets>
   predictProba(X: Matrix | number[][]): MaybePromise<Float64Array>
-  score(X: Matrix | number[][], y: Labels | number[]): MaybePromise<number>
+  score(X: Matrix | number[][], y: TargetInput): MaybePromise<number>
   save(): Uint8Array
   dispose(): void
   getParams(): Record<string, unknown>
@@ -238,6 +242,7 @@ export type TaskKind =
   | 'survival'
   | 'forecasting'
   | 'multioutput'
+  | 'multilabel'
   | 'anomaly'
 
 export interface FeatureDef {
@@ -283,7 +288,7 @@ export interface Task {
   id: string
   kind: TaskKind
   X: Matrix
-  y?: Labels
+  y?: Targets
   featureSchema: FeatureSchema
   targetSchema?: TargetSchema
   rowIds?: Int32Array | string[]
@@ -295,6 +300,20 @@ export interface Task {
 }
 
 export interface Prediction {
+  /** Flat values use [row, target, level]; intervals append a lower/upper axis. */
+  rows?: number
+  taskKind?: SupervisedTaskKind
+  targetCount?: number
+  targetNames?: string[]
+  quantileLevels?: ArrayLike<number>
+  coverageLevels?: ArrayLike<number>
+  /** Classification [row, coverage, class]; multilabel [row, coverage, label, state]. */
+  sets?: Uint8Array | Float64Array
+  /** Samples [row, draw, target]. */
+  samples?: Float64Array
+  sampleCount?: number
+  sampleKind?: 'outcome' | 'mean'
+  region?: { kind: 'ellipsoid'; centers: Float64Array; precision: Float64Array; radii: Float64Array }
   taskId?: string
   rowIds?: Int32Array | string[]
   truth?: Labels
@@ -313,7 +332,7 @@ export interface Prediction {
 }
 
 export type MeasureDirection = 'maximize' | 'minimize'
-export type MeasureResponse = 'response' | 'proba' | 'score' | 'decision' | 'distribution'
+export type MeasureResponse = 'response' | 'proba' | 'score' | 'decision' | 'distribution' | 'quantiles' | 'interval' | 'sets' | 'region' | 'samples'
 
 export interface MeasureContext {
   truth?: Labels
@@ -522,19 +541,19 @@ export interface CVFold {
 }
 
 export type ScoringName = 'accuracy' | 'precision' | 'recall' | 'f1' | 'log_loss' | 'roc_auc' | 'roc_auc_ovr' | 'roc_auc_ovo' | 'r2' | 'mse' | 'neg_mse' | 'mae' | 'neg_mae'
-export type ScoringFn = (yTrue: Labels, yPred: Labels) => number
+export type ScoringFn = (yTrue: Targets, yPred: Targets) => number
 
 export type CVSpec = number | CVFold[] | ResamplingPlan | Array<{ train: number[]; test: number[] }>
 export type Scoring = ScoringName | (string & {}) | ScoringFn | MeasureDef
 export interface ResolvedScorer extends ScoringFn {
-  (yTrue: Labels, yPred: Labels, opts?: { classes?: Labels }): number
+  (yTrue: TargetInput, yPred: TargetInput | Prediction, opts?: { classes?: Labels; taskKind?: SupervisedTaskKind; sampleWeight?: Labels | number[]; quantileLevels?: ArrayLike<number>; coverageLevels?: ArrayLike<number> }): number
   readonly direction?: MeasureDirection
   readonly response?: MeasureResponse
   readonly measure?: MeasureDef
 }
 
 export interface CrossValScoreOpts {
-  task?: TaskType
+  task?: SupervisedTaskKind
   cv?: CVSpec
   scoring?: Scoring
   seed?: number

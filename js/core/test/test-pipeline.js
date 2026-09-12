@@ -538,3 +538,23 @@ describe('Pipeline sample weights', () => {
     assert.deepEqual(calls, [2, 'fit'])
   })
 })
+
+it('Pipeline lifts async transforms during inference and forwards prediction options', async () => {
+  const X = { rows: 2, cols: 1, data: Float64Array.of(1, 2) }
+  const transform = { fit() {}, async transform(X) { return { ...X, data: Float64Array.from(X.data, v => 2 * v) } } }
+  const model = {
+    fit() {}, predict(X, opts) { assert.equal(opts.offset, 3); return Float64Array.from(X.data, v => v + opts.offset) }
+  }
+  const pipe = new Pipeline([['t', transform], ['m', model]])
+  await pipe.fit(X, [1, 2])
+  assert.deepEqual(Array.from(await pipe.predict(X, { offset: 3 })), [5, 7])
+})
+
+it('Pipeline routes weights by target rows for matrix targets', () => {
+  const X = { rows: 2, cols: 1, data: Float64Array.of(1, 2) }
+  const Y = { rows: 2, cols: 2, data: Float64Array.of(1, 2, 3, 4) }
+  let observed
+  const model = { capabilities: { sampleWeight: true }, fit(X, y, opts) { observed = opts.sampleWeight } }
+  new Pipeline([['m', model]]).fit(X, Y, { sampleWeight: [1, 2] })
+  assert.deepEqual(observed, [1, 2])
+})

@@ -77,6 +77,9 @@ function normalizeY(y) {
   if (y instanceof Int32Array) return y
   if (y instanceof Float32Array) return y
   if (y instanceof Float64Array) return y
+  if (!Array.isArray(y) || y.some(v => typeof v !== 'number')) {
+    throw new ValidationError('y must be a flat numeric array; matrix targets require normalizeTargets and an explicit task')
+  }
   return new Float64Array(y)
 }
 

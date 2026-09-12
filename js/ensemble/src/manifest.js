@@ -119,7 +119,7 @@ function validateCv(cv, label, rows) {
     }
   }
   // Validate indices without allocating a dataset from untrusted manifest sizes.
-  resolveCv(cv, { length: rows }, { task: 'regression' })
+  resolveCv(cv, rows, { task: 'regression' })
   return cv.length
 }
 

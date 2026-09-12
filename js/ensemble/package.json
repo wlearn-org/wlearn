@@ -26,7 +26,7 @@
     "@wlearn/types": "^0.2.0"
   },
   "scripts": {
-    "test": "node --test test/mock-model.js test/test-bagging.js test/test-load-hardening.js test/test-selection.js test/test-stacking.js test/test-voting.js test/test-weights.js",
+    "test": "node --test test/mock-model.js test/test-bagging.js test/test-load-hardening.js test/test-selection.js test/test-stacking.js test/test-voting.js test/test-weights.js test/test-multioutput.js",
     "test:browser": "npm run build:browser && node test/test-browser.js",
     "test:types": "tsc --project test/tsconfig.json",
     "build:browser": "bash scripts/build-browser.sh",

@@ -12,6 +12,7 @@ from .bundle import (
     read_bundle_input, write_bundle_output,
 )
 from .registry import register, load, get_registry, assert_required_loaders
+from .targets import normalize_targets, target_rows
 from .pipeline import Pipeline
 from .preprocess import Preprocessor, resolve_preprocess_config
 from .scalers import StandardScaler, MinMaxScaler

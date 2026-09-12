@@ -181,3 +181,27 @@ ensembles belong to the postponed uncertainty work.
 Independent browser model and ensemble bundles must contain the same core version.
 Their loaders, public error classes, and registered measures share one runtime per
 realm. Both IIFE and ESM composition are covered by model save/load tests.
+
+## Multiple targets and independent binary labels
+
+`MultiOutputRegressor` fits one regression estimator per target.
+`MultiLabelClassifier` fits one probabilistic binary classifier per label. Both
+accept `{ estimator: ['name', ModelClass, params], targetNames }` and matrix y.
+`fit` is asynchronous; synchronous children keep inference synchronous. JavaScript
+outputs are `{ data, rows, cols }` dense matrices. Python exposes these classes
+from `wlearn.ensemble`, uses `estimator=(name, ModelClass, params)` and returns
+NumPy matrices.
+
+The composites own and dispose their children, preserve target names in WLRN,
+route weights per row and replace fitted children only after successful fitting.
+Constant binary columns retain both possible states without fitting a synthetic
+model. Multilabel `predict_proba`/`predictProba` returns the probability of state 1
+for each independent column, with no normalization across columns. Its default
+score is exact label-vector accuracy; regression defaults to mean per-target R².
+
+Quantile prediction requires every regression head to declare the capability and
+return the requested levels. Independent heads provide marginal predictions;
+they do not define joint predictive samples or simultaneous coverage. A loaded
+composite can predict and save immediately. Refitting requires a new estimator
+specification through `setParams`/`set_params`, since bundles store model artifacts
+and parameter descriptions, not executable factories.
