@@ -24,6 +24,19 @@ const { ValidationError } = require('../src/errors.js')
 const X = { data: new Float64Array([1, 2, 3, 4, 5, 6]), rows: 3, cols: 2 }
 const y = new Int32Array([0, 1, 0])
 
+it('Prediction preserves joint sample identity and rejects unsupported dependence declarations', () => {
+  const input = { rows: 1, taskKind: 'multioutput', targetCount: 2, sampleCount: 2, sampleKind: 'outcome', samples: [1, 2, 3, 4] }
+  const prediction = createPrediction({ ...input, sampleDependence: 'joint', sampleWeights: [1, 2] })
+  assert.equal(prediction.sampleDependence, 'joint')
+  assert.deepEqual(Array.from(prediction.sampleWeights), [1, 2])
+  assert.deepEqual(Array.from(prediction.samples), input.samples)
+  assert.throws(() => createPrediction({ ...input, sampleDependence: 'guessed' }), ValidationError)
+  assert.throws(() => createPrediction({ response: [1], sampleDependence: 'joint' }), ValidationError)
+  for (const sampleWeights of [[0, 0], [-1, 2], [1], [1, NaN]]) {
+    assert.throws(() => createPrediction({ ...input, sampleWeights }), ValidationError)
+  }
+})
+
 it('Prediction rejects invalid probability values, mass and class identity', () => {
   for (const proba of [[NaN, 1, 0, 1], [-0.1, 1.1, 0, 1], [0.2, 0.2, 0, 1]]) {
     assert.throws(() => createPrediction({ truth: [0, 1], proba, classes: [0, 1] }), ValidationError)

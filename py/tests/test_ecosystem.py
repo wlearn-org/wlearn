@@ -30,6 +30,22 @@ X = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
 y = np.array([0, 1, 0], dtype=np.int32)
 
 
+def test_prediction_preserves_joint_sample_identity():
+    values = dict(rows=1, task_kind='multioutput', target_count=2, sample_count=2,
+                  sample_kind='outcome', samples=[1, 2, 3, 4])
+    prediction = create_prediction(**values, sample_dependence='joint', sample_weights=[1, 2])
+    assert prediction.sample_dependence == 'joint'
+    assert prediction.sample_weights.tolist() == [1, 2]
+    assert prediction.samples.tolist() == values['samples']
+    with pytest.raises(ValidationError):
+        create_prediction(**values, sample_dependence='guessed')
+    with pytest.raises(ValidationError):
+        create_prediction(response=[1], sample_dependence='joint')
+    for weights in [[0, 0], [-1, 2], [1], [1, np.nan]]:
+        with pytest.raises(ValidationError):
+            create_prediction(**values, sample_weights=weights)
+
+
 @pytest.mark.parametrize('proba', [[np.nan, 1, 0, 1], [-0.1, 1.1, 0, 1], [0.2, 0.2, 0, 1]])
 def test_prediction_rejects_invalid_probabilities(proba):
     with pytest.raises(ValidationError):

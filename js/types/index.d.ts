@@ -326,6 +326,10 @@ export interface Prediction {
   samples?: Float64Array
   sampleCount?: number
   sampleKind?: 'outcome' | 'mean'
+  /** Joint target draws require an explicit declaration; absence gives no joint claim. */
+  sampleDependence?: 'joint' | 'marginal'
+  /** Nonnegative relative weights for draws, shared across rows; omitted means uniform. */
+  sampleWeights?: Float64Array
   region?: { kind: 'ellipsoid'; centers: Float64Array; precision: Float64Array; radii: Float64Array }
   taskId?: string
   rowIds?: Int32Array | string[]

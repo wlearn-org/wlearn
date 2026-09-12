@@ -1,7 +1,7 @@
 const { ValidationError } = require('./errors.js')
 
 const PREDICTION_FIELDS = ['response', 'proba', 'score', 'decision', 'interval', 'quantiles', 'sets', 'samples', 'region']
-const ARRAY_FIELDS = ['truth', 'response', 'proba', 'score', 'decision', 'interval', 'quantiles', 'classes', 'sets', 'samples', 'quantileLevels', 'coverageLevels']
+const ARRAY_FIELDS = ['truth', 'response', 'proba', 'score', 'decision', 'interval', 'quantiles', 'classes', 'sets', 'samples', 'sampleWeights', 'quantileLevels', 'coverageLevels']
 
 function numericArray(value, name) {
   if (!(Array.isArray(value) || value instanceof Float64Array || value instanceof Float32Array || value instanceof Int32Array || value instanceof Uint8Array)) {
@@ -51,7 +51,7 @@ function inferRows(p) {
 
 function createPrediction(opts = {}) {
   const p = { warnings: [...(opts.warnings || [])], metadata: { ...(opts.metadata || {}) } }
-  for (const key of ['taskId', 'taskKind', 'rows', 'targetCount', 'targetNames', 'rowIds', 'probaRows', 'sampleCount', 'sampleKind', 'region', 'featureSchemaHash', 'modelArtifactHash']) {
+  for (const key of ['taskId', 'taskKind', 'rows', 'targetCount', 'targetNames', 'rowIds', 'probaRows', 'sampleCount', 'sampleKind', 'sampleDependence', 'region', 'featureSchemaHash', 'modelArtifactHash']) {
     if (opts[key] != null) p[key] = opts[key]
   }
   for (const key of ARRAY_FIELDS) if (opts[key] != null) p[key] = numericArray(opts[key], key)
@@ -141,10 +141,21 @@ function validatePrediction(p) {
     field('sets', size(rows, k, cols))
     for (const v of p.sets) if (v !== 0 && v !== 1) throw new ValidationError('Prediction.sets entries must be 0 or 1')
   }
+  // Paired target draws are a model declaration, never inferred from array shape.
+  if (p.sampleDependence != null && (p.samples == null || !['joint', 'marginal'].includes(p.sampleDependence))) {
+    throw new ValidationError('Prediction.sampleDependence requires samples and must be joint or marginal')
+  }
   if (p.samples != null) {
     const n = positive(p.sampleCount, 'sampleCount')
     if (!['outcome', 'mean'].includes(p.sampleKind)) throw new ValidationError('Prediction.sampleKind must be outcome or mean')
     field('samples', size(rows, n, t))
+  }
+  if (p.sampleWeights != null) {
+    if (p.samples == null) throw new ValidationError('Prediction.sampleWeights requires samples')
+    field('sampleWeights', p.sampleCount)
+    if (Array.from(p.sampleWeights).some(v => v < 0) || !Array.from(p.sampleWeights).some(v => v > 0)) {
+      throw new ValidationError('Prediction.sampleWeights must be nonnegative relative draw weights with positive total')
+    }
   }
   if (p.region != null) {
     const k = levels(p.coverageLevels, 'coverageLevels')

@@ -278,6 +278,13 @@ handle CSR through their declared capability.
 | `sets` (multilabel) | row, coverage, label, state | `coverageLevels`, `targetCount` |
 | `samples` | row, draw, target | `sampleCount`, `sampleKind: 'outcome'` or `'mean'` |
 
+Samples may declare `sampleDependence: 'joint'` when columns in each draw belong
+together, or `'marginal'` when no joint interpretation is supplied. Array shape
+alone does not establish dependence. Optional `sampleWeights` are nonnegative
+relative weights for draws, shared across rows; omission means uniform weights.
+Numerical consumers normalize them. Posterior-mean samples do not represent
+future outcomes without an observation-noise model.
+
 Use `rows`, `targetCount` (default 1), and optional unique `targetNames` to
 identify axes. Levels are strictly increasing; quantiles cannot cross. Infinite
 interval endpoints express conservative support, and `[Infinity, -Infinity]`

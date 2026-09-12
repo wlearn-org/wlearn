@@ -15,7 +15,7 @@ import numpy as np
 from .errors import ValidationError
 
 PREDICTION_FIELDS = ('response', 'proba', 'score', 'decision', 'interval', 'quantiles', 'sets', 'samples', 'region')
-_ARRAY_FIELDS = ('truth', 'response', 'proba', 'score', 'decision', 'interval', 'quantiles', 'classes', 'sets', 'samples', 'quantile_levels', 'coverage_levels')
+_ARRAY_FIELDS = ('truth', 'response', 'proba', 'score', 'decision', 'interval', 'quantiles', 'classes', 'sets', 'samples', 'sample_weights', 'quantile_levels', 'coverage_levels')
 
 
 @dataclass
@@ -41,6 +41,8 @@ class Prediction:
     samples: np.ndarray | None = None
     sample_count: int | None = None
     sample_kind: str | None = None
+    sample_dependence: str | None = None
+    sample_weights: np.ndarray | None = None
     region: dict | None = None
     feature_schema_hash: str | None = None
     model_artifact_hash: str | None = None
@@ -184,11 +186,21 @@ def validate_prediction(p):
         a = np.asarray(p.sets)
         if np.any((a != 0) & (a != 1)):
             raise ValidationError('Prediction.sets entries must be 0 or 1')
+    # Paired target draws are a model declaration, never inferred from array shape.
+    if p.sample_dependence is not None and (p.samples is None or p.sample_dependence not in ('joint', 'marginal')):
+        raise ValidationError('Prediction.sample_dependence requires samples and must be joint or marginal')
     if p.samples is not None:
         n = _positive(p.sample_count, 'sample_count')
         if p.sample_kind not in ('outcome', 'mean'):
             raise ValidationError('Prediction.sample_kind must be outcome or mean')
         check('samples', rows * n * t)
+    if p.sample_weights is not None:
+        if p.samples is None:
+            raise ValidationError('Prediction.sample_weights requires samples')
+        check('sample_weights', p.sample_count)
+        weights = np.asarray(p.sample_weights)
+        if np.any(weights < 0) or not np.any(weights > 0):
+            raise ValidationError('Prediction.sample_weights must be nonnegative relative draw weights with positive total')
     if p.region is not None:
         k = _levels(p.coverage_levels, 'coverage_levels')
         if not isinstance(p.region, dict) or p.region.get('kind') != 'ellipsoid':
