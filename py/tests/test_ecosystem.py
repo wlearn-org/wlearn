@@ -451,3 +451,11 @@ def test_prediction_direct_validation_accepts_flat_lists_and_wraps_ragged_errors
                                    response=[0, 1]))
     with pytest.raises(ValidationError):
         create_prediction(response=[[1], [2, 3]])
+
+
+def test_explicit_cv_can_validate_a_row_count_without_allocating_dummy_targets():
+    from wlearn.resampling import resolve_cv
+    cv = [{'train': [2, 3], 'test': [0, 1]}, {'train': [0, 1], 'test': [2, 3]}]
+    assert len(resolve_cv(cv, 4, task='regression', require_complete=True)) == 2
+    with pytest.raises(ValidationError, match='labels'):
+        resolve_cv(2, 4, task='classification')

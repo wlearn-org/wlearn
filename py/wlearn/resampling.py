@@ -66,8 +66,13 @@ def serialize_cv(cv):
 
 def resolve_cv(cv, y, *, task=None, seed=42, require_complete=False):
     from .task import infer_task_kind
-    task = task or infer_task_kind(y)
-    n = len(y)
+    row_count = isinstance(y, (int, np.integer)) and not isinstance(y, (bool, np.bool_))
+    task = task or ('regression' if row_count else infer_task_kind(y))
+    n = int(y) if row_count else len(y)
+    if not 1 <= n <= 2**53-1:
+        raise ValidationError('CV requires a positive row count')
+    if row_count and task == 'classification':
+        raise ValidationError('Stratified CV requires class labels')
     if isinstance(cv, int) and not isinstance(cv, bool):
         source = (stratified_k_fold(y, cv, seed=seed) if task == 'classification'
                   else k_fold(n, cv, seed=seed))
