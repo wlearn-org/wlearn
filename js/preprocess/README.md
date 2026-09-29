@@ -4,8 +4,8 @@ Portable fitted tabular preprocessing for wlearn, implemented as a thin adapter
 over Tranfi's generic prepared-transform API.
 
 > **Unreleased main:** `@wlearn/preprocess` is not yet on npm. This README
-> targets the coordinated release after Tranfi 0.2; use the workspace package
-> from source until both are published.
+> targets the next wlearn release. Tranfi 0.2 is published; use this workspace
+> package from source until `@wlearn/preprocess` is published.
 
 ## Install
 

@@ -7,8 +7,8 @@ Part of [wlearn](https://wlearn.org) ([GitHub](https://github.com/wlearn-org), [
 > **Unreleased main:** This README targets the source-tree/next 0.2 release. The
 > current PyPI 0.1.0 release does not provide the `lightgbm`, `stochtree`, `nn`,
 > `preprocess`, or `bo` extras listed below. The preprocessing adapter also
-> requires Tranfi 0.2. Use the source tree until the coordinated releases are
-> published.
+> requires Tranfi 0.2, which is published. Use wlearn from source until its
+> coordinated release.
 
 ## Install
 

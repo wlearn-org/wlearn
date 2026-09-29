@@ -8,9 +8,8 @@ same artifact in JavaScript or Python when the corresponding loader is available
 
 > **Unreleased main:** This branch documents the next coordinated 0.x release.
 > Public registries do not yet provide `@wlearn/preprocess`, the
-> `wlearn[preprocess]` extra, or Tranfi's prepared-transform API. Build those
-> components from source until Tranfi 0.2 and the dependent wlearn packages are
-> published in dependency order.
+> `wlearn[preprocess]` extra. Tranfi 0.2 is published with the prepared-transform
+> API; use the wlearn components from source until their coordinated release.
 
 ## Why
 
