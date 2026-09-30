@@ -101,6 +101,7 @@ class Executor {
     const foldSeeds = new Uint32Array(folds.length)
     const t0 = now()
     let totalTrainUsed = 0
+    let supportsPredictProba = true
 
     // Resolve effective params (apply rounds budget if applicable)
     const effectiveParams = this.#applyRoundsBudget(
@@ -128,6 +129,11 @@ class Executor {
       try {
         await model.fit(Xtrain, ytrain)
         validateEstimatorTask(model, candidate.model.params.task)
+        // Capabilities may resolve only after fitting (objective/class count).
+        // Every fold must support probabilities before admitting this candidate
+        // to a classification soft ensemble; search scores remain independent.
+        supportsPredictProba &&= model.capabilities?.predictProba === true &&
+          typeof model.predictProba === 'function'
         scores[f] = await scoreEstimator(model, Xtest, ytest, this.#scorerFn)
       } catch (error) {
         operationError = error
@@ -151,6 +157,7 @@ class Executor {
       baseSeed: this.#seed,
       foldSeeds,
       fitTimeMs,
+      supportsPredictProba,
     })
 
     this.#archive.add({
@@ -174,6 +181,7 @@ class Executor {
           seed: value,
         })),
         stdScore: entry.stdScore,
+        supportsPredictProba,
         nTrainUsed: Math.round(totalTrainUsed / folds.length),
         nTest: folds[0].test.length
       }
@@ -188,6 +196,7 @@ class Executor {
       baseSeed: this.#seed,
       foldSeeds,
       stdScore: entry.stdScore,
+      supportsPredictProba,
       fitTimeMs,
       nTrainUsed: Math.round(totalTrainUsed / folds.length),
       nTest: folds[0].test.length,

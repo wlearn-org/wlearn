@@ -47,7 +47,7 @@ class Leaderboard {
    * @param {{ candidateId: string, candidate: object, scores: Float64Array, fitTimeMs: number }} entry
    * @returns {object} the entry with id assigned
    */
-  add({ candidateId, candidate, scores, baseSeed = 42, foldSeeds, fitTimeMs }) {
+  add({ candidateId, candidate, scores, baseSeed = 42, foldSeeds, fitTimeMs, supportsPredictProba = false }) {
     const normalizedCandidate = createCandidate(
       candidate.model, candidate.model.params, candidate.preprocess
     )
@@ -77,6 +77,7 @@ class Leaderboard {
       meanScore,
       stdScore,
       fitTimeMs,
+      supportsPredictProba,
       rank: 0,
       direction: this.#direction,
     }
@@ -131,6 +132,7 @@ class Leaderboard {
       meanScore: e.meanScore,
       stdScore: e.stdScore,
       fitTimeMs: e.fitTimeMs,
+      supportsPredictProba: e.supportsPredictProba,
       rank: e.rank,
       direction: this.#direction,
     }))
@@ -187,6 +189,7 @@ class Leaderboard {
           foldSeeds: entry.foldSeeds
             ? Array.from(entry.foldSeeds, (value, foldId) => ({ foldId, seed: value }))
             : [],
+          supportsPredictProba: entry.supportsPredictProba,
           stdScore: entry.stdScore
         }
       })

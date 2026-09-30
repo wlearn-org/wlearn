@@ -719,6 +719,8 @@ export interface CandidateResult {
   foldSeeds: Uint32Array
   meanScore: number
   stdScore: number
+  /** True only when every fitted CV fold declares and implements probabilities. */
+  supportsPredictProba?: boolean
   fitTimeMs: number
   rank: number
   direction: MeasureDirection

@@ -19,7 +19,7 @@ PY_CORE_TESTS = \
 
 .PHONY: test test-js test-browser test-py-core test-py test-z3 test-all
 
-test: test-js test-py-core test-release
+test: test-js test-py-core test-release test-readmes-harness
 
 test-js:
 	$(NPM) run test:js
@@ -36,7 +36,7 @@ test-py:
 test-z3:
 	PYTHONPATH=py $(Z3_PY) py/tests/external/resampling_z3.py
 
-test-all: test-release test-js test-types test-browser test-py test-integration test-interop
+test-all: test-release test-readmes-harness test-js test-types test-browser test-py test-integration test-interop
 
 .PHONY: test-integration
 test-integration:
@@ -53,3 +53,7 @@ test-interop:
 .PHONY: test-release
 test-release:
 	$(PYTHON) -m unittest discover -s scripts -p test_release.py -v
+
+.PHONY: test-readmes-harness
+test-readmes-harness:
+	$(PYTHON) -m unittest discover -s scripts -p test_readmes.py -v

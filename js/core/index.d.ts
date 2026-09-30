@@ -460,7 +460,7 @@ export declare function detectTask(y: Labels | number[]): 'classification' | 're
 export declare function createModelClass(
   classifier: EstimatorClass,
   regressor: EstimatorClass,
-  options?: { name?: string; load?: () => void | Promise<void> }
+  options?: { name?: string; load?: () => void | Promise<void>; fitMethods?: Record<string, 'classification' | 'regression'> }
 ): EstimatorClass
 
 export declare function subsetRows(X: DenseMatrix | number[][], indices: Int32Array | number[]): DenseMatrix

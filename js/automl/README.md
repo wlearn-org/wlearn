@@ -109,7 +109,7 @@ const result = await autoFit(models, X, y, {
 Pass an explicit template list to compare several fixed preprocessing policies:
 
 ```js
-preprocess: [
+const preprocess = [
   {
     templateId: 'plain',
     typeId: 'wlearn.preprocess.tabular@1',
@@ -185,7 +185,10 @@ Classification and regression have separate config sets with task-appropriate pa
 - `nIter` -- number of search iterations for random/halving/progressive/Bayesian strategies (default: 20; BayesianSearch default: 30)
 - `seed` -- random seed for reproducibility
 - `task` -- `'classification'` or `'regression'` (auto-detected if omitted)
-- `ensemble` -- build Caruana ensemble from top candidates (default: true)
+- `ensemble` -- build Caruana ensemble from top candidates (default: true).
+  Classification ensembles use only candidates declaring and implementing
+  `predictProba` in every fitted CV fold. Other candidates remain in the
+  leaderboard; if none supports probabilities, AutoML refits the best model.
 - `ensembleSize` -- max ensemble members (default: 20)
 - `refit` -- refit best model on full data (default: true)
 - `preprocess` -- `false`, `true`, one preprocessing config, or fixed template list
@@ -196,7 +199,7 @@ Classification and regression have separate config sets with task-appropriate pa
 
 `result.leaderboard` is an array of `CandidateResult` objects sorted by score:
 
-```js
+```text
 {
   id: 0,
   candidateId: 'wlc1_...',

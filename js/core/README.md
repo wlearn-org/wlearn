@@ -196,7 +196,7 @@ archive.leaderboard()
 
 Factory for building unified model classes from separate classifier/regressor implementations. Handles automatic task detection, async WASM pre-loading, and lifecycle management.
 
-```js
+```text
 const { createModelClass } = require('@wlearn/core')
 
 // Task-agnostic model (same class handles both tasks)
@@ -305,3 +305,8 @@ Measures can require structured prediction fields; `metadata.predictionArgs`
 supplies positional arguments after X when `scoreEstimator` invokes that method.
 The core provides validation and routing; numerical uncertainty methods live in
 an optional package.
+
+Model packages with additional fitting entry points can declare
+`fitMethods: { fitSpecial: 'regression' }` in `createModelClass` options. Those
+methods use the same fit-state, failure, disposal and Promise handling as `fit`.
+Other extra methods remain fitted-only queries.

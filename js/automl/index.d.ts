@@ -122,6 +122,7 @@ export class Leaderboard {
     /** Candidate/fold-derived provenance seeds; model params are not overridden. */
     foldSeeds?: Uint32Array
     fitTimeMs: number
+    supportsPredictProba?: boolean
   }): CandidateResult
   ranked(): CandidateResult[]
   best(): CandidateResult | null

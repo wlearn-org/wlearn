@@ -657,3 +657,48 @@ describe('autoFit validation', () => {
     if (result.model) result.model.dispose()
   })
 })
+
+
+describe('autoFit probability eligibility', () => {
+  let live = 0
+  class LabelsOnly {
+    static classId = 'test.labels-only'
+    static defaultSearchSpace() { return {} }
+    static async create(params) {
+      const model = await MockModel.create(params)
+      Object.defineProperty(model, 'capabilities', {
+        get: () => ({ classifier: true, predictProba: false })
+      })
+      model.predictProba = () => { throw new Error('probabilities are unavailable') }
+      const dispose = model.dispose.bind(model)
+      live++
+      model.dispose = () => { live--; dispose() }
+      return model
+    }
+  }
+  for (const preprocess of [false, true]) {
+    it(`refits a labels-only winner without inventing probabilities (preprocess=${preprocess})`, async () => {
+      const result = await autoFit([['labels', LabelsOnly]], X, yCls, {
+        nIter: 1, cv: 2, task: 'classification', preprocess
+      })
+      try {
+        assert.equal(result.model.predict(X).length, 10)
+        assert.equal(result.model.capabilities.predictProba, false)
+        assert.equal(result.leaderboard[0].supportsPredictProba, false)
+      } finally { result.model.dispose() }
+      assert.equal(live, 0)
+    })
+  }
+  it('keeps labels-only candidates in the leaderboard but out of soft ensembles', async () => {
+    const result = await autoFit([['labels', LabelsOnly], ['proba', SearchableMock]], X, yCls, {
+      nIter: 4, cv: 2, task: 'classification', minDisagreement: 0
+    })
+    try {
+      assert(result.leaderboard.some(e => e.modelName === 'labels'))
+      assert(result.leaderboard.some(e => e.modelName === 'proba'))
+      assert.equal(result.model.capabilities.predictProba, true)
+      assert.equal(result.model.predictProba(X).length, 20)
+    } finally { result.model.dispose() }
+    assert.equal(live, 0)
+  })
+})

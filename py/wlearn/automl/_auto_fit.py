@@ -207,11 +207,16 @@ def auto_fit(models, X, y, ensemble=True, ensemble_size=20, refit=True,
 
     model = None
 
-    if ensemble:
+    eligible = [
+        entry for entry in ranked
+        if task_actual != 'classification' or entry.get('supportsPredictProba')
+    ]
+
+    if ensemble and eligible:
         # Diversity-aware pool: best per family + top overall
         family_best = {}
         family_second = {}
-        for entry in ranked:
+        for entry in eligible:
             class_id = entry['candidate']['model']['classId']
             if class_id not in family_best:
                 family_best[class_id] = entry
@@ -231,7 +236,7 @@ def auto_fit(models, X, y, ensemble=True, ensemble_size=20, refit=True,
                 pool_ids.add(entry['id'])
 
         # Fill remaining from top overall
-        for entry in ranked:
+        for entry in eligible:
             if len(pool) >= ensemble_size * 2:
                 break
             if entry['id'] not in pool_ids:
@@ -315,7 +320,7 @@ def auto_fit(models, X, y, ensemble=True, ensemble_size=20, refit=True,
             )
             model = _fit_owned_ensemble(ens, X, y)
 
-    elif refit:
+    elif refit or ensemble:
         model = search.refit_best(X, y)
 
     return {

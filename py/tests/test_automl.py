@@ -2184,3 +2184,48 @@ def test_failed_candidate_does_not_stop_halving_rounds():
     ], n_iter=3, cv=2, task='regression', factor=2)
     result = search.fit(X, y)
     assert result['rounds'], 'surviving candidates must reach subsequent rounds'
+
+
+@pytest.mark.parametrize('preprocess', [False, True])
+def test_auto_fit_labels_only_falls_back_without_probabilities(preprocess):
+    class LabelsOnly(MockModel):
+        class_id = 'test.labels-only'
+
+        @property
+        def capabilities(self):
+            return {'classifier': True, 'predictProba': False}
+
+        def predict_proba(self, X):
+            raise AssertionError('probabilities are unavailable')
+
+    X, y = make_cls_data(n=24, n_classes=2)
+    result = auto_fit([('labels', LabelsOnly)], X, y, n_iter=1, cv=2,
+                      task='classification', preprocess=preprocess)
+    try:
+        assert len(result['model'].predict(X)) == len(y)
+        assert not result['model'].capabilities['predictProba']
+        assert result['leaderboard'][0]['supportsPredictProba'] is False
+    finally:
+        result['model'].dispose()
+
+
+def test_auto_fit_mixed_probability_capabilities():
+    class LabelsOnly(MockModel):
+        class_id = 'test.labels-only'
+
+        @property
+        def capabilities(self):
+            return {'classifier': True, 'predictProba': False}
+
+        def predict_proba(self, X):
+            raise AssertionError('probabilities are unavailable')
+
+    X, y = make_cls_data(n=24, n_classes=2)
+    result = auto_fit([('labels', LabelsOnly), ('proba', MockModel)], X, y,
+                      n_iter=4, cv=2, task='classification')
+    try:
+        assert {e['modelName'] for e in result['leaderboard']} == {'labels', 'proba'}
+        assert result['model'].capabilities['predictProba']
+        assert result['model'].predict_proba(X).size == len(y) * 2
+    finally:
+        result['model'].dispose()

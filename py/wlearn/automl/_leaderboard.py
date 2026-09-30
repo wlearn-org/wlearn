@@ -28,7 +28,7 @@ class Leaderboard:
         self._dirty = True
 
     def add(self, candidate, scores, fit_time_ms, candidate_id,
-            base_seed=42, fold_seeds=None):
+            base_seed=42, fold_seeds=None, supports_predict_proba=False):
         """Add a candidate result.
 
         Args:
@@ -67,6 +67,7 @@ class Leaderboard:
             'meanScore': mean_score,
             'stdScore': std_score,
             'fitTimeMs': fit_time_ms,
+            'supportsPredictProba': supports_predict_proba,
             'rank': 0,
             'direction': self._direction,
         }
@@ -115,6 +116,7 @@ class Leaderboard:
                 'meanScore': e['meanScore'],
                 'stdScore': e['stdScore'],
                 'fitTimeMs': e['fitTimeMs'],
+                'supportsPredictProba': e.get('supportsPredictProba', False),
                 'rank': e['rank'],
                 'direction': self._direction,
             }
@@ -171,6 +173,7 @@ class Leaderboard:
                             for fold_id, value in enumerate(
                                 entry['foldSeeds'])
                         ]),
+                    'supportsPredictProba': entry.get('supportsPredictProba', False),
                     'stdScore': entry['stdScore'],
                 },
             })

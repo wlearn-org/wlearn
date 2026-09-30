@@ -1,0 +1,1789 @@
+{
+  "432233acab5d6362833ee54d53997bb9d1af59dabaa76c3bdd164c4c73f14bf1": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "basis/README.md:17",
+      "basis/js/README.md:17",
+      "basis/py/README.md:17"
+    ]
+  },
+  "f6f1bd07910c40e621dc1666f0db052c8600869188490746d8498d56bf874565": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "basis/README.md:45",
+      "basis/js/README.md:45",
+      "basis/py/README.md:45"
+    ]
+  },
+  "0578189f37b382e8c9698c3b7d7e5d2e1df626f34aa3f3f25df96d8f0e90f17e": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "basis/README.md:143",
+      "basis/js/README.md:143",
+      "basis/py/README.md:143"
+    ]
+  },
+  "3dcefd7eac2741a6657d07695457e017507816a7469cf74cb6d2ef26af8f2918": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "bo/README.md:25",
+      "bo/js/README.md:24"
+    ]
+  },
+  "756d4708eeb2d54eecc659f18ea13fe92c367efe250caa4eff1ea127161d6d4f": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "bo/README.md:49",
+      "bo/js/README.md:48"
+    ]
+  },
+  "b2133430348ff2c97a2ff584f67689df62e22d42dc58a5b18cbb98701f31cae1": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "bo/README.md:72",
+      "bo/js/README.md:71"
+    ]
+  },
+  "154250e86e6b8531d7f61a4c7626973b72fa16017de8013feed3c3cfa1d8a86f": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "bo/py/README.md:13"
+    ]
+  },
+  "9fd26173609245f0c4d28c2657ec46489331fa50c525b92663b73e836f94a573": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "cluster/README.md:23",
+      "cluster/js/README.md:22"
+    ]
+  },
+  "45b88e2b39bf093828316fe2e2bf66fe7c1f4744d9a91c3caedd9abf44863d02": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "cluster/README.md:141",
+      "cluster/js/README.md:140"
+    ]
+  },
+  "24f7d977ca84ce533d76c5be27b8ce972d485ff06962f116a4fe95fc1f51fe30": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "cluster/README.md:159",
+      "cluster/js/README.md:158"
+    ],
+    "context": "const { ClusterModel } = require('@wlearn/cluster')\nconst km = await ClusterModel.create({k:3}); km.fit(X)"
+  },
+  "c45456c88ca7772947e96e73e9db6e3c67246bb3ab1a9e58cba05b9a4ff0956d": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "cluster/README.md:168",
+      "cluster/js/README.md:167"
+    ]
+  },
+  "4b724195c68b5580df1a0a991b15e3ff62e1af2205e714a89f19d9136dd611df": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "cluster/py/README.md:13"
+    ]
+  },
+  "87e2d991592752d59f87a1f0e22acf8ef770367ebfb68ae88444ff18cd7710c6": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "ebm-wasm/README.md:17"
+    ]
+  },
+  "fddc3f0a52ea62e71084a3442bc1c8bfdf06b8cc107e6ad823d21c28936d37f4": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "ebm-wasm/README.md:165"
+    ],
+    "bundle": [
+      "ebm",
+      "EBMModel"
+    ],
+    "data": {
+      "X": [
+        [-2, -2],
+        [-1, -1],
+        [1, 1],
+        [2, 2]
+      ],
+      "y": [0, 0, 1, 1]
+    }
+  },
+  "2bc4793301aa3f4f3d07a14c10cc77f37461328bb2542af1d8d197008efce9c6": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "ebm-wasm/README.md:176"
+    ]
+  },
+  "ff8efe1385950afb8cc6d040ea9d1f5adbb61174d1fa3309ad45a57754ef86e3": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "gam/README.md:104",
+      "gam/js/README.md:103"
+    ]
+  },
+  "aa8cfa2a0ff93c09d2ee58157945b92df9389d41a3c794666f326ef57ab31804": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "gam/README.md:126",
+      "gam/js/README.md:125"
+    ],
+    "context": "const { GAMModel } = require('@wlearn/gam')"
+  },
+  "8df7834709c73c7db6c3ad22f972c82df750c8b6eed5e8b8bf299ac0b37318d8": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "gam/README.md:138",
+      "gam/js/README.md:137"
+    ],
+    "context": "const { GAMModel } = require('@wlearn/gam')",
+    "data": {
+      "nClasses": 3,
+      "y": [0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1],
+      "y_test": [0, 1, 2, 0, 1, 2, 0, 1]
+    }
+  },
+  "104e09fccc62f0f93e16dbc59546bddd966e69f0a338995127ab5cf6258f6686": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "gam/README.md:155",
+      "gam/js/README.md:154"
+    ],
+    "context": "const { GAMModel } = require('@wlearn/gam')"
+  },
+  "4a27b4533ace5c0e2d6f5c2c2bbcf95c20a3d3aa2f40d657266fadac25a0d687": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "gam/README.md:166",
+      "gam/js/README.md:165"
+    ],
+    "context": "const { GAMModel } = require('@wlearn/gam')"
+  },
+  "6333d5310212d2551ef7a2f2c1ae25315fc27d2df6b5b6a6f244cb0d37a02366": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "gam/README.md:178",
+      "gam/js/README.md:177"
+    ],
+    "context": "const { GAMModel } = require('@wlearn/gam')"
+  },
+  "7380d34c1cd9e6245ce9673788b682f3f1fbde1a96404c82febe577721013cbb": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "gam/README.md:200",
+      "gam/js/README.md:199"
+    ],
+    "context": "const { GAMModel } = require('@wlearn/gam')"
+  },
+  "8e252f0bcf23580310bb4ec81b11515f4399ce537948d56e4488feec64b8df10": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "gam/README.md:216",
+      "gam/js/README.md:215"
+    ]
+  },
+  "378fa16ae696744aaffd9417068912811790b99213415c4fdbb844d02029a984": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "gam/py/README.md:13"
+    ]
+  },
+  "f0fb5cf06ebad52944030271c1d482cda8b2f611ec0ec2353e5f23a901061956": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "liblinear-wasm/README.md:15"
+    ]
+  },
+  "1bdf0b4416c5ba63d955508a58dfc07eb6e9421bc5f97926da13593d28d8b319": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "liblinear-wasm/README.md:48"
+    ],
+    "context": "const { LinearModel } = require('@wlearn/liblinear')\nconst { SVMModel } = require('@wlearn/libsvm')\nconst model = await LinearModel.create({task:'classification'}); model.fit(X,y)"
+  },
+  "55797459a240ebf38d1271e3c54ce8bbb0068481f11c5f8a78449b14db80ea95": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "liblinear-wasm/README.md:65"
+    ],
+    "context": "const { LinearModel } = require('@wlearn/liblinear')\nconst { SVMModel } = require('@wlearn/libsvm')\n"
+  },
+  "a33ae2ece1dbd728d2794175b06501986166d893dfc65338e35d042fc8605620": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "libsvm-wasm/README.md:15"
+    ]
+  },
+  "1f057e007c1c6f51d58861a6b9d637166049e6ab0e989255e445b59a43da0660": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "libsvm-wasm/README.md:45"
+    ],
+    "context": "const { SVMModel } = require('@wlearn/libsvm')\nconst model = await SVMModel.create({task:'classification'})"
+  },
+  "d8cbfae14b868855de6cfb01a5d8085b1aa1437b1467ba742a6c6131d5a732e5": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "libsvm-wasm/README.md:56"
+    ],
+    "context": "const { SVMModel } = require('@wlearn/libsvm')\n"
+  },
+  "5e00da90fbb62479d0fd92b19590437525872af9c1502a8ef923f271f87f15b9": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "lightgbm-wasm/README.md:15"
+    ]
+  },
+  "c8cca92e06e5a2941e5483e67ad6123e2a8710d51192283e16224cf3ccac4191": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "lightgbm-wasm/README.md:50"
+    ],
+    "context": "const { LGBModel } = require('@wlearn/lightgbm')\nconst model = await LGBModel.create({task:'classification'})"
+  },
+  "8f6969256faa16d2686c96becde3e1773f84f5bdbe5291a8e1d4fd8d2918600b": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "lightgbm-wasm/README.md:65"
+    ],
+    "context": "const { LGBModel } = require('@wlearn/lightgbm')\n"
+  },
+  "85f57d3ee1e5dc15cf738b15b8826b15d580a43b98185482bbdc306c68da9f5d": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "lightgbm-wasm/README.md:147"
+    ]
+  },
+  "c143d017d4f2b50e6a300d300f70efad139aa9be0994add95438ee664336a9cd": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "mitra-onnx/README.md:59"
+    ],
+    "files": [
+      "mitra-onnx/mitra-classifier.onnx",
+      "mitra-onnx/mitra-regressor.onnx"
+    ]
+  },
+  "89dddea39c13f449f7c88d8a0477765e3824bb07493133d4d7daf6e7413b01d1": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "mitra-onnx/README.md:118"
+    ],
+    "files": [
+      "mitra-onnx/mitra-classifier.onnx",
+      "mitra-onnx/mitra-regressor.onnx"
+    ],
+    "after": "const result = await runRegressor(XTrain, yTrain, XTest, yTest); require('node:assert/strict').equal(result.predictions.length, XTest.length)"
+  },
+  "08ad8caca78d4b1640d7c81127df5d381ad0003bc099f4dc101a78417b51516f": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "mitra-onnx/README.md:145"
+    ],
+    "files": [
+      "mitra-onnx/mitra-classifier.onnx",
+      "mitra-onnx/mitra-regressor.onnx"
+    ],
+    "context": "const ort = require('onnxruntime-node'); const fs = require('node:fs'); const cls = fs.readFileSync('mitra-classifier.onnx'), reg = fs.readFileSync('mitra-regressor.onnx'); const model = await require('@wlearn/mitra').MitraClassifier.create(cls, {maxSupport:4}, {ort, sessionOptions:{intraOpNumThreads:2,interOpNumThreads:1}}); model.fit(X,y); const bundle = model.save(); model.dispose()",
+    "after": "const loaded = await loadMitraBundle(bundle, cls, reg, ort); try { require('node:assert/strict').equal((await loaded.predict(XTest)).length,XTest.length) } finally { loaded.dispose() }"
+  },
+  "2f83f7a939713490b50fa310e208ad08668ae90f35b689128b3aa727f5636bbd": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "nanoflann-wasm/README.md:15"
+    ]
+  },
+  "8e537cdeea7969e63a6313fa7287daaa3c99494b7f46b53a847a2d75f659e75a": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "nn/README.md:22"
+    ]
+  },
+  "17631b928bfe152880e205694df7c0fef45ed472a6854300c86841389b73431f": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "nn/README.md:30"
+    ]
+  },
+  "d8efa69276994f1ae2c23b2ee6a988e0527b70a2630f26a89dff618d61c41008": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "rf/README.md:66",
+      "rf/js/README.md:66"
+    ]
+  },
+  "cf169ea627783ff46161a58cb7eac84bce80d074c7b08245a4ae392b0ea491e9": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "rf/README.md:94",
+      "rf/js/README.md:94"
+    ]
+  },
+  "13d3e3477d803c261e0fac8eef99f0e8f1a1bf7cd058bdd55dea8a3af3b32018": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:342",
+      "rf/js/README.md:342"
+    ],
+    "context": "const { RFModel } = require('@wlearn/rf')\nconst {readFileSync,writeFileSync}=require('node:fs')\n"
+  },
+  "badccd3dc0477677cdf8c9e1fc25d137380d77159284545db36d071574313e8f": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:351",
+      "rf/js/README.md:351"
+    ],
+    "context": "import numpy as np\nfrom wlearn_rf import RFModel\n"
+  },
+  "af5f97973b3c4c74774f0b9c2bced80f70428e17cc7ed2a766f3e1fd8ba0a436": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:365",
+      "rf/js/README.md:365"
+    ],
+    "context": "const { RFModel } = require('@wlearn/rf')\nconst {readFileSync,writeFileSync}=require('node:fs')\n",
+    "data": {
+      "X": [
+        [-1.0, 0.0, 0.0],
+        [1.005, 0.16666666666666666, 0.14285714285714285],
+        [-1.01, 0.3333333333333333, 0.2857142857142857],
+        [1.015, 0.5, 0.42857142857142855],
+        [-1.02, 0.6666666666666666, 0.5714285714285714],
+        [1.025, 0.8333333333333334, 0.7142857142857143],
+        [-1.03, 0.0, 0.8571428571428571],
+        [1.035, 0.16666666666666666, 0.0],
+        [-1.04, 0.3333333333333333, 0.14285714285714285],
+        [1.045, 0.5, 0.2857142857142857],
+        [-1.05, 0.6666666666666666, 0.42857142857142855],
+        [1.055, 0.8333333333333334, 0.5714285714285714],
+        [-1.06, 0.0, 0.7142857142857143],
+        [1.065, 0.16666666666666666, 0.8571428571428571],
+        [-1.07, 0.3333333333333333, 0.0],
+        [1.075, 0.5, 0.14285714285714285],
+        [-1.08, 0.6666666666666666, 0.2857142857142857],
+        [1.085, 0.8333333333333334, 0.42857142857142855],
+        [-1.09, 0.0, 0.5714285714285714],
+        [1.095, 0.16666666666666666, 0.7142857142857143],
+        [-1.1, 0.3333333333333333, 0.8571428571428571],
+        [1.105, 0.5, 0.0],
+        [-1.11, 0.6666666666666666, 0.14285714285714285],
+        [1.115, 0.8333333333333334, 0.2857142857142857],
+        [-1.12, 0.0, 0.42857142857142855],
+        [1.125, 0.16666666666666666, 0.5714285714285714],
+        [-1.13, 0.3333333333333333, 0.7142857142857143],
+        [1.135, 0.5, 0.8571428571428571],
+        [-1.1400000000000001, 0.6666666666666666, 0.0],
+        [1.145, 0.8333333333333334, 0.14285714285714285],
+        [-1.15, 0.0, 0.2857142857142857],
+        [1.155, 0.16666666666666666, 0.42857142857142855],
+        [-1.16, 0.3333333333333333, 0.5714285714285714],
+        [1.165, 0.5, 0.7142857142857143],
+        [-1.17, 0.6666666666666666, 0.8571428571428571],
+        [1.175, 0.8333333333333334, 0.0],
+        [-1.18, 0.0, 0.14285714285714285],
+        [1.185, 0.16666666666666666, 0.2857142857142857],
+        [-1.19, 0.3333333333333333, 0.42857142857142855],
+        [1.195, 0.5, 0.5714285714285714],
+        [-1.2, 0.6666666666666666, 0.7142857142857143],
+        [1.205, 0.8333333333333334, 0.8571428571428571],
+        [-1.21, 0.0, 0.0],
+        [1.215, 0.16666666666666666, 0.14285714285714285],
+        [-1.22, 0.3333333333333333, 0.2857142857142857],
+        [1.225, 0.5, 0.42857142857142855],
+        [-1.23, 0.6666666666666666, 0.5714285714285714],
+        [1.2349999999999999, 0.8333333333333334, 0.7142857142857143],
+        [-1.24, 0.0, 0.8571428571428571],
+        [1.245, 0.16666666666666666, 0.0],
+        [-1.25, 0.3333333333333333, 0.14285714285714285],
+        [1.255, 0.5, 0.2857142857142857],
+        [-1.26, 0.6666666666666666, 0.42857142857142855],
+        [1.2650000000000001, 0.8333333333333334, 0.5714285714285714],
+        [-1.27, 0.0, 0.7142857142857143],
+        [1.275, 0.16666666666666666, 0.8571428571428571],
+        [-1.28, 0.3333333333333333, 0.0],
+        [1.285, 0.5, 0.14285714285714285],
+        [-1.29, 0.6666666666666666, 0.2857142857142857],
+        [1.295, 0.8333333333333334, 0.42857142857142855],
+        [-1.3, 0.0, 0.5714285714285714],
+        [1.305, 0.16666666666666666, 0.7142857142857143],
+        [-1.31, 0.3333333333333333, 0.8571428571428571],
+        [1.315, 0.5, 0.0],
+        [-1.32, 0.6666666666666666, 0.14285714285714285],
+        [1.325, 0.8333333333333334, 0.2857142857142857],
+        [-1.33, 0.0, 0.42857142857142855],
+        [1.335, 0.16666666666666666, 0.5714285714285714],
+        [-1.34, 0.3333333333333333, 0.7142857142857143],
+        [1.345, 0.5, 0.8571428571428571],
+        [-1.35, 0.6666666666666666, 0.0],
+        [1.355, 0.8333333333333334, 0.14285714285714285],
+        [-1.3599999999999999, 0.0, 0.2857142857142857],
+        [1.365, 0.16666666666666666, 0.42857142857142855],
+        [-1.37, 0.3333333333333333, 0.5714285714285714],
+        [1.375, 0.5, 0.7142857142857143],
+        [-1.38, 0.6666666666666666, 0.8571428571428571],
+        [1.385, 0.8333333333333334, 0.0],
+        [-1.3900000000000001, 0.0, 0.14285714285714285],
+        [1.395, 0.16666666666666666, 0.2857142857142857]
+      ],
+      "y": [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1]
+    }
+  },
+  "e090f61121085ab1349208a444c625de6325a0ab421552d338d434b873eea0da": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:375",
+      "rf/js/README.md:375"
+    ],
+    "context": "import numpy as np\nfrom wlearn_rf import RFModel\n",
+    "data": {
+      "X": [
+        [-1.0, 0.0, 0.0],
+        [1.005, 0.16666666666666666, 0.14285714285714285],
+        [-1.01, 0.3333333333333333, 0.2857142857142857],
+        [1.015, 0.5, 0.42857142857142855],
+        [-1.02, 0.6666666666666666, 0.5714285714285714],
+        [1.025, 0.8333333333333334, 0.7142857142857143],
+        [-1.03, 0.0, 0.8571428571428571],
+        [1.035, 0.16666666666666666, 0.0],
+        [-1.04, 0.3333333333333333, 0.14285714285714285],
+        [1.045, 0.5, 0.2857142857142857],
+        [-1.05, 0.6666666666666666, 0.42857142857142855],
+        [1.055, 0.8333333333333334, 0.5714285714285714],
+        [-1.06, 0.0, 0.7142857142857143],
+        [1.065, 0.16666666666666666, 0.8571428571428571],
+        [-1.07, 0.3333333333333333, 0.0],
+        [1.075, 0.5, 0.14285714285714285],
+        [-1.08, 0.6666666666666666, 0.2857142857142857],
+        [1.085, 0.8333333333333334, 0.42857142857142855],
+        [-1.09, 0.0, 0.5714285714285714],
+        [1.095, 0.16666666666666666, 0.7142857142857143],
+        [-1.1, 0.3333333333333333, 0.8571428571428571],
+        [1.105, 0.5, 0.0],
+        [-1.11, 0.6666666666666666, 0.14285714285714285],
+        [1.115, 0.8333333333333334, 0.2857142857142857],
+        [-1.12, 0.0, 0.42857142857142855],
+        [1.125, 0.16666666666666666, 0.5714285714285714],
+        [-1.13, 0.3333333333333333, 0.7142857142857143],
+        [1.135, 0.5, 0.8571428571428571],
+        [-1.1400000000000001, 0.6666666666666666, 0.0],
+        [1.145, 0.8333333333333334, 0.14285714285714285],
+        [-1.15, 0.0, 0.2857142857142857],
+        [1.155, 0.16666666666666666, 0.42857142857142855],
+        [-1.16, 0.3333333333333333, 0.5714285714285714],
+        [1.165, 0.5, 0.7142857142857143],
+        [-1.17, 0.6666666666666666, 0.8571428571428571],
+        [1.175, 0.8333333333333334, 0.0],
+        [-1.18, 0.0, 0.14285714285714285],
+        [1.185, 0.16666666666666666, 0.2857142857142857],
+        [-1.19, 0.3333333333333333, 0.42857142857142855],
+        [1.195, 0.5, 0.5714285714285714],
+        [-1.2, 0.6666666666666666, 0.7142857142857143],
+        [1.205, 0.8333333333333334, 0.8571428571428571],
+        [-1.21, 0.0, 0.0],
+        [1.215, 0.16666666666666666, 0.14285714285714285],
+        [-1.22, 0.3333333333333333, 0.2857142857142857],
+        [1.225, 0.5, 0.42857142857142855],
+        [-1.23, 0.6666666666666666, 0.5714285714285714],
+        [1.2349999999999999, 0.8333333333333334, 0.7142857142857143],
+        [-1.24, 0.0, 0.8571428571428571],
+        [1.245, 0.16666666666666666, 0.0],
+        [-1.25, 0.3333333333333333, 0.14285714285714285],
+        [1.255, 0.5, 0.2857142857142857],
+        [-1.26, 0.6666666666666666, 0.42857142857142855],
+        [1.2650000000000001, 0.8333333333333334, 0.5714285714285714],
+        [-1.27, 0.0, 0.7142857142857143],
+        [1.275, 0.16666666666666666, 0.8571428571428571],
+        [-1.28, 0.3333333333333333, 0.0],
+        [1.285, 0.5, 0.14285714285714285],
+        [-1.29, 0.6666666666666666, 0.2857142857142857],
+        [1.295, 0.8333333333333334, 0.42857142857142855],
+        [-1.3, 0.0, 0.5714285714285714],
+        [1.305, 0.16666666666666666, 0.7142857142857143],
+        [-1.31, 0.3333333333333333, 0.8571428571428571],
+        [1.315, 0.5, 0.0],
+        [-1.32, 0.6666666666666666, 0.14285714285714285],
+        [1.325, 0.8333333333333334, 0.2857142857142857],
+        [-1.33, 0.0, 0.42857142857142855],
+        [1.335, 0.16666666666666666, 0.5714285714285714],
+        [-1.34, 0.3333333333333333, 0.7142857142857143],
+        [1.345, 0.5, 0.8571428571428571],
+        [-1.35, 0.6666666666666666, 0.0],
+        [1.355, 0.8333333333333334, 0.14285714285714285],
+        [-1.3599999999999999, 0.0, 0.2857142857142857],
+        [1.365, 0.16666666666666666, 0.42857142857142855],
+        [-1.37, 0.3333333333333333, 0.5714285714285714],
+        [1.375, 0.5, 0.7142857142857143],
+        [-1.38, 0.6666666666666666, 0.8571428571428571],
+        [1.385, 0.8333333333333334, 0.0],
+        [-1.3900000000000001, 0.0, 0.14285714285714285],
+        [1.395, 0.16666666666666666, 0.2857142857142857]
+      ],
+      "y": [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1]
+    }
+  },
+  "ecfd802f2995658b2d68220f40b397eda859cfb120ffac24c50a69ba1203b2f2": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:389",
+      "rf/js/README.md:389"
+    ],
+    "context": "const { RFModel } = require('@wlearn/rf')\nconst {readFileSync,writeFileSync}=require('node:fs')\n"
+  },
+  "72d9828b6d0bc2d153017cc0674a0fec1711392e8979ee37deecf5cea10bf12c": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:400",
+      "rf/js/README.md:400"
+    ],
+    "context": "import numpy as np\nfrom wlearn_rf import RFModel\n"
+  },
+  "e0843e3e4745d2d3ff133bafd0306bfcd93c4ba2e9db3e52fb7c254631f86827": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:412",
+      "rf/js/README.md:412"
+    ],
+    "context": "const { RFModel } = require('@wlearn/rf')\nconst {readFileSync,writeFileSync}=require('node:fs')\n"
+  },
+  "7ddded6440a7ce26142e64eb27960bea35ec776c3ef4e4cb8f98f0a4a3a7d94b": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:423",
+      "rf/js/README.md:423"
+    ],
+    "context": "import numpy as np\nfrom wlearn_rf import RFModel\n"
+  },
+  "a800288784a8bcbceedfeca720f016ee35c90e35df4e9dec2f5283019363f2c3": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:438",
+      "rf/js/README.md:434"
+    ],
+    "context": "const { RFModel } = require('@wlearn/rf')\nconst {readFileSync,writeFileSync}=require('node:fs')\n"
+  },
+  "76a278cab16b00cafdb09082cdf5cc8c608eef696f72ec0a2b100ea65122bd68": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:452",
+      "rf/js/README.md:448"
+    ],
+    "context": "import numpy as np\nfrom wlearn_rf import RFModel\n"
+  },
+  "ff0de5848ca12fa15dc83f3c70c4e6ac111be2ce64ce686425fc35cda3d30d04": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:468",
+      "rf/js/README.md:464"
+    ],
+    "context": "const { RFModel } = require('@wlearn/rf')\nconst {readFileSync,writeFileSync}=require('node:fs')\n"
+  },
+  "612de72b59598ba2f00d443965bafd5b58b1e5e234b100d972777d624a7fc80a": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:475",
+      "rf/js/README.md:471"
+    ],
+    "context": "import numpy as np\nfrom wlearn_rf import RFModel\n"
+  },
+  "96f7e47cbc122a4cd7da4186c02206b9def7affdee4d6e35ed97196d0e1d9c10": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:484",
+      "rf/js/README.md:480"
+    ],
+    "context": "const { RFModel } = require('@wlearn/rf')\nconst {readFileSync,writeFileSync}=require('node:fs')\n"
+  },
+  "beb7c830d737826445429fe227a4baddb7755ab70a1dc745f4589907df557c27": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:492",
+      "rf/js/README.md:488"
+    ],
+    "context": "import numpy as np\nfrom wlearn_rf import RFModel\n"
+  },
+  "e047762a76e0c1dc54c8a264e927c66036a3fd026ee8e4da9698a8886ba31504": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:502",
+      "rf/js/README.md:498"
+    ],
+    "context": "const { RFModel } = require('@wlearn/rf')\nconst {readFileSync,writeFileSync}=require('node:fs')\nconst clf = await RFModel.create({nEstimators:100,seed:42}); clf.fit(X,y)"
+  },
+  "104cb1f615470439c30e513a6274f3ec0cbd223daace30f8fd89a5437b80ae24": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:507",
+      "rf/js/README.md:503"
+    ],
+    "context": "import numpy as np\nfrom wlearn_rf import RFModel\nclf = RFModel({'n_estimators':100,'seed':42}).fit(X,y)"
+  },
+  "4437041c83de56e80b33cd5e879fb554891299f2d43fb1ebcaf4dee6e83cedb5": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:516",
+      "rf/js/README.md:512"
+    ],
+    "context": "const { RFModel } = require('@wlearn/rf')\nconst {readFileSync,writeFileSync}=require('node:fs')\nconst clf = await RFModel.create({nEstimators:100,seed:42}); clf.fit(X,y)"
+  },
+  "525094824d87fff6a03ed850eb98b0a05ebc01c7fd6ab48f5b97034247d1297d": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:521",
+      "rf/js/README.md:517"
+    ],
+    "context": "import numpy as np\nfrom wlearn_rf import RFModel\nclf = RFModel({'n_estimators':100,'seed':42}).fit(X,y)"
+  },
+  "c2a8af041c9ebb12899858ee3736a979e96401a47f526686dfcf8df4d11dc01a": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:527",
+      "rf/js/README.md:523"
+    ],
+    "context": "const { RFModel } = require('@wlearn/rf')\nconst {readFileSync,writeFileSync}=require('node:fs')\n"
+  },
+  "f42e80e4cf45c4aa3d4c009fe7956942ea4c7c6de1f25db9d9e3d8dd47d255d8": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:542",
+      "rf/js/README.md:538"
+    ],
+    "context": "import numpy as np\nfrom wlearn_rf import RFModel\n"
+  },
+  "e8f0e35629a56142c85e41917903ccc4bd8faa0e897b5758157897853168ed05": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:559",
+      "rf/js/README.md:555"
+    ],
+    "context": "import numpy as np\nfrom wlearn_rf import RFModel\n"
+  },
+  "af9a0e5756ce79714e0f87aeed91c8aeb60c2024fa0ff203c47d3fad70e09e38": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:576",
+      "rf/js/README.md:572"
+    ],
+    "context": "const { RFModel } = require('@wlearn/rf')\nconst {readFileSync,writeFileSync}=require('node:fs')\n"
+  },
+  "0d301704ad5e34666fcb4a8128e6acd340b36934381638dec139a8ca76f70fc6": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:590",
+      "rf/js/README.md:586"
+    ],
+    "context": "const { RFModel } = require('@wlearn/rf')\nconst {readFileSync,writeFileSync}=require('node:fs')\n"
+  },
+  "1f27f46d2288c238ada63345bdd0171788d05bf0e10732c09cf9666fc497e726": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:604",
+      "rf/js/README.md:600"
+    ],
+    "context": "import numpy as np\nfrom wlearn_rf import RFModel\n"
+  },
+  "376bb25a8ea35b28d7b1a32a83f62c62b3c691b521c5cdc7a10b307ddefd2671": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:615",
+      "rf/js/README.md:611"
+    ],
+    "context": "const { RFModel } = require('@wlearn/rf')\nconst {readFileSync,writeFileSync}=require('node:fs')\n",
+    "data": {
+      "X": [
+        [-1.0, 0.0, 0.0, 0.0, 0.0],
+        [1.005, 0.16666666666666666, 0.14285714285714285, 0.125, 0.1111111111111111],
+        [-1.01, 0.3333333333333333, 0.2857142857142857, 0.25, 0.2222222222222222],
+        [1.015, 0.5, 0.42857142857142855, 0.375, 0.3333333333333333],
+        [-1.02, 0.6666666666666666, 0.5714285714285714, 0.5, 0.4444444444444444],
+        [1.025, 0.8333333333333334, 0.7142857142857143, 0.625, 0.5555555555555556],
+        [-1.03, 0.0, 0.8571428571428571, 0.75, 0.6666666666666666],
+        [1.035, 0.16666666666666666, 0.0, 0.875, 0.7777777777777778],
+        [-1.04, 0.3333333333333333, 0.14285714285714285, 0.0, 0.8888888888888888],
+        [1.045, 0.5, 0.2857142857142857, 0.125, 0.0],
+        [-1.05, 0.6666666666666666, 0.42857142857142855, 0.25, 0.1111111111111111],
+        [1.055, 0.8333333333333334, 0.5714285714285714, 0.375, 0.2222222222222222],
+        [-1.06, 0.0, 0.7142857142857143, 0.5, 0.3333333333333333],
+        [1.065, 0.16666666666666666, 0.8571428571428571, 0.625, 0.4444444444444444],
+        [-1.07, 0.3333333333333333, 0.0, 0.75, 0.5555555555555556],
+        [1.075, 0.5, 0.14285714285714285, 0.875, 0.6666666666666666],
+        [-1.08, 0.6666666666666666, 0.2857142857142857, 0.0, 0.7777777777777778],
+        [1.085, 0.8333333333333334, 0.42857142857142855, 0.125, 0.8888888888888888],
+        [-1.09, 0.0, 0.5714285714285714, 0.25, 0.0],
+        [1.095, 0.16666666666666666, 0.7142857142857143, 0.375, 0.1111111111111111],
+        [-1.1, 0.3333333333333333, 0.8571428571428571, 0.5, 0.2222222222222222],
+        [1.105, 0.5, 0.0, 0.625, 0.3333333333333333],
+        [-1.11, 0.6666666666666666, 0.14285714285714285, 0.75, 0.4444444444444444],
+        [1.115, 0.8333333333333334, 0.2857142857142857, 0.875, 0.5555555555555556],
+        [-1.12, 0.0, 0.42857142857142855, 0.0, 0.6666666666666666],
+        [1.125, 0.16666666666666666, 0.5714285714285714, 0.125, 0.7777777777777778],
+        [-1.13, 0.3333333333333333, 0.7142857142857143, 0.25, 0.8888888888888888],
+        [1.135, 0.5, 0.8571428571428571, 0.375, 0.0],
+        [-1.1400000000000001, 0.6666666666666666, 0.0, 0.5, 0.1111111111111111],
+        [1.145, 0.8333333333333334, 0.14285714285714285, 0.625, 0.2222222222222222],
+        [-1.15, 0.0, 0.2857142857142857, 0.75, 0.3333333333333333],
+        [1.155, 0.16666666666666666, 0.42857142857142855, 0.875, 0.4444444444444444],
+        [-1.16, 0.3333333333333333, 0.5714285714285714, 0.0, 0.5555555555555556],
+        [1.165, 0.5, 0.7142857142857143, 0.125, 0.6666666666666666],
+        [-1.17, 0.6666666666666666, 0.8571428571428571, 0.25, 0.7777777777777778],
+        [1.175, 0.8333333333333334, 0.0, 0.375, 0.8888888888888888],
+        [-1.18, 0.0, 0.14285714285714285, 0.5, 0.0],
+        [1.185, 0.16666666666666666, 0.2857142857142857, 0.625, 0.1111111111111111],
+        [-1.19, 0.3333333333333333, 0.42857142857142855, 0.75, 0.2222222222222222],
+        [1.195, 0.5, 0.5714285714285714, 0.875, 0.3333333333333333],
+        [-1.2, 0.6666666666666666, 0.7142857142857143, 0.0, 0.4444444444444444],
+        [1.205, 0.8333333333333334, 0.8571428571428571, 0.125, 0.5555555555555556],
+        [-1.21, 0.0, 0.0, 0.25, 0.6666666666666666],
+        [1.215, 0.16666666666666666, 0.14285714285714285, 0.375, 0.7777777777777778],
+        [-1.22, 0.3333333333333333, 0.2857142857142857, 0.5, 0.8888888888888888],
+        [1.225, 0.5, 0.42857142857142855, 0.625, 0.0],
+        [-1.23, 0.6666666666666666, 0.5714285714285714, 0.75, 0.1111111111111111],
+        [1.2349999999999999, 0.8333333333333334, 0.7142857142857143, 0.875, 0.2222222222222222],
+        [-1.24, 0.0, 0.8571428571428571, 0.0, 0.3333333333333333],
+        [1.245, 0.16666666666666666, 0.0, 0.125, 0.4444444444444444],
+        [-1.25, 0.3333333333333333, 0.14285714285714285, 0.25, 0.5555555555555556],
+        [1.255, 0.5, 0.2857142857142857, 0.375, 0.6666666666666666],
+        [-1.26, 0.6666666666666666, 0.42857142857142855, 0.5, 0.7777777777777778],
+        [1.2650000000000001, 0.8333333333333334, 0.5714285714285714, 0.625, 0.8888888888888888],
+        [-1.27, 0.0, 0.7142857142857143, 0.75, 0.0],
+        [1.275, 0.16666666666666666, 0.8571428571428571, 0.875, 0.1111111111111111],
+        [-1.28, 0.3333333333333333, 0.0, 0.0, 0.2222222222222222],
+        [1.285, 0.5, 0.14285714285714285, 0.125, 0.3333333333333333],
+        [-1.29, 0.6666666666666666, 0.2857142857142857, 0.25, 0.4444444444444444],
+        [1.295, 0.8333333333333334, 0.42857142857142855, 0.375, 0.5555555555555556],
+        [-1.3, 0.0, 0.5714285714285714, 0.5, 0.6666666666666666],
+        [1.305, 0.16666666666666666, 0.7142857142857143, 0.625, 0.7777777777777778],
+        [-1.31, 0.3333333333333333, 0.8571428571428571, 0.75, 0.8888888888888888],
+        [1.315, 0.5, 0.0, 0.875, 0.0],
+        [-1.32, 0.6666666666666666, 0.14285714285714285, 0.0, 0.1111111111111111],
+        [1.325, 0.8333333333333334, 0.2857142857142857, 0.125, 0.2222222222222222],
+        [-1.33, 0.0, 0.42857142857142855, 0.25, 0.3333333333333333],
+        [1.335, 0.16666666666666666, 0.5714285714285714, 0.375, 0.4444444444444444],
+        [-1.34, 0.3333333333333333, 0.7142857142857143, 0.5, 0.5555555555555556],
+        [1.345, 0.5, 0.8571428571428571, 0.625, 0.6666666666666666],
+        [-1.35, 0.6666666666666666, 0.0, 0.75, 0.7777777777777778],
+        [1.355, 0.8333333333333334, 0.14285714285714285, 0.875, 0.8888888888888888],
+        [-1.3599999999999999, 0.0, 0.2857142857142857, 0.0, 0.0],
+        [1.365, 0.16666666666666666, 0.42857142857142855, 0.125, 0.1111111111111111],
+        [-1.37, 0.3333333333333333, 0.5714285714285714, 0.25, 0.2222222222222222],
+        [1.375, 0.5, 0.7142857142857143, 0.375, 0.3333333333333333],
+        [-1.38, 0.6666666666666666, 0.8571428571428571, 0.5, 0.4444444444444444],
+        [1.385, 0.8333333333333334, 0.0, 0.625, 0.5555555555555556],
+        [-1.3900000000000001, 0.0, 0.14285714285714285, 0.75, 0.6666666666666666],
+        [1.395, 0.16666666666666666, 0.2857142857142857, 0.875, 0.7777777777777778]
+      ],
+      "y": [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1]
+    }
+  },
+  "9815c5860fb216696721a77c1d0e372dcd9519f370b28e440196fb96f6d80519": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:680",
+      "rf/js/README.md:676"
+    ],
+    "context": "const { RFModel } = require('@wlearn/rf')\nconst {readFileSync,writeFileSync}=require('node:fs')\nconst clf = await RFModel.create({nEstimators:100,seed:42}); clf.fit(X,y)"
+  },
+  "31693164a3dc70cb4627946148add3aa0cabc9f2c56d2d2f3887d257dcb68580": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "rf/README.md:686",
+      "rf/js/README.md:682"
+    ],
+    "context": "import numpy as np\nfrom wlearn_rf import RFModel\nclf = RFModel({'n_estimators':100,'seed':42}).fit(X,y)"
+  },
+  "08aaecb25d9f02b03b06ef05096e075f0d4867f67c25380f9b1c5e2f06a735fd": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "rf/py/README.md:13"
+    ]
+  },
+  "86340d0309db7863eef4069e9f800a2a8c3330b0f211a327f171fa9b86751bf7": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "stochtree-wasm/README.md:19"
+    ]
+  },
+  "14f5ed79a11fb095376ac0b8781bb223c055fa5f2aecf034c77064960521aa0a": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "stochtree-wasm/README.md:37"
+    ],
+    "context": "const { BARTModel }=require('@wlearn/stochtree'); const {readFileSync,writeFileSync}=require('node:fs')\n"
+  },
+  "614bd70fe406bea89ecba208fa2e120a4cede76c57b5497db679b895db0e77e0": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "stochtree-wasm/README.md:52"
+    ],
+    "context": "const { readFileSync, writeFileSync } = require('fs')\nconst { BARTModel } = require('@wlearn/stochtree')\n\nconst model = await BARTModel.create({\n  task: 'regression',  // or 'classification'; auto-detected from labels if omitted\n  numTrees: 200,\n  numSamples: 100,\n  seed: 42\n})\n\nmodel.fit(X, y)\nconst predictions = model.predict(X_test)\nconst r2 = model.score(X_test, y_test)\n"
+  },
+  "0ff58fcba222dd86d5bf158092e0e2f2fc93383cf79239fd08535c8a8d5a6b07": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "stochtree-wasm/README.md:62"
+    ],
+    "context": "const { readFileSync, writeFileSync } = require('fs')\nconst { BARTModel } = require('@wlearn/stochtree')\n\nconst model = await BARTModel.create({\n  task: 'regression',  // or 'classification'; auto-detected from labels if omitted\n  numTrees: 200,\n  numSamples: 100,\n  seed: 42\n})\n\nmodel.fit(X, y)\nconst predictions = model.predict(X_test)\nconst r2 = model.score(X_test, y_test)\n"
+  },
+  "eaad7975e66570b02f4d67deb07e21313ec4f3ad7949cc12c1d59db666d24ae3": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "sym/README.md:33"
+    ]
+  },
+  "4f9d22f53fa1913f4a752ab38e8c8d03fdcbe3feb2958ab92c98aa7238c1b22e": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "sym/README.md:44"
+    ]
+  },
+  "ef7ed2ed28f4d151323915f995005b2d196e0f6dfcf60e64ee22aecfec41e9fe": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "sym/README.md:218"
+    ],
+    "context": "const { SymbolicRegressor } = require('@wlearn/sym')"
+  },
+  "bab3e04998e321eb9cb85746b78185b15ec045a13532cb58471c934050becc7a": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "sym/js/README.md:14"
+    ]
+  },
+  "34b18ec1fa93ef281c7a8bef35b020db8727f023d67c1b2ba211af5baa108483": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "sym/js/README.md:55"
+    ],
+    "context": "const { SymbolicRegressor } = require('@wlearn/sym')"
+  },
+  "a273b58678eecb66727dd5c8a6c1a6166a34c21d3e8558470e8599ce45d3da08": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "sym/py/README.md:15"
+    ]
+  },
+  "a5368d73feb5f0a28ae58db214516180d7c6f6d808b1738efe91c952b484baf2": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "sym/py/README.md:50"
+    ],
+    "context": "from wlearn_sym import SymbolicRegressor"
+  },
+  "afe17aefbd955da971ff1a10b280f1efb94453fcf34d911e73ebb29adc47876e": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "tsetlin-wasm/README.md:15"
+    ]
+  },
+  "2c783adf0989754d4c63e8934c34dd92e8d59a8d06085c02519c0a19f8967484": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "uncertainty/README.md:47",
+      "uncertainty/js/README.md:47",
+      "uncertainty/py/README.md:47"
+    ]
+  },
+  "617913228c3c2bdaf6d6d21b9f7e3ce8e07b039ba50d8f7872fadfafdcfc4153": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "uncertainty/README.md:55",
+      "uncertainty/js/README.md:55",
+      "uncertainty/py/README.md:55"
+    ]
+  },
+  "96648937dceaf87a13cc40ce3f33b0cab71ed54087b1089ca298d6516cb1f750": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "uncertainty/README.md:77",
+      "uncertainty/js/README.md:77",
+      "uncertainty/py/README.md:77"
+    ]
+  },
+  "11ed1ceb794200e09d78d1bd637f95b0a6535a3c022dafc642c665c1b6cebf5e": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "uncertainty/README.md:116",
+      "uncertainty/js/README.md:116",
+      "uncertainty/py/README.md:116"
+    ]
+  },
+  "4f96af4132ccfc2db2caec2403dc30e1d0a0eb9c1027b50292d7bea170049a43": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "uncertainty/README.md:128",
+      "uncertainty/js/README.md:128",
+      "uncertainty/py/README.md:128"
+    ]
+  },
+  "213c32557f9271d4b1bae1e63d25682840854991e8f026faf0c5a5a42067e134": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "uncertainty/README.md:160",
+      "uncertainty/js/README.md:160",
+      "uncertainty/py/README.md:160"
+    ]
+  },
+  "493cc10fb9ee0224a98189aeb80cf609b80dd047cdc067c853d6997f474514b0": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "uncertainty/README.md:198",
+      "uncertainty/js/README.md:198",
+      "uncertainty/py/README.md:198"
+    ],
+    "context": "const { Pipeline }=require('@wlearn/core'); const { RFModel }=require('@wlearn/rf'); const fittedPipeline = new Pipeline([['rf',await RFModel.create({task:'regression',seed:42,nEstimators:20})]]); fittedPipeline.fit(X,y)"
+  },
+  "2f2ddc882e2613e982ed2d048a7dce6ca5a4ecbd25eec738bb27e39f51c5f32f": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "uncertainty/README.md:220",
+      "uncertainty/js/README.md:220",
+      "uncertainty/py/README.md:220"
+    ],
+    "context": "const {createPrediction}=require('@wlearn/core'); const outcomePrediction=createPrediction({rows:2,taskKind:'regression',sampleCount:3,sampleKind:'outcome',samples:[0,1,2,1,2,3]}); const quantilePrediction=createPrediction({rows:2,taskKind:'regression',quantileLevels:[.1,.5,.9],quantiles:[0,1,2,1,2,3]})",
+    "data": {
+      "testY": [1, 2]
+    }
+  },
+  "bac3e5d791c981d9b2ab7d465e2bda96aebcea2603ffe269e550b6b3d418585b": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "uncertainty/README.md:228",
+      "uncertainty/js/README.md:228",
+      "uncertainty/py/README.md:228"
+    ],
+    "context": "from wlearn.prediction import create_prediction\noutcome_prediction=create_prediction(rows=2,task_kind='regression',sample_count=3,sample_kind='outcome',samples=[0,1,2,1,2,3])",
+    "data": {
+      "test_y": [1, 2]
+    }
+  },
+  "d366158351f7ca15cd53bcbf6746423b39f00b5268b7aa69dc647597553f41ab": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "uncertainty/README.md:292",
+      "uncertainty/js/README.md:292",
+      "uncertainty/py/README.md:292"
+    ]
+  },
+  "59e61692c351f9b8f2896bf5b042fbebd5be7aecc7f5c51d5769f6a374e4bf7e": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "uncertainty/README.md:300",
+      "uncertainty/js/README.md:300",
+      "uncertainty/py/README.md:300"
+    ]
+  },
+  "d9b8553aa197935bf1c809ceada04eb3370f57b77073b780e0d5f8f3599db5a5": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "uncertainty/README.md:348",
+      "uncertainty/js/README.md:348",
+      "uncertainty/py/README.md:348"
+    ],
+    "context": "const predictor=await require('@wlearn/liblinear').LinearModel.create({task:'classification'})"
+  },
+  "2d9f8d4940d8e364e459aed1bebc36ff42e0832aec4249e8f81451b5e7ea9ea4": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "uncertainty/README.md:404",
+      "uncertainty/js/README.md:404",
+      "uncertainty/py/README.md:404"
+    ],
+    "data": {
+      "calibrationProbabilities": [
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8],
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1],
+        [0.1, 0.1, 0.8]
+      ],
+      "calibrationLabels": [0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2],
+      "testProbabilities": [
+        [0.8, 0.1, 0.1],
+        [0.1, 0.8, 0.1]
+      ]
+    }
+  },
+  "9f577ae454657ea4fa4f524d75b6292766242e734ac93f30998d90a5cff2895f": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "uncertainty/README.md:530",
+      "uncertainty/js/README.md:530",
+      "uncertainty/py/README.md:530"
+    ]
+  },
+  "1c81261ca8dcda812c41721a4b205ff5f523fb7ad02e1c3ec0f51a509ab89565": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "uncertainty/README.md:579",
+      "uncertainty/js/README.md:579",
+      "uncertainty/py/README.md:579"
+    ],
+    "data": {
+      "developmentPredictions": [
+        [0, 0],
+        [0, 0],
+        [0, 0],
+        [0, 0]
+      ],
+      "yDevelopment": [
+        [1, 0],
+        [0, 4],
+        [3, 2],
+        [0, 8]
+      ],
+      "developmentIds": [0, 1, 2, 3],
+      "calibrationPredictions": [
+        [0, 0],
+        [0, 0],
+        [0, 0],
+        [0, 0]
+      ],
+      "yCalibration": [
+        [1, 0],
+        [0, 4],
+        [3, 2],
+        [0, 8]
+      ],
+      "calibrationIds": [4, 5, 6, 7],
+      "testPredictions": [
+        [1, 2],
+        [3, 4]
+      ]
+    }
+  },
+  "929f07917fe096a422ba7bb2031a91379d36baa4f37e248fdcec7aeab637daeb": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "uncertainty/README.md:616",
+      "uncertainty/js/README.md:616",
+      "uncertainty/py/README.md:616"
+    ],
+    "data": {
+      "calibrationProbabilities": [
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1],
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1]
+      ],
+      "calibrationLabels": [
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0]
+      ],
+      "testProbabilities": [
+        [0.8, 0.1, 0.8],
+        [0.1, 0.8, 0.1]
+      ]
+    }
+  },
+  "e491834f4d0f70baba1a82911f96f5d4ed1e17a2a4b06b1d8e5047cd4a911a91": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/README.md:15"
+    ]
+  },
+  "f12a732bece2a1a0d83aab64ab61164f3da83a53246fac22f2ce29b0910c64d5": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "wlearn/README.md:128"
+    ],
+    "context": "const { LinearModel } = require('@wlearn/liblinear')\nconst { SVMModel } = require('@wlearn/libsvm')\n"
+  },
+  "635ea36e3b478a852fb46c533e5fbf00e7a2600ff7931533629c419daa2218ae": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "wlearn/README.md:138"
+    ],
+    "context": "const { LinearModel } = require('@wlearn/liblinear')\nconst { SVMModel } = require('@wlearn/libsvm')\nconst model = await LinearModel.create({task:'classification'}); model.fit(X,y)"
+  },
+  "9e461a883f0579ba96da6e2095b16ed5560c05a2bc31e3ff6d49217583ebb8f5": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "wlearn/README.md:149"
+    ],
+    "context": "const { LinearModel } = require('@wlearn/liblinear')\nconst { SVMModel } = require('@wlearn/libsvm')\n"
+  },
+  "ffce3d05c4af333cf9e881533262df76c96df4f3ae92f9bd02d00dd256ae9fd0": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "wlearn/README.md:165"
+    ],
+    "context": "const { LinearModel } = require('@wlearn/liblinear')\nconst { SVMModel } = require('@wlearn/libsvm')\nconst model = await LinearModel.create({task:'classification'}); model.fit(X,y)"
+  },
+  "a72f44cd1c61dc083ec4bfba71592a31bdbf973a9b63b8c40a00a8d570165d8b": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/README.md:192"
+    ]
+  },
+  "4718c4c5139787eabe91befd985563ce9799779ed5439c7bbe9c002c5cf4a3f8": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "wlearn/README.md:211"
+    ],
+    "context": "const { LinearModel } = require('@wlearn/liblinear')\nconst { SVMModel } = require('@wlearn/libsvm')\nconst model = await LinearModel.create({task:'classification'}); model.fit(X,y)"
+  },
+  "bea4a9b6a6fa6e636eb413922f7188518e39a1cd5c81923d6ba063b9d06b9099": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "wlearn/README.md:222"
+    ],
+    "context": "const { LinearModel } = require('@wlearn/liblinear')\nconst { SVMModel } = require('@wlearn/libsvm')\nconst model = await LinearModel.create({task:'classification'}); model.fit(X,y)"
+  },
+  "e4eba09c260a5681098e9f06e6ea03269d2a6a050d6405737b658903858bf9d2": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/README.md:234"
+    ]
+  },
+  "3247a8b93b8be56cf06c13bedf2aa7ac98b32c2146f8797809474d4dc60aca5f": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/README.md:263"
+    ]
+  },
+  "287db6cf4838596bceb3305ba98c52b67e30514fe9228b7d9398df983f8ee8c4": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/README.md:323"
+    ]
+  },
+  "0bbf2f2dbb3098592ba58ebf810d178c50fbdf9fec1f5240d282825e04724061": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/README.md:374"
+    ]
+  },
+  "ade59ba6a062d2ee1701dd25089a06a6639120e808b4fd7178d697a67a787a67": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/README.md:392"
+    ]
+  },
+  "529198a46bb8d6c16db3c32c37845ea9a96e82e4865d61ccd87db7b4a45477f4": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/README.md:418"
+    ]
+  },
+  "0a1298fbef24c7d1a5bcf35ef21faa9084312ce85d889cba88aaf064cc77315f": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/README.md:438"
+    ]
+  },
+  "2a1217975ace3684b2ccd965b7e62aec215ccb2135e3b9133b938950a0e2d94b": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/README.md:468"
+    ]
+  },
+  "b3e05b4845f30a345a949601f5e762ecd89b32698df877ad9ed25f0933594936": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/README.md:481"
+    ]
+  },
+  "d928be568af8fd924f029d6aa13a8bda80e5ef8dec81a62f18fdcd367cae8416": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/README.md:496"
+    ],
+    "files": [
+      "mitra-onnx/mitra-classifier.onnx",
+      "mitra-onnx/mitra-regressor.onnx"
+    ]
+  },
+  "eb622e75d3977a54c1223de9e3300950ef3757228141f608fb065b005d2efd93": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/README.md:519"
+    ]
+  },
+  "50df3b3459835465b43000fdd96b5a5e1cb57ebcd0c8178048cefcd2e7ac3dc9": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/README.md:560"
+    ]
+  },
+  "a66be0aa15ece3552888b0b3b9f1b2ec6e99d73ea226dc8901a91e9ccc764094": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/README.md:570"
+    ]
+  },
+  "9668e27c987b58dcf60f3e90dc0a9c28b07fef444c8797fdfc8bc4a850c7c26c": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/README.md:621"
+    ],
+    "bundle": [
+      "xgboost",
+      "XGBModel"
+    ],
+    "data": {
+      "X": [
+        [-2, -2],
+        [-1, -1],
+        [1, 1],
+        [2, 2]
+      ],
+      "y": [0, 0, 1, 1]
+    }
+  },
+  "e35c0f3d0e8e47d37a60c90ddf97f9fa8cb2d2711e0bdc19e90b7de924e64a7c": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/README.md:748"
+    ]
+  },
+  "e1185f8b9fcbb9b16d8467454199a55f576acfaad456e15fdfd3ce3c863c066d": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/README.md:772"
+    ]
+  },
+  "adc6bf73c4cc76a441ae86a801596f9e06d07b1ceeebed8b39a7f1df220339b7": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/README.md:832"
+    ]
+  },
+  "293a712a0b1a6abdad13c21b79807ddf1754b79606d8ee3ac09ca568ba354f78": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/js/preprocess/README.md:17"
+    ]
+  },
+  "861b6c0b3ea43abc87d924c617c777fee2efb0a6555e9161e530e48a82109427": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/js/preprocess/README.md:87"
+    ],
+    "after": "const pipeline=await makePipeline(); try { pipeline.fit(X,y); require('node:assert/strict').equal(pipeline.predict(XTest).length,XTest.length) } finally { pipeline.dispose() }"
+  },
+  "ca238da3c4d1bc16c7c5aa371cc44bb742a947f5c6b015e2320cf81dccfcfb1f": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/js/preprocess/README.md:125"
+    ]
+  },
+  "42b363908aef6d63ffd6af8cc991ce2e385a014129af48089ec9c7b3c091ee09": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "wlearn/js/preprocess/README.md:165"
+    ],
+    "context": "const { Preprocessor } = require('@wlearn/preprocess')"
+  },
+  "1585b369d730da08668f174f21208d5b45a90fd4ff64646aa3e7f21007bb7230": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/js/core/README.md:18"
+    ]
+  },
+  "2f62f67de1963f0663272d57f3040451f61ba2482830bc289be6a3b5e97dd6f6": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/js/core/README.md:157"
+    ]
+  },
+  "a419955d57b8213d25ff186eddc624deba89040d5a0bafbdd3125f1ab8fbcb6f": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/js/core/README.md:183"
+    ],
+    "data": {
+      "response": [0, 1, 0, 1, 0, 1, 0, 1],
+      "proba": [0.8, 0.2, 0.1, 0.9, 0.8, 0.2, 0.1, 0.9, 0.8, 0.2, 0.1, 0.9, 0.8, 0.2, 0.1, 0.9],
+      "classes": [0, 1],
+      "dates": [
+        "2026-01-01",
+        "2026-01-02",
+        "2026-01-03",
+        "2026-01-04",
+        "2026-01-05",
+        "2026-01-06",
+        "2026-01-07",
+        "2026-01-08",
+        "2026-01-09",
+        "2026-01-10",
+        "2026-01-11",
+        "2026-01-12",
+        "2026-01-13",
+        "2026-01-14",
+        "2026-01-15",
+        "2026-01-16",
+        "2026-01-17",
+        "2026-01-18",
+        "2026-01-19",
+        "2026-01-20",
+        "2026-01-21",
+        "2026-01-22",
+        "2026-01-23",
+        "2026-01-24"
+      ]
+    }
+  },
+  "8480c83414ad8522d28016268916db7e5c33e3c24698b4c8ba09806a3e28e560": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/js/ensemble/README.md:20"
+    ]
+  },
+  "5cc02fa555c9b092b2c25826323ae6d5369b686e253b92f7464fdee11f88c9d4": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/js/ensemble/README.md:55"
+    ]
+  },
+  "8ecb8521b53b6e69e49791a2184a7c6eafe68f27fe3cfde8a185546c7ba75307": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/js/ensemble/README.md:80"
+    ]
+  },
+  "3d0b5f01a3fd4bb64e43b08681c6ea9904154fdd1e6aa2c01712acbe2b3bc5e7": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/js/sdk/README.md:15"
+    ]
+  },
+  "894b9950d11171045b297e3cd2caa367a207539f9f6bebedd50d72ea0f295fba": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/js/types/README.md:19"
+    ]
+  },
+  "c96cd8f54a4dd40dd356f9ad962f058cc652fad026922618d41bd39b31440b20": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/js/automl/README.md:27"
+    ]
+  },
+  "4b5055f337b3aa42a3013f3cfbcbf25b75b4ac603569d136c64451bb881d9a73": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "wlearn/js/automl/README.md:99"
+    ],
+    "context": "const {autoFit}=require('@wlearn/automl'); const {LinearModel}=require('@wlearn/liblinear'); const models=[{name:'linear',classId:'wlearn.liblinear.classifier@1',cls:LinearModel}]"
+  },
+  "3fc79b2f59bb340a7fc462caa59bef898a9e407ffeb7d4e3bed66e27caff43ce": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/js/automl/README.md:111"
+    ]
+  },
+  "72761959cca19304bfb1ca0454f76c06a5f9a3de01be207a8155e1efb0eae1eb": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "wlearn/js/automl/README.md:226"
+    ],
+    "context": "const {autoFit}=require('@wlearn/automl'); const {LinearModel}=require('@wlearn/liblinear'); const result=await autoFit([{name:'linear',classId:'wlearn.liblinear.classifier@1',cls:LinearModel}],X,y,{nIter:2,cv:2})"
+  },
+  "54468d759de552c19d71c5cc535921e3c50e78aaa20291e7d3ad464189b9ca61": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/py/README.md:41"
+    ]
+  },
+  "631fecfb2562bcdbb83ab38282b43a8e5418dc3d9b47f6f57ee0152000b39fdd": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/py/README.md:134"
+    ]
+  },
+  "19ed47f41a9e67263d16b5a86c213e49df84b5a418e53dd91e861f6fed621beb": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/py/README.md:179"
+    ]
+  },
+  "f6c49df070f2477f760b226e37a97ccdd6fa696904266d8dd86ff20421757b81": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/py/README.md:201"
+    ],
+    "data": {
+      "response": [0, 1, 0, 1, 0, 1, 0, 1],
+      "proba": [0.8, 0.2, 0.1, 0.9, 0.8, 0.2, 0.1, 0.9, 0.8, 0.2, 0.1, 0.9, 0.8, 0.2, 0.1, 0.9],
+      "classes": [0, 1]
+    }
+  },
+  "4e7d1190c5471779eb882ab3380c09deff199f35d4bfcfa2fd294d928981dec4": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "wlearn/py/README.md:227"
+    ]
+  },
+  "6b86ca7892abf10c49cf54e8576ddaed952aa280a90f24f95c3b2d360de987bd": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "xgboost-wasm/README.md:15"
+    ]
+  },
+  "1f417dbed04b06730ca8a528b4c10eb38bdbad4d813564f34e27a68a7576ec1d": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "xgboost-wasm/README.md:126"
+    ],
+    "context": "const { XGBModel } = require('@wlearn/xgboost')"
+  },
+  "adabdac24899a77c4e6cd9e44a582c95a8d311ccbe40a29e9a9ab059690bb3cb": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "xgboost-wasm/README.md:140"
+    ]
+  },
+  "3a2dc985f94f3a0d6987f507bc21dee5c5c0b1de287f862ff4296a098509d926": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "xlearn-wasm/README.md:15"
+    ]
+  },
+  "c462a3d1e573e32bd29605c1ea8af4bb50571fc4169d13abded890310095c808": {
+    "description": "Example with deterministic input data",
+    "sources": [
+      "xlearn-wasm/README.md:60"
+    ],
+    "data": {
+      "X": [
+        [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        [1.005, 0.16666666666666666, 0.14285714285714285, 0.125, 0.1111111111111111, 0.1],
+        [-1.01, 0.3333333333333333, 0.2857142857142857, 0.25, 0.2222222222222222, 0.2],
+        [1.015, 0.5, 0.42857142857142855, 0.375, 0.3333333333333333, 0.3],
+        [-1.02, 0.6666666666666666, 0.5714285714285714, 0.5, 0.4444444444444444, 0.4],
+        [1.025, 0.8333333333333334, 0.7142857142857143, 0.625, 0.5555555555555556, 0.5],
+        [-1.03, 0.0, 0.8571428571428571, 0.75, 0.6666666666666666, 0.6],
+        [1.035, 0.16666666666666666, 0.0, 0.875, 0.7777777777777778, 0.7],
+        [-1.04, 0.3333333333333333, 0.14285714285714285, 0.0, 0.8888888888888888, 0.8],
+        [1.045, 0.5, 0.2857142857142857, 0.125, 0.0, 0.9],
+        [-1.05, 0.6666666666666666, 0.42857142857142855, 0.25, 0.1111111111111111, 0.0],
+        [1.055, 0.8333333333333334, 0.5714285714285714, 0.375, 0.2222222222222222, 0.1],
+        [-1.06, 0.0, 0.7142857142857143, 0.5, 0.3333333333333333, 0.2],
+        [1.065, 0.16666666666666666, 0.8571428571428571, 0.625, 0.4444444444444444, 0.3],
+        [-1.07, 0.3333333333333333, 0.0, 0.75, 0.5555555555555556, 0.4],
+        [1.075, 0.5, 0.14285714285714285, 0.875, 0.6666666666666666, 0.5],
+        [-1.08, 0.6666666666666666, 0.2857142857142857, 0.0, 0.7777777777777778, 0.6],
+        [1.085, 0.8333333333333334, 0.42857142857142855, 0.125, 0.8888888888888888, 0.7],
+        [-1.09, 0.0, 0.5714285714285714, 0.25, 0.0, 0.8],
+        [1.095, 0.16666666666666666, 0.7142857142857143, 0.375, 0.1111111111111111, 0.9],
+        [-1.1, 0.3333333333333333, 0.8571428571428571, 0.5, 0.2222222222222222, 0.0],
+        [1.105, 0.5, 0.0, 0.625, 0.3333333333333333, 0.1],
+        [-1.11, 0.6666666666666666, 0.14285714285714285, 0.75, 0.4444444444444444, 0.2],
+        [1.115, 0.8333333333333334, 0.2857142857142857, 0.875, 0.5555555555555556, 0.3],
+        [-1.12, 0.0, 0.42857142857142855, 0.0, 0.6666666666666666, 0.4],
+        [1.125, 0.16666666666666666, 0.5714285714285714, 0.125, 0.7777777777777778, 0.5],
+        [-1.13, 0.3333333333333333, 0.7142857142857143, 0.25, 0.8888888888888888, 0.6],
+        [1.135, 0.5, 0.8571428571428571, 0.375, 0.0, 0.7],
+        [-1.1400000000000001, 0.6666666666666666, 0.0, 0.5, 0.1111111111111111, 0.8],
+        [1.145, 0.8333333333333334, 0.14285714285714285, 0.625, 0.2222222222222222, 0.9],
+        [-1.15, 0.0, 0.2857142857142857, 0.75, 0.3333333333333333, 0.0],
+        [1.155, 0.16666666666666666, 0.42857142857142855, 0.875, 0.4444444444444444, 0.1],
+        [-1.16, 0.3333333333333333, 0.5714285714285714, 0.0, 0.5555555555555556, 0.2],
+        [1.165, 0.5, 0.7142857142857143, 0.125, 0.6666666666666666, 0.3],
+        [-1.17, 0.6666666666666666, 0.8571428571428571, 0.25, 0.7777777777777778, 0.4],
+        [1.175, 0.8333333333333334, 0.0, 0.375, 0.8888888888888888, 0.5],
+        [-1.18, 0.0, 0.14285714285714285, 0.5, 0.0, 0.6],
+        [1.185, 0.16666666666666666, 0.2857142857142857, 0.625, 0.1111111111111111, 0.7],
+        [-1.19, 0.3333333333333333, 0.42857142857142855, 0.75, 0.2222222222222222, 0.8],
+        [1.195, 0.5, 0.5714285714285714, 0.875, 0.3333333333333333, 0.9],
+        [-1.2, 0.6666666666666666, 0.7142857142857143, 0.0, 0.4444444444444444, 0.0],
+        [1.205, 0.8333333333333334, 0.8571428571428571, 0.125, 0.5555555555555556, 0.1],
+        [-1.21, 0.0, 0.0, 0.25, 0.6666666666666666, 0.2],
+        [1.215, 0.16666666666666666, 0.14285714285714285, 0.375, 0.7777777777777778, 0.3],
+        [-1.22, 0.3333333333333333, 0.2857142857142857, 0.5, 0.8888888888888888, 0.4],
+        [1.225, 0.5, 0.42857142857142855, 0.625, 0.0, 0.5],
+        [-1.23, 0.6666666666666666, 0.5714285714285714, 0.75, 0.1111111111111111, 0.6],
+        [1.2349999999999999, 0.8333333333333334, 0.7142857142857143, 0.875, 0.2222222222222222, 0.7],
+        [-1.24, 0.0, 0.8571428571428571, 0.0, 0.3333333333333333, 0.8],
+        [1.245, 0.16666666666666666, 0.0, 0.125, 0.4444444444444444, 0.9],
+        [-1.25, 0.3333333333333333, 0.14285714285714285, 0.25, 0.5555555555555556, 0.0],
+        [1.255, 0.5, 0.2857142857142857, 0.375, 0.6666666666666666, 0.1],
+        [-1.26, 0.6666666666666666, 0.42857142857142855, 0.5, 0.7777777777777778, 0.2],
+        [1.2650000000000001, 0.8333333333333334, 0.5714285714285714, 0.625, 0.8888888888888888, 0.3],
+        [-1.27, 0.0, 0.7142857142857143, 0.75, 0.0, 0.4],
+        [1.275, 0.16666666666666666, 0.8571428571428571, 0.875, 0.1111111111111111, 0.5],
+        [-1.28, 0.3333333333333333, 0.0, 0.0, 0.2222222222222222, 0.6],
+        [1.285, 0.5, 0.14285714285714285, 0.125, 0.3333333333333333, 0.7],
+        [-1.29, 0.6666666666666666, 0.2857142857142857, 0.25, 0.4444444444444444, 0.8],
+        [1.295, 0.8333333333333334, 0.42857142857142855, 0.375, 0.5555555555555556, 0.9],
+        [-1.3, 0.0, 0.5714285714285714, 0.5, 0.6666666666666666, 0.0],
+        [1.305, 0.16666666666666666, 0.7142857142857143, 0.625, 0.7777777777777778, 0.1],
+        [-1.31, 0.3333333333333333, 0.8571428571428571, 0.75, 0.8888888888888888, 0.2],
+        [1.315, 0.5, 0.0, 0.875, 0.0, 0.3],
+        [-1.32, 0.6666666666666666, 0.14285714285714285, 0.0, 0.1111111111111111, 0.4],
+        [1.325, 0.8333333333333334, 0.2857142857142857, 0.125, 0.2222222222222222, 0.5],
+        [-1.33, 0.0, 0.42857142857142855, 0.25, 0.3333333333333333, 0.6],
+        [1.335, 0.16666666666666666, 0.5714285714285714, 0.375, 0.4444444444444444, 0.7],
+        [-1.34, 0.3333333333333333, 0.7142857142857143, 0.5, 0.5555555555555556, 0.8],
+        [1.345, 0.5, 0.8571428571428571, 0.625, 0.6666666666666666, 0.9],
+        [-1.35, 0.6666666666666666, 0.0, 0.75, 0.7777777777777778, 0.0],
+        [1.355, 0.8333333333333334, 0.14285714285714285, 0.875, 0.8888888888888888, 0.1],
+        [-1.3599999999999999, 0.0, 0.2857142857142857, 0.0, 0.0, 0.2],
+        [1.365, 0.16666666666666666, 0.42857142857142855, 0.125, 0.1111111111111111, 0.3],
+        [-1.37, 0.3333333333333333, 0.5714285714285714, 0.25, 0.2222222222222222, 0.4],
+        [1.375, 0.5, 0.7142857142857143, 0.375, 0.3333333333333333, 0.5],
+        [-1.38, 0.6666666666666666, 0.8571428571428571, 0.5, 0.4444444444444444, 0.6],
+        [1.385, 0.8333333333333334, 0.0, 0.625, 0.5555555555555556, 0.7],
+        [-1.3900000000000001, 0.0, 0.14285714285714285, 0.75, 0.6666666666666666, 0.8],
+        [1.395, 0.16666666666666666, 0.2857142857142857, 0.875, 0.7777777777777778, 0.9]
+      ],
+      "y": [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1]
+    }
+  },
+  "fcbc41d285fa2d1291b1654b971f6e346e5a01f0df0011599641bf8d276cf3e2": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "xlearn-wasm/README.md:84"
+    ],
+    "context": "const {XLearnFM}=require('@wlearn/xlearn'); const model=await XLearnFM.create({task:'classification',epoch:10})",
+    "data": {
+      "y": [0, 0, 1, 1]
+    }
+  },
+  "46429cd859a4ec0c27f4f5eb610b77f2aa3ebe084312894ff40ebefc95dd3438": {
+    "description": "Prior-example imports/state plus deterministic input data",
+    "sources": [
+      "xlearn-wasm/README.md:184"
+    ],
+    "context": "const {XLearnFMRegressor}=require('@wlearn/xlearn'); const model=await XLearnFMRegressor.create({epoch:10})"
+  }
+}

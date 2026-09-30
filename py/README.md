@@ -110,7 +110,7 @@ load/inference adapter for bundles trained by `@wlearn/xlearn` in JavaScript.
 Training-capable model wrappers share the API below. Optional methods depend on
 the fitted model's `capabilities`:
 
-```python
+```text
 model = Model.create(params)     # create unfitted
 model.fit(X, y)                  # train
 model.predict(X)                 # predict labels
@@ -132,20 +132,19 @@ creates an unfitted placeholder and it does not implement `fit()`.
 The `.wlrn` bundle is a binary container (header + JSON manifest + TOC + blobs) designed for cross-language compatibility. Bundles produced in Python can be loaded in JS and vice versa.
 
 ```python
-from wlearn import encode_bundle, decode_bundle, validate_bundle, load
+from wlearn import encode_bundle, decode_bundle, validate_bundle
 
-# Low-level encode
+# Store custom bytes without claiming they are a trained model.
 data = encode_bundle(
-    manifest={'typeId': 'wlearn.xgboost.classifier@1', 'params': {...}},
-    artifacts=[{'id': 'model', 'data': model_bytes}]
+    manifest={'typeId': 'myorg.payload@1', 'params': {}},
+    artifacts=[{'id': 'payload', 'mediaType': 'application/octet-stream',
+                'data': bytes([1, 2, 3])}],
 )
-
-# Decode
 manifest, toc, blobs = decode_bundle(data)
+validate_bundle(data)
 
-# Load via registry (dispatches to correct model wrapper)
-model = load(data)
-model = load('model.wlrn')
+# For estimator persistence and registry loading, use model.save() and load(),
+# as in the quick start. A model's native bytes and metadata must agree.
 ```
 
 Canonical writers always include `bundleVersion`, `requires`, `params`, and an
@@ -167,7 +166,7 @@ migration tooling, and advance notice.
 
 Model wrappers register their loaders automatically on import. The `load()` function reads the bundle's `typeId` and dispatches to the registered loader.
 
-```python
+```text
 from wlearn import register, load
 
 # Custom loader
@@ -178,7 +177,7 @@ model = load(bundle_bytes)
 ### Pipeline
 
 ```python
-from wlearn import Pipeline
+from wlearn import Pipeline, load
 from wlearn.xgboost import XGBModel
 from wlearn.scalers import StandardScaler
 
@@ -192,7 +191,7 @@ pipe.score(X_test, y_test)
 
 # Save/load preserves the full pipeline
 pipe.save('pipeline.wlrn')
-restored = wlearn.load('pipeline.wlrn')
+restored = load('pipeline.wlrn')
 ```
 
 ### Task, prediction, measures, resampling, archive
@@ -227,6 +226,7 @@ training fold, and returns the refitted winner as a `Pipeline`:
 
 ```python
 from wlearn.automl import auto_fit
+from wlearn.liblinear import LinearModel
 
 result = auto_fit(
     [{'name': 'linear', 'classId': 'wlearn.liblinear.classifier@1',
@@ -236,7 +236,7 @@ result = auto_fit(
 )
 
 result['bestCandidate']       # structured model + resolved preprocessing identity
-result['model'].provenance    # persisted in the Pipeline WLRN artifact
+result['model'].save()        # preserves preprocessing inside pipelines/ensemble
 ```
 
 `preprocess` also accepts `True` for defaults or a list of fixed templates with

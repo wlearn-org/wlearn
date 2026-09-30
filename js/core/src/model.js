@@ -79,6 +79,7 @@ function _ensureInner(self, name) {
  * @param {Function} RegressorCls - class with static create(params)
  * @param {object} [opts]
  * @param {string} [opts.name] - class name for errors
+ * @param {Object<string, string>} [opts.fitMethods] - extra fitting methods and their task
  * @param {Function} [opts.load] - async WASM loader (called in create() to pre-load)
  * @returns {Function} unified model class
  */
@@ -86,6 +87,8 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
   const modelName = opts.name || 'Model'
   const loadFn = opts.load || null
   const sameClass = ClassifierCls === RegressorCls
+  const fitMethods = { ...opts.fitMethods }
+  for (const task of Object.values(fitMethods)) _validateTask(task)
 
   class UnifiedModel {
     constructor(task, params) {
@@ -98,6 +101,19 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
         fitInProgress: false,
         disposed: false,
       })
+    }
+
+    static {
+      // Extra fitting entry points must commit/rollback the same owner state as
+      // fit(); names alone cannot distinguish training from fitted-only queries.
+      for (const [method, task] of Object.entries(fitMethods)) {
+        if (method in this.prototype || method.startsWith('_')) {
+          throw new ValidationError(`Invalid fitting method: ${method}`)
+        }
+        this.prototype[method] = function (...args) {
+          return this.#fitWith(method, task, args)
+        }
+      }
     }
 
     static async create(params = {}) {
@@ -175,6 +191,10 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
     }
 
     fit(X, y, fitOpts) {
+      return this.#fitWith('fit', _get(this).task || detectTask(y), [X, y, fitOpts])
+    }
+
+    #fitWith(method, fitTask, args) {
       const s = _get(this)
       if (s.disposed) throw new DisposedError(`${modelName} has been disposed.`)
       if (s.fitInProgress) throw new ValidationError(`${modelName} fit is already in progress`)
@@ -184,7 +204,6 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
         inner: s.inner,
         fitted: s.fitted,
       }
-      const fitTask = s.task || detectTask(y)
       const fitInner = s.instances.get(sameClass ? 'shared' : fitTask) || null
       if (!fitInner) {
         throw new ValidationError(`${modelName}: task cannot be changed on a loaded model; create a new model`)
@@ -219,7 +238,7 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
         throw error
       }
       try {
-        const result = fitInner.fit(X, y, fitOpts)
+        const result = fitInner[method](...args)
         return result != null && typeof result.then === 'function'
           ? Promise.resolve(result).then(commit, fail)
           : commit()

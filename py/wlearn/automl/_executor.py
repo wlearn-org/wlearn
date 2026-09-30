@@ -92,6 +92,7 @@ class Executor:
         fold_seeds = np.zeros(len(folds), dtype=np.uint32)
         t0 = now()
         total_train_used = 0
+        supports_predict_proba = True
 
         effective_params = self._apply_rounds_budget(
             cls, candidate['model']['params'], budget)
@@ -113,6 +114,11 @@ class Executor:
             try:
                 model.fit(X_train, y_train)
                 validate_estimator_task(model, candidate['model']['params'].get('task'))
+                # Capture resolved capabilities across all fitted folds.
+                supports_predict_proba = (
+                    supports_predict_proba
+                    and (getattr(model, 'capabilities', None) or {}).get('predictProba') is True
+                    and callable(getattr(model, 'predict_proba', None)))
                 scores[f] = score_estimator(model, X_test, y_test, self._scorer_fn)
             except Exception as error:
                 operation_error = error
@@ -133,6 +139,7 @@ class Executor:
             base_seed=self._seed,
             fold_seeds=fold_seeds,
             fit_time_ms=fit_time_ms,
+            supports_predict_proba=supports_predict_proba,
         )
 
         self._archive.add({
@@ -155,6 +162,7 @@ class Executor:
                     {'foldId': fold_id, 'seed': int(value)}
                     for fold_id, value in enumerate(fold_seeds)
                 ],
+                'supportsPredictProba': supports_predict_proba,
                 'stdScore': entry['stdScore'],
                 'nTrainUsed': round(total_train_used / len(folds)),
                 'nTest': len(folds[0][1]),
@@ -170,6 +178,7 @@ class Executor:
             'baseSeed': self._seed,
             'foldSeeds': fold_seeds,
             'stdScore': entry['stdScore'],
+            'supportsPredictProba': supports_predict_proba,
             'fitTimeMs': fit_time_ms,
             'nTrainUsed': round(total_train_used / len(folds)),
             'nTest': len(folds[0][1]),

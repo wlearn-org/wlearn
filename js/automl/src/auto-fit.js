@@ -225,14 +225,18 @@ async function autoFit(models, X, y, opts = {}) {
   const scoring = searchOpts.scoring || (task === 'classification' ? 'accuracy' : 'r2')
   let model = null
 
-  if (ensemble) {
+  const eligible = task === 'classification'
+    ? ranked.filter(entry => entry.supportsPredictProba)
+    : ranked
+
+  if (ensemble && eligible.length) {
     if (onProgress) {
       onProgress({ phase: 'ensemble', message: 'building ensemble' })
     }
     // Diversity-aware pool: best per family + top overall with disagreement filter
     const familyBest = new Map()
     const familySecond = new Map()
-    for (const entry of ranked) {
+    for (const entry of eligible) {
       const classId = entry.candidate.model.classId
       if (!familyBest.has(classId)) {
         familyBest.set(classId, entry)
@@ -255,7 +259,7 @@ async function autoFit(models, X, y, opts = {}) {
     }
 
     // Fill remaining slots from top overall
-    for (const entry of ranked) {
+    for (const entry of eligible) {
       if (pool.length >= ensembleSize * 2) break
       if (!poolIds.has(entry.id)) {
         pool.push(entry)
@@ -337,7 +341,7 @@ async function autoFit(models, X, y, opts = {}) {
       })
       model = await fitOwnedEnsemble(ens, Xn, yn)
     }
-  } else if (refit) {
+  } else if (refit || ensemble) {
     model = await search.refitBest(X, y)
   }
 

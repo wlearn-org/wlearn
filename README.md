@@ -6,32 +6,6 @@ wlearn packages C/C++ and ONNX-backed models behind a unified, sklearn-style
 JavaScript API. Train locally, serialize to a portable WLRN bundle, and use the
 same artifact in JavaScript or Python when the corresponding loader is available.
 
-## Why
-
-Most ML libraries require Python and a server. That means network round-trips, data privacy concerns, and infrastructure to manage. For many use cases -- on-device inference, privacy-sensitive data, offline apps, rapid prototyping -- you just want the model to run where the data already is.
-
-WebAssembly makes this possible. The LIBSVM and LIBLINEAR sources used by native
-Python tooling can also compile to WASM and run locally in supported browsers and
-Node.js. wlearn packages the resulting modules behind a JavaScript API, so model
-backends can be installed independently from npm.
-
-## How it works
-
-**Small backend boundaries.** Port packages compile pinned upstream C/C++ source
-to WebAssembly through Emscripten; original wlearn packages keep their C11 source
-in their own repositories, and Mitra uses ONNX Runtime. Cross-runtime numerical
-equivalence is checked per backend with explicit tolerances rather than assumed
-from the shared wrapper.
-
-**Unified API.** Models use async construction (WASM must load). Fits are synchronous except Sym family search with Polygrad; `save` is always synchronous; prediction may be sync or async by backend. Pipelines preserve synchronous fit for synchronous children and Promise-lift asynchronous children; ensemble fit is asynchronous because ensembles construct and train owned children.
-
-**Portable bundles.** `save()` produces a self-describing binary bundle (format:
-WLRN v1) containing model artifacts, parameters, and a type identifier. `load()`
-reads the bundle and dispatches to a registered loader. WLRN is language-neutral;
-the Python package implements loaders for the backends listed in its documentation.
-
-**Deterministic cleanup when needed.** WASM models expose `dispose()` for long-running apps, workers, cross-validation, and AutoML loops that create many models.
-
 ## Quick start
 
 ```
@@ -133,6 +107,12 @@ Built from scratch (not WASM ports of existing libraries):
 |---------|---------|--------------|
 | `@wlearn/rf` | C11 | Random forest, ExtraTrees, linear leaves, Hellinger/entropy criteria, pruning, OOB weighting. |
 | `@wlearn/nn` | polygrad (C11) | Neural tabular models: MLP, TabM (BatchEnsemble), NAM (Neural Additive Models). |
+| `@wlearn/gam` | C11 | Penalized GLM/GAM, Cox, multi-task and distributional regression. |
+| `@wlearn/cluster` | C11 | Clustering and validation metrics. |
+| `@wlearn/bo` | C11 | Bayesian optimization. |
+| `@wlearn/basis` | C11 | Random/supervised feature maps and fitted readouts. |
+| `@wlearn/sym` | C11 + optional Polygrad | Symbolic regression and classification. |
+| `@wlearn/uncertainty` | C11 | Calibration, conformal prediction and risk control. |
 
 ## API overview
 
@@ -470,8 +450,13 @@ const ffm = await XLearnFFMClassifier.create({ epoch: 10, k: 4, featureFields })
 ffm.fit(X, y)
 
 // CSR sparse input
-const csr = { rows, cols, data: Float64Array, indices: Int32Array, indptr: Int32Array }
-fm.fit(csr, y)
+const csr = {
+  rows: 4, cols: 4,
+  data: new Float64Array([1, 2, 3, 4]),
+  indices: new Int32Array([0, 1, 2, 3]),
+  indptr: new Int32Array([0, 1, 2, 3, 4])
+}
+fm.fit(csr, [0, 0, 1, 1])
 ```
 
 Six classes: `XLearnLRClassifier`, `XLearnLRRegressor`, `XLearnFMClassifier`, `XLearnFMRegressor`, `XLearnFFMClassifier`, `XLearnFFMRegressor`.
@@ -496,7 +481,7 @@ Tsetlin machine. Interpretable propositional logic classifier using automata-bas
 ```js
 const { TsetlinModel } = require('@wlearn/tsetlin')
 
-const model = await TsetlinModel.create({ numClauses: 100, T: 10, s: 3.0 })
+const model = await TsetlinModel.create({ nClauses: 100, threshold: 10, s: 3.0 })
 model.fit(X, y)
 model.predict(X)
 ```
@@ -513,14 +498,14 @@ const { MitraClassifier, MitraRegressor } = require('@wlearn/mitra')
 const ort = require('onnxruntime-node')
 
 // Classification
-const clfSession = await ort.InferenceSession.create('mitra-classifier.onnx')
-const clf = await MitraClassifier.create(clfSession, { maxSupport: 50 }, { ort })
+const clfSession = await ort.InferenceSession.create('mitra-classifier.onnx', { intraOpNumThreads: 2, interOpNumThreads: 1 })
+const clf = await MitraClassifier.create(clfSession, { maxSupport: 50 }, { ort, sessionOptions: { intraOpNumThreads: 2, interOpNumThreads: 1 } })
 clf.fit(X, y)
 const preds = await clf.predict(Xtest)  // async (ONNX inference)
 
 // Regression
-const regSession = await ort.InferenceSession.create('mitra-regressor.onnx')
-const reg = await MitraRegressor.create(regSession, { maxSupport: 50 }, { ort })
+const regSession = await ort.InferenceSession.create('mitra-regressor.onnx', { intraOpNumThreads: 2, interOpNumThreads: 1 })
+const reg = await MitraRegressor.create(regSession, { maxSupport: 50 }, { ort, sessionOptions: { intraOpNumThreads: 2, interOpNumThreads: 1 } })
 reg.fit(X, y)
 const rPreds = await reg.predict(Xtest)
 ```
@@ -537,13 +522,13 @@ const { MLPClassifier, TabMClassifier, NAMClassifier } = require('@wlearn/nn')
 // MLP -- standard multilayer perceptron
 const mlp = await MLPClassifier.create({
   hidden_sizes: [64, 32], activation: 'relu', epochs: 100, lr: 0.01,
-  optimizer: 'adam', batch_size: 32, seed: 42
+  optimizer: 'adam', seed: 42
 })
 mlp.fit(X, y)
 mlp.predict(X)
 mlp.score(X, y)
 
-// TabM -- BatchEnsemble MLP (SOTA on tabular benchmarks)
+// TabM -- BatchEnsemble MLP
 const tabm = await TabMClassifier.create({
   hidden_sizes: [64, 32], n_ensemble: 32, activation: 'relu',
   epochs: 100, lr: 0.01, optimizer: 'adam', seed: 42
@@ -599,7 +584,7 @@ const result = await autoFit(models, X, y, {
   ensemble: true,         // build Caruana ensemble from top candidates
   ensembleSize: 20,
   refit: true,            // refit best model on full data
-  onProgress: ({ phase, progress }) => console.log(phase, progress)
+  onProgress: event => console.log(event)
 })
 
 result.model           // best fitted estimator (or ensemble)
@@ -764,14 +749,15 @@ advance deprecation notice.
 const { encodeBundle, decodeBundle } = require('@wlearn/core')
 
 // Encode a bundle
+const modelBytes = new Uint8Array([1, 2, 3])
 const artifacts = [{ id: 'model', mediaType: 'application/octet-stream', data: modelBytes }]
 const manifest = { typeId: 'my.custom.model@1', params: { lr: 0.01 } }
 const bundle = encodeBundle(manifest, artifacts)  // Uint8Array
 
 // Decode a bundle
-const { manifest, toc, blobs } = decodeBundle(bundle)
-console.log(manifest.typeId)    // 'wlearn.liblinear.classifier@1'
-console.log(manifest.params)    // { solver: 'L2R_LR', C: 1.0, ... }
+const { manifest: decodedManifest, toc, blobs } = decodeBundle(bundle)
+console.log(decodedManifest.typeId) // 'my.custom.model@1'
+console.log(decodedManifest.params) // { lr: 0.01 }
 console.log(toc[0].id)          // 'model'
 console.log(toc[0].sha256)      // hex hash of model blob
 
@@ -784,12 +770,13 @@ const modelBlob = blobs.slice(toc[0].offset, toc[0].offset + toc[0].length)
 **Use typed matrices for large datasets.** Passing `number[][]` to `fit()` or `predict()` triggers a copy into `Float64Array`. For repeated calls or large data, pre-convert:
 
 ```js
+const { LinearModel } = require('@wlearn/liblinear')
+const model = await LinearModel.create({ task: 'classification' })
 const X = {
-  data: new Float64Array(buffer),  // row-major, contiguous
-  rows: 1000,
-  cols: 50
+  data: new Float64Array([-2, -2, -1, -1, 1, 1, 2, 2]),
+  rows: 4, cols: 2
 }
-model.fit(X, y)
+model.fit(X, [0, 0, 1, 1])
 ```
 
 **Prefer batch prediction.** Model wrappers accept all rows in one matrix, avoiding
@@ -871,6 +858,8 @@ The former `packages/` source paths moved to `js/`; npm package names are unchan
 | [gam](https://github.com/wlearn-org/gam) | `@wlearn/gam` | GLM/GAM/Cox (C11) |
 | [cluster](https://github.com/wlearn-org/cluster) | `@wlearn/cluster` | K-Means, DBSCAN, hierarchical (C11) |
 | [basis](https://github.com/wlearn-org/basis) | `@wlearn/basis` | Fused estimators and independent feature maps (C11) |
+| [sym](https://github.com/wlearn-org/sym) | `@wlearn/sym` | Symbolic tree/family search; C or public Polygrad scoring |
+| [uncertainty](https://github.com/wlearn-org/uncertainty) | `@wlearn/uncertainty` | Calibration, conformal prediction and risk control |
 
 Website: [wlearn.org](https://wlearn.org)
 
@@ -889,7 +878,9 @@ DAG execution, TensorRef routing, and a worker scheduler remain planned. Explici
 CV fold arrays and resampling plans are supported for evaluation; OOF/stacking
 require complete, non-repeated test coverage. Advanced temporal split generators
 are experimental. Probability scoring uses class order and the Measure's declared
-optimization direction; uncertainty estimation remains a separate planned effort.
+optimization direction. `@wlearn/uncertainty` supplies calibration, conformal
+intervals/sets, predictive distributions and risk control through a shared C11
+core and JavaScript/Python wrappers.
 
 Browser bundles that compose models must use the same exact core version. Core
 shares runtime identity within each JavaScript realm and rejects mixed versions.
@@ -916,3 +907,11 @@ metadata and dependency order in the manifest. The driver checks the whole set
 before writing: an existing version, tag or release asset with different content
 is an error. Rerunning the same command skips matching uploads and completes
 missing release assets. A partial publication is resumable, not transactional.
+
+Before qualification, run `scripts/check-readmes.py` with `--workspace`,
+`--inventory`, `--consumer`, `--python` and `--output` pointing to the release
+workspace, package inventory, isolated npm install, isolated Python interpreter
+and evidence directory. It executes every JS/Python README block. The reviewed
+`scripts/readme-cases.json` records data and prior-example prerequisites; new or
+changed executable blocks fail until reviewed. API signature listings use text
+fences. `make test-readmes-harness` checks the gate's block selection itself.

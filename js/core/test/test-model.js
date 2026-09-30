@@ -641,3 +641,26 @@ it('unified models forward inherited public methods and getters', async () => {
     assert.equal(model.explanation, 'parent')
   } finally { model.dispose() }
 })
+
+
+it('declared specialized fits share synchronous and asynchronous lifecycle handling', async () => {
+  class Backend extends MockRegressor {
+    static async create(params) { return new Backend(params) }
+    fitTargets(X, Y) { return super.fit(X, Y) }
+    async fitTargetsAsync(X, Y) { return this.fitTargets(X, Y) }
+    fitFail() { this.dispose(); throw new Error('failed specialized fit') }
+  }
+  const Model = createModelClass(Backend, Backend, {
+    fitMethods: { fitTargets: 'regression', fitTargetsAsync: 'regression', fitFail: 'regression' }
+  })
+  const model = await Model.create()
+  assert.equal(model.fitTargets([[1]], [[2, 3]]), model)
+  assert.equal(model.task, 'regression')
+  assert.equal(model.isFitted, true)
+  assert.equal(await model.fitTargetsAsync([[1]], [[2, 3]]), model)
+  assert.throws(() => model.fitFail(), /failed specialized fit/)
+  assert.equal(model.isFitted, false)
+  assert.throws(() => model.predict([[1]]), NotFittedError)
+  model.dispose()
+  assert.throws(() => model.fitTargets([[1]], [[2, 3]]), DisposedError)
+})
