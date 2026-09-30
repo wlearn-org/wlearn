@@ -58,6 +58,14 @@ class ReleaseTests(unittest.TestCase):
         with patch.object(release, 'get_json', return_value=None):
             self.assertEqual(release.package_state(self.package, self.root), 'missing')
 
+    def test_missing_old_version_does_not_replace_latest(self):
+        for kind in ['npm', 'pypi']:
+            package = dict(self.package, kind=kind)
+            latest = {'version': '0.4.0'} if kind == 'npm' else {'info': {'version': '0.4.0'}}
+            with patch.object(release, 'get_json', side_effect=[None, latest]):
+                with self.assertRaisesRegex(release.ReleaseError, 'older than published'):
+                    release.package_state(package, self.root)
+
     def test_pypi_existing_version_without_exact_file_is_conflict(self):
         p = {**self.package, 'kind': 'pypi', 'name': 'wlearn'}
         data = {'urls': [{'filename': 'core.tgz', 'digests': {'sha256': p['sha256']}}]}

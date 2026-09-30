@@ -83,7 +83,7 @@ def main():
             code += ';(async (require) => {\n' + block['code'] + '\n})(packageRequire).catch(e=>{console.error(e);process.exitCode=1})'
             command = ['node', '-e', code]
         else:
-            code = 'import json, numpy as np\nglobals().update({k: np.asarray(v) for k,v in json.loads(' + repr(json.dumps(fixtures)) + ').items()})\n'
+            code = 'import json\ntry:\n    import numpy as np\nexcept ImportError:\n    np = None\nglobals().update({k: np.asarray(v) if np is not None else v for k,v in json.loads(' + repr(json.dumps(fixtures)) + ').items()})\n'
             code += 'def evaluate(p): return -sum(v*v for v in p.values() if isinstance(v, (int, float)))\n' + block['code']
             command = [args.python, '-c', code]
         try:

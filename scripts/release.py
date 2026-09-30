@@ -142,6 +142,8 @@ def validate(manifest, directory, workspace):
     for package in ordered(manifest['packages']):
         if package['repo'] not in repos or package['kind'] not in ('npm', 'pypi'):
             raise ReleaseError(f"Invalid package: {package['id']}")
+        if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', package['version']):
+            raise ReleaseError('Only stable three-component package versions are supported')
         path = directory / package['artifact']
         if digest(path) != package['sha256']:
             raise ReleaseError(f'Archive changed: {path}')
@@ -162,11 +164,24 @@ def validate(manifest, directory, workspace):
     return repos
 
 
+def reject_older_release(package, url):
+    data = get_json(url)
+    if data is None:
+        return
+    latest = data.get('info', data).get('version', '')
+    # This driver qualifies stable three-component versions. Prerelease channels
+    # need an explicit dist-tag policy rather than silently replacing latest.
+    if re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', latest):
+        if tuple(map(int, package['version'].split('.'))) < tuple(map(int, latest.split('.'))):
+            raise ReleaseError(f"{package['name']}: candidate {package['version']} is older than published {latest}")
+
+
 def package_state(package, directory):
     name, version = package['name'], package['version']
     if package['kind'] == 'npm':
         data = get_json('https://registry.npmjs.org/' + urllib.parse.quote(name, safe='') + '/' + version)
         if data is None:
+            reject_older_release(package, 'https://registry.npmjs.org/' + urllib.parse.quote(name, safe='') + '/latest')
             return 'missing'
         integrity = data.get('dist', {}).get('integrity', '')
         tokens = integrity.split()
@@ -176,6 +191,7 @@ def package_state(package, directory):
     else:
         data = get_json(f'https://pypi.org/pypi/{name}/{version}/json')
         if data is None:
+            reject_older_release(package, f'https://pypi.org/pypi/{name}/json')
             return 'missing'
         files = {f['filename']: f for f in data['urls']}
         filename = Path(package['artifact']).name
@@ -320,7 +336,8 @@ def publish(manifest, directory, workspace, create_repos=False, twine=None):
         paths = release_assets(repo, manifest, directory)
         if state['release'] is None:
             run(['gh', 'release', 'create', repo['tag'], '--repo', repo['github'], '--verify-tag',
-                 '--title', f"{repo['id']} {repo['tag']}", '--generate-notes', *map(str, paths)], stream=True)
+                 '--title', f"{repo['id']} {repo['tag']}", '--generate-notes',
+                 '--latest=false' if repo.get('latest') is False else '--latest', *map(str, paths)], stream=True)
         else:
             existing = {a['name']: a for a in state['release'].get('assets', [])}
             missing = [p for p in paths if p.name not in existing]
