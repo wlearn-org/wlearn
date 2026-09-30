@@ -2,10 +2,10 @@
   "typeId": "wlearn.stochtree.classifier@1",
   "requires": [],
   "params": {
-    "numTrees": 30,
+    "numTrees": 8,
     "numGfr": 5,
     "numBurnin": 20,
-    "numSamples": 20,
+    "numSamples": 5,
     "seed": 42,
     "objective": "classification",
     "task": "classification"
@@ -21,8 +21,8 @@
   "toc": [
     {
       "id": "model",
-      "length": 451482,
-      "sha256": "286bdf83a19f6807e34a1a0aefa872e527eb18c1be24542ff9dcf85ccf3a7dda"
+      "length": 30095,
+      "sha256": "066859a18ba948126aaa5e80ad3f510112082f938c434237da4f72964962e3e4"
     }
   ],
   "X": [

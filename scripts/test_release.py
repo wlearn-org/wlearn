@@ -30,6 +30,23 @@ class ReleaseTests(unittest.TestCase):
                         'version': '0.3.0', 'artifact': 'core.tgz',
                         'sha256': release.digest(self.archive)}
 
+    def test_packaged_readmes_reject_stale_release_notices(self):
+        for kind in ['npm', 'pypi']:
+            for notice in ['This corrects the unreleased estimator contract',
+                           'This corrects the\nunreleased estimator contract',
+                           'Unreleased main: install from source',
+                           'Registry publication is pending']:
+                with self.subTest(kind=kind, notice=notice):
+                    with tarfile.open(self.archive, 'w:gz') as tf:
+                        prefix = 'package' if kind == 'npm' else 'wlearn-0.3.0'
+                        metadata = ('package.json', b'{"name":"@wlearn/core","version":"0.3.0"}') if kind == 'npm' else ('PKG-INFO', b'Name: wlearn\nVersion: 0.3.0\n')
+                        for name, data in [metadata, ('README.md', notice.encode())]:
+                            info = tarfile.TarInfo(prefix + '/' + name)
+                            info.size = len(data)
+                            tf.addfile(info, io.BytesIO(data))
+                    with self.assertRaisesRegex(release.ReleaseError, 'stale release notice'):
+                        release.archive_identity(self.archive, kind)
+
     def test_topological_order_and_independent_versions(self):
         packages = [{'id': 'sdk', 'version': '0.3.0', 'needs': ['rf', 'core']},
                     {'id': 'rf', 'version': '0.5.0', 'needs': ['core']},

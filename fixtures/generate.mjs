@@ -316,12 +316,14 @@ async function main() {
     model.dispose()
   }
 
+  // Golden portability checks need multiple trees and posterior draws, not a
+  // benchmark-size ensemble. Keep both StochTree bundles below 100 KB.
   // 14. stochtree-regressor
   {
     const { BARTModel } = await importPort('stochtree')
     const rng = makeLCG(1400)
     const { X, y } = makeRegressionData(rng, 50, 2)
-    const params = { numTrees: 30, numGfr: 5, numBurnin: 20, numSamples: 20, seed: 42 }
+    const params = { numTrees: 8, numGfr: 5, numBurnin: 20, numSamples: 5, seed: 42 }
     const model = await BARTModel.create(params)
     model.fit(X, y)
     const preds = model.predict(X)
@@ -336,7 +338,7 @@ async function main() {
     const { BARTModel } = await importPort('stochtree')
     const rng = makeLCG(1500)
     const { X, y } = makeClassificationData(rng, 50, 2)
-    const params = { numTrees: 30, numGfr: 5, numBurnin: 20, numSamples: 20, seed: 42, objective: 'classification' }
+    const params = { numTrees: 8, numGfr: 5, numBurnin: 20, numSamples: 5, seed: 42, objective: 'classification' }
     const model = await BARTModel.create(params)
     model.fit(X, y)
     const preds = model.predict(X)

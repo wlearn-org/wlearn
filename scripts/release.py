@@ -81,6 +81,17 @@ def name_key(name):
 
 def archive_identity(path, kind):
     with tarfile.open(path, 'r:gz') as archive:
+        # Inspect the shipped copies, including Python package READMEs. Whitespace
+        # normalization catches prose wrapped differently from the root README.
+        for member in archive.getmembers():
+            if member.isfile() and Path(member.name).name == 'README.md':
+                text = archive.extractfile(member).read().decode('utf-8')
+                prose = ' '.join(text.lower().split())
+                if any(notice in prose for notice in (
+                    'unreleased main', 'unreleased estimator contract',
+                    'registry publication is pending', 'build this branch from source',
+                )):
+                    raise ReleaseError(f'{path}: stale release notice in {member.name}')
         if kind == 'npm':
             data = json.load(archive.extractfile('package/package.json'))
             if data.get('private'):
