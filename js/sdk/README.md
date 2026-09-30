@@ -52,6 +52,8 @@ Models:
 | `MLPModel`, `TabMModel`, `NAMModel` | `@wlearn/nn` |
 | `RFModel`, `loadRF` | `@wlearn/rf` |
 | `BasisClassifier`, `BasisRegressor`, `BasisTransformer`, `loadBasis` | `@wlearn/basis` |
+| `SymbolicRegressor`, `SymbolicClassifier`, `FormulaTransformer` | `@wlearn/sym` |
+| Calibration, conformal intervals/sets and risk controllers | `@wlearn/uncertainty` |
 | `GAMModel`, `loadGAM` | `@wlearn/gam` |
 | `ClusterModel`, `silhouette`, `calinskiHarabasz`, `daviesBouldin`, `adjustedRand`, `loadCluster` | `@wlearn/cluster` |
 | `BayesianSearch`, `BayesianStrategy` | `@wlearn/automl` |

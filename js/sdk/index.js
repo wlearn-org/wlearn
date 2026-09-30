@@ -83,6 +83,8 @@ function isMissingOptionalMitra(error) {
 }
 
 module.exports = {
+  ...require('@wlearn/sym'),
+  ...require('@wlearn/uncertainty'),
   // Core
   Pipeline, load, loadSync, register,
   encodeBundle, decodeBundle, validateBundle,

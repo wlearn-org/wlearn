@@ -88,7 +88,7 @@ class TestMLPClassifier:
 
         # Decode and reload
         manifest, toc, blobs = decode_bundle(bundle_bytes)
-        assert manifest['typeId'] == 'wlearn.nn.mlp.classifier@1'
+        assert manifest['typeId'] == 'wlearn.nn.mlp.classifier@2'
 
         loaded = MLPClassifier._from_bundle(manifest, toc, blobs)
         assert loaded.is_fitted
@@ -166,7 +166,7 @@ class TestMLPRegressor:
 
         bundle_bytes = model.save()
         manifest, toc, blobs = decode_bundle(bundle_bytes)
-        assert manifest['typeId'] == 'wlearn.nn.mlp.regressor@1'
+        assert manifest['typeId'] == 'wlearn.nn.mlp.regressor@2'
 
         loaded = MLPRegressor._from_bundle(manifest, toc, blobs)
         np.testing.assert_allclose(
@@ -254,7 +254,7 @@ class TestTabMClassifier:
         assert len(bundle_bytes) > 0
 
         manifest, toc, blobs = decode_bundle(bundle_bytes)
-        assert manifest['typeId'] == 'wlearn.nn.tabm.classifier@1'
+        assert manifest['typeId'] == 'wlearn.nn.tabm.classifier@2'
 
         loaded = TabMClassifier._from_bundle(manifest, toc, blobs)
         assert loaded.is_fitted
@@ -330,7 +330,7 @@ class TestTabMRegressor:
 
         bundle_bytes = model.save()
         manifest, toc, blobs = decode_bundle(bundle_bytes)
-        assert manifest['typeId'] == 'wlearn.nn.tabm.regressor@1'
+        assert manifest['typeId'] == 'wlearn.nn.tabm.regressor@2'
 
         loaded = TabMRegressor._from_bundle(manifest, toc, blobs)
         np.testing.assert_allclose(
@@ -426,7 +426,7 @@ class TestNAMClassifier:
         assert len(bundle_bytes) > 0
 
         manifest, toc, blobs = decode_bundle(bundle_bytes)
-        assert manifest['typeId'] == 'wlearn.nn.nam.classifier@1'
+        assert manifest['typeId'] == 'wlearn.nn.nam.classifier@2'
 
         loaded = NAMClassifier._from_bundle(manifest, toc, blobs)
         assert loaded.is_fitted
@@ -512,7 +512,7 @@ class TestNAMRegressor:
 
         bundle_bytes = model.save()
         manifest, toc, blobs = decode_bundle(bundle_bytes)
-        assert manifest['typeId'] == 'wlearn.nn.nam.regressor@1'
+        assert manifest['typeId'] == 'wlearn.nn.nam.regressor@2'
 
         loaded = NAMRegressor._from_bundle(manifest, toc, blobs)
         np.testing.assert_allclose(
@@ -543,3 +543,30 @@ class TestNAMRegressor:
     def test_get_set_params(self):
         model = NAMRegressor.create({'activation': 'exu'})
         assert model.get_params()['activation'] == 'exu'
+
+
+@pytest.mark.parametrize("cls", [MLPClassifier, MLPRegressor, NAMClassifier, NAMRegressor])
+def test_batch_metadata_and_failed_refit_are_atomic(cls):
+    X = np.arange(12, dtype=np.float32).reshape(6, 2) / 12
+    y = np.asarray([0, 1, 0, 1, 0, 1], dtype=np.float32)
+    model = cls.create(dict(hidden_sizes=[2], epochs=1, batch_size=2))
+    try:
+        model.fit(X, y)
+        before = model.predict(X[:5])
+        assert np.isfinite(before).all()
+        restored = cls.load(model.save())
+        try:
+            np.testing.assert_allclose(before, restored.predict(X[:5]), atol=1e-5)
+        finally:
+            restored.dispose()
+        model.set_params(dict(batch_size=4))
+        from wlearn.errors import ValidationError, BundleError
+        with pytest.raises(ValidationError, match="fixed-size"):
+            model.fit(X, y)
+        np.testing.assert_array_equal(before, model.predict(X[:5]))
+        manifest, toc, blobs = decode_bundle(model.save())
+        manifest['metadata']['batchSize'] = 99999999
+        with pytest.raises(BundleError, match="signature"):
+            cls._from_bundle(manifest, toc, blobs)
+    finally:
+        model.dispose()

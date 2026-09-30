@@ -349,27 +349,31 @@ function createModelClass(ClassifierCls, RegressorCls, opts = {}) {
 
   for (const Cls of [ClassifierCls, RegressorCls]) {
     if (!Cls || !Cls.prototype) continue
-    for (const key of Object.getOwnPropertyNames(Cls.prototype)) {
-      if (key.startsWith('_') || key.startsWith('#')) continue
-      if (standardKeys.has(key) || standardGetters.has(key)) continue
-      if (key in UnifiedModel.prototype) continue
+    // Backend capabilities may be implemented on a shared base class. Walk
+    // derived-first so an override owns each forwarded method/property.
+    for (let prototype = Cls.prototype; prototype !== Object.prototype && prototype; prototype = Object.getPrototypeOf(prototype)) {
+      for (const key of Object.getOwnPropertyNames(prototype)) {
+        if (key.startsWith('_') || key.startsWith('#')) continue
+        if (standardKeys.has(key) || standardGetters.has(key)) continue
+        if (key in UnifiedModel.prototype) continue
 
-      const desc = Object.getOwnPropertyDescriptor(Cls.prototype, key)
-      if (!desc) continue
+        const desc = Object.getOwnPropertyDescriptor(prototype, key)
+        if (!desc) continue
 
-      if (typeof desc.value === 'function') {
-        UnifiedModel.prototype[key] = function (...args) {
-          return _ensureInner(this, modelName)[key](...args)
+        if (typeof desc.value === 'function') {
+          UnifiedModel.prototype[key] = function (...args) {
+            return _ensureInner(this, modelName)[key](...args)
+          }
+        } else if (desc.get) {
+          Object.defineProperty(UnifiedModel.prototype, key, {
+            get() {
+              const s = _get(this)
+              if (!s.inner) return undefined
+              return s.inner[key]
+            },
+            configurable: true,
+          })
         }
-      } else if (desc.get) {
-        Object.defineProperty(UnifiedModel.prototype, key, {
-          get() {
-            const s = _get(this)
-            if (!s.inner) return undefined
-            return s.inner[key]
-          },
-          configurable: true,
-        })
       }
     }
   }

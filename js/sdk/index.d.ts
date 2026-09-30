@@ -220,3 +220,6 @@ export declare const registerMitraLoaders:
   | undefined
 
 export { BasisClassifier, BasisRegressor, BasisTransformer, loadBasis } from '@wlearn/basis'
+
+export * from '@wlearn/sym'
+export * from '@wlearn/uncertainty'

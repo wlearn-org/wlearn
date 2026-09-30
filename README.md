@@ -6,11 +6,6 @@ wlearn packages C/C++ and ONNX-backed models behind a unified, sklearn-style
 JavaScript API. Train locally, serialize to a portable WLRN bundle, and use the
 same artifact in JavaScript or Python when the corresponding loader is available.
 
-> **Unreleased main:** This branch documents the next coordinated 0.x release.
-> Public registries do not yet provide `@wlearn/preprocess`, the
-> `wlearn[preprocess]` extra. Tranfi 0.2 is published with the prepared-transform
-> API; use the wlearn components from source until their coordinated release.
-
 ## Why
 
 Most ML libraries require Python and a server. That means network round-trips, data privacy concerns, and infrastructure to manage. For many use cases -- on-device inference, privacy-sensitive data, offline apps, rapid prototyping -- you just want the model to run where the data already is.
@@ -28,7 +23,7 @@ in their own repositories, and Mitra uses ONNX Runtime. Cross-runtime numerical
 equivalence is checked per backend with explicit tolerances rather than assumed
 from the shared wrapper.
 
-**Unified API.** Base models use async construction (WASM must load), then synchronous `fit` and `save`; prediction may be sync or async by backend. Pipelines preserve synchronous fit for synchronous children and Promise-lift asynchronous children; ensemble fit is asynchronous because ensembles construct and train owned children.
+**Unified API.** Models use async construction (WASM must load). Fits are synchronous except Sym family search with Polygrad; `save` is always synchronous; prediction may be sync or async by backend. Pipelines preserve synchronous fit for synchronous children and Promise-lift asynchronous children; ensemble fit is asynchronous because ensembles construct and train owned children.
 
 **Portable bundles.** `save()` produces a self-describing binary bundle (format:
 WLRN v1) containing model artifacts, parameters, and a type identifier. `load()`
@@ -661,7 +656,7 @@ pip install wlearn[nanoflann]    # + k-nearest neighbors support
 pip install wlearn[lightgbm]     # + LightGBM support
 pip install wlearn[stochtree]    # + BART support
 pip install wlearn[nn]           # + polygrad neural models
-pip install wlearn[preprocess]   # + Tranfi-backed fitted preprocessing (next release)
+pip install wlearn[preprocess]   # + Tranfi-backed fitted preprocessing
 pip install wlearn[bo]           # + Bayesian AutoML strategy support
 pip install wlearn[all]          # everything
 ```
@@ -899,3 +894,25 @@ optimization direction; uncertainty estimation remains a separate planned effort
 Browser bundles that compose models must use the same exact core version. Core
 shares runtime identity within each JavaScript realm and rejects mixed versions.
 Rebuild all browser artifacts after a core update.
+
+### Coordinated releases
+
+`scripts/release.py` publishes a qualified ecosystem manifest in dependency order.
+It uses the tested npm tarballs and Python sdists, pushes their recorded commits
+and tags, and creates GitHub releases with those exact archives. It never builds
+from the publishing machine's worktree.
+
+```sh
+python3 scripts/release.py check /path/to/release-manifest.json
+python3 scripts/release.py publish /path/to/release-manifest.json --create-repos
+```
+
+The host needs npm, GitHub and PyPI credentials, plus Git, npm, `gh` and Twine.
+Use `--twine '/path/to/python -m twine'` for a separate publishing environment.
+`--create-repos` permits creating missing public repositories under `wlearn-org`.
+
+Preparation must record passing checks, archive hashes, committed package
+metadata and dependency order in the manifest. The driver checks the whole set
+before writing: an existing version, tag or release asset with different content
+is an error. Rerunning the same command skips matching uploads and completes
+missing release assets. A partial publication is resumable, not transactional.

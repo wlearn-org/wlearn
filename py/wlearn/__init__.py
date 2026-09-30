@@ -1,6 +1,6 @@
 # wlearn -- portable ML computation primitives
 
-__version__ = '0.2.0'
+__version__ = '0.3.0'
 
 from .errors import (
     WlearnError, BundleError, RegistryError,

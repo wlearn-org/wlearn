@@ -13,11 +13,6 @@ Automated model selection for wlearn. Searches over model families and hyperpara
 
 Part of [wlearn](https://wlearn.org) ([GitHub](https://github.com/wlearn-org), [all packages](https://github.com/wlearn-org/wlearn#repository-structure)).
 
-> **Unreleased main:** This README targets AutoML 0.3. The current npm 0.2.x
-> release does not include the preprocessing integration described below, and
-> `@wlearn/preprocess` is not yet published. Use the coordinated source trees for
-> that workflow until the next release.
-
 ## Install
 
 ```bash

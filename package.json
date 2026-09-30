@@ -26,7 +26,8 @@
     "dev:unlink": "node scripts/link-local-wlearn.js --unlink",
     "dev:check": "node scripts/link-local-wlearn.js --check",
     "test:integration": "node --test fixtures/test-*.mjs",
-    "test:types": "npm run test:types --workspaces --if-present"
+    "test:types": "npm run test:types --workspaces --if-present",
+    "test:interop:rf": "node fixtures/check-rf-interop.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.27.7",

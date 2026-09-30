@@ -5,6 +5,7 @@ within tolerance (atol=1e-5).
 """
 
 import json
+import os
 import pathlib
 
 import numpy as np
@@ -13,12 +14,12 @@ import pytest
 from wlearn.nn import MLPClassifier, MLPRegressor
 from wlearn.bundle import decode_bundle
 
-FIXTURES = pathlib.Path(__file__).resolve().parents[2] / 'fixtures' / 'nn'
+FIXTURES = pathlib.Path(os.environ.get('WLEARN_NN_FIXTURES', pathlib.Path(__file__).resolve().parents[2] / 'fixtures' / 'nn'))
 
 
 def _skip_if_no_fixtures():
     if not FIXTURES.exists():
-        pytest.skip('NN fixtures not generated (run: node packages/nn/test/test_cross_lang.js)')
+        pytest.skip('NN fixtures not generated (run: node ../nn/test/test_cross_lang.js)')
 
 
 class TestClassifierCompat:
@@ -31,7 +32,7 @@ class TestClassifierCompat:
         sidecar = json.loads(sidecar_path.read_text())
 
         manifest, toc, blobs = decode_bundle(bundle_bytes)
-        assert manifest['typeId'] == 'wlearn.nn.mlp.classifier@1'
+        assert manifest['typeId'] == 'wlearn.nn.mlp.classifier@2'
 
         model = MLPClassifier._from_bundle(manifest, toc, blobs)
         assert model.is_fitted
@@ -53,7 +54,7 @@ class TestClassifierCompat:
             err_msg='Classifier probabilities differ from JS')
 
         # Verify metadata
-        assert model._nr_class == sidecar['nrClass']
+        assert model.nr_class == sidecar['nrClass']
         np.testing.assert_array_equal(
             model.classes, np.array(sidecar['classes'], dtype=np.int32))
 
@@ -98,7 +99,7 @@ class TestRegressorCompat:
         sidecar = json.loads(sidecar_path.read_text())
 
         manifest, toc, blobs = decode_bundle(bundle_bytes)
-        assert manifest['typeId'] == 'wlearn.nn.mlp.regressor@1'
+        assert manifest['typeId'] == 'wlearn.nn.mlp.regressor@2'
 
         model = MLPRegressor._from_bundle(manifest, toc, blobs)
         assert model.is_fitted

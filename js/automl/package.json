@@ -18,7 +18,8 @@
     "index.d.ts",
     "LICENSE",
     "NOTICE",
-    "README.md"
+    "README.md",
+    "licenses/"
   ],
   "sideEffects": false,
   "dependencies": {

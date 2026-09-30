@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wlearn"
-version = "0.2.0"
+version = "0.3.0"
 description = "Portable ML computation primitives"
 readme = "README.md"
 license = "Apache-2.0"
@@ -33,13 +33,15 @@ ebm-fit = ["interpret>=0.6"]
 tsetlin-fit = ["tmu>=0.8.3,<0.9"]
 lightgbm = ["lightgbm>=4.0"]
 stochtree = ["stochtree>=0.1"]
-nn = ["numpy>=1.22"]
+nn = ["polygrad==0.6.0"]
 bo = ["wlearn-bo>=0.1.0"]
 rf = ["wlearn-rf>=0.4.1"]
 gam = ["wlearn-gam>=0.2.0"]
 cluster = ["wlearn-cluster>=0.1.0"]
 basis = ["wlearn-basis>=0.1.0"]
-preprocess = ["tranfi>=0.2,<0.3"]
+sym = ["wlearn-sym[polygrad]>=0.1.0"]
+uncertainty = ["wlearn-uncertainty>=0.1.0"]
+preprocess = ["tranfi>=0.2.1,<0.3"]
 all = [
     "xgboost>=2.0",
     "scikit-learn>=1.3",
@@ -50,13 +52,15 @@ all = [
     "tmu>=0.8.3,<0.9",
     "lightgbm>=4.0",
     "stochtree>=0.1",
-    "numpy>=1.22",
+    "polygrad==0.6.0",
     "wlearn-bo>=0.1.0",
     "wlearn-rf>=0.4.1",
     "wlearn-gam>=0.2.0",
     "wlearn-cluster>=0.1.0",
     "wlearn-basis>=0.1.0",
-    "tranfi>=0.2,<0.3",
+    "wlearn-sym[polygrad]>=0.1.0",
+    "wlearn-uncertainty>=0.1.0",
+    "tranfi>=0.2.1,<0.3",
 ]
 test = ["pytest>=7.0", "hypothesis>=6.0"]
 solver = ["z3-solver>=4.12,<4.15.4"]

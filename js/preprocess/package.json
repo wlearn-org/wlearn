@@ -27,13 +27,14 @@
     "index.d.ts",
     "LICENSE",
     "NOTICE",
-    "README.md"
+    "README.md",
+    "licenses/"
   ],
   "sideEffects": false,
   "dependencies": {
     "@wlearn/core": "^0.3.0",
     "@wlearn/types": "^0.2.0",
-    "tranfi": "^0.2.0"
+    "tranfi": "^0.2.1"
   },
   "scripts": {
     "pretest": "npm run build:browser",

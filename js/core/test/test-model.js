@@ -625,3 +625,19 @@ describe('createModelClass edge cases', () => {
     m.dispose()
   })
 })
+
+it('unified models forward inherited public methods and getters', async () => {
+  class Parent extends MockClassifier {
+    decisionFunction() { return Float64Array.of(2, -2) }
+    get explanation() { return 'parent' }
+  }
+  class Child extends Parent {
+    static async create(params) { return new Child(params) }
+  }
+  const model = await createModelClass(Child, MockRegressor).create({ task: 'classification' })
+  try {
+    model.fit([[0], [1]], [0, 1])
+    assert.deepEqual(model.decisionFunction([[0], [1]]), Float64Array.of(2, -2))
+    assert.equal(model.explanation, 'parent')
+  } finally { model.dispose() }
+})
