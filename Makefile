@@ -48,6 +48,7 @@ test-types:
 
 test-interop:
 	WLEARN_PYTHON=$(PYTHON) $(NPM) run test:interop:full
+	WLEARN_PYTHON=$(PYTHON) $(NPM) run test:interop:rf
 
 .PHONY: test-release
 test-release:
