@@ -1,6 +1,6 @@
 {
   "name": "@wlearn/preprocess",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Portable fitted tabular preprocessing for wlearn over Tranfi",
   "type": "commonjs",
   "main": "src/index.js",
@@ -34,7 +34,7 @@
   "dependencies": {
     "@wlearn/core": "^0.3.0",
     "@wlearn/types": "^0.2.0",
-    "tranfi": "^0.2.1"
+    "tranfi": "^0.2.2"
   },
   "scripts": {
     "pretest": "npm run build:browser",

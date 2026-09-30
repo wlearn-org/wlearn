@@ -1,5 +1,9 @@
 'use strict'
 
-const { createPreprocessAPI } = require('./factory.js')
+const tranfi = require('tranfi')
 
-module.exports = createPreprocessAPI(() => require('tranfi'), 'native')
+// Choose the whole API so backend identity, cancellation and loader registration
+// stay consistent. Importing /wasm explicitly reuses the same fallback class.
+module.exports = tranfi.hasNativePreparedTransforms()
+  ? require('./factory.js').createPreprocessAPI(() => tranfi, 'native')
+  : require('./wasm.js')

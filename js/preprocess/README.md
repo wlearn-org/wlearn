@@ -9,8 +9,15 @@ over Tranfi's generic prepared-transform API.
 npm install @wlearn/preprocess
 ```
 
-The default Node entry uses Tranfi's native addon. Browser bundlers select the
-WASM entry automatically; `@wlearn/preprocess/wasm` is also available explicitly.
+No Python or compiler is required. The Node entry uses Tranfi's native addon
+when its prepared-transform API is available, otherwise the packaged WASM
+backend. Browser bundlers select WASM; `@wlearn/preprocess/wasm` explicitly
+selects it in Node too. `preprocessor.backend` reports the selected backend.
+
+Existing lockfiles need an update to `@wlearn/preprocess` 0.1.1 and Tranfi 0.2.2
+or newer; a fresh install of AutoML/SDK 0.3.0 already accepts these patches.
+Native cancellation uses `cancelFlag`; WASM uses `cancelToken`. Backend choice
+does not change the portable saved-plan format.
 
 ## Quick start
 

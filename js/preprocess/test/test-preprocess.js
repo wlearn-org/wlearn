@@ -1,7 +1,7 @@
 'use strict'
 
 const assert = require('node:assert/strict')
-const { before, test } = require('node:test')
+const { test } = require('node:test')
 
 const core = require('@wlearn/core')
 const {
@@ -13,13 +13,19 @@ const {
   resolvePreprocessConfig
 } = require('../src/index.js')
 
-let tranfi = null
-try {
-  tranfi = require(process.env.TRANFI_JS_PATH || 'tranfi')
-} catch (_) {
-  // The package keeps Tranfi optional in the unreleased workspace test lane.
+async function cancellation(t) {
+  const tranfi = await registerPreprocess()
+  const flag = new Int32Array(new SharedArrayBuffer(4))
+  // Exercise the selected entry's contract; WASM tokens can poll a shared flag.
+  const token = typeof tranfi.createTransformCancelToken === 'function'
+    ? tranfi.createTransformCancelToken({ sharedFlag: flag })
+    : null
+  if (token) t.after(() => token.close())
+  return {
+    options: token ? { cancelToken: token } : { cancelFlag: flag },
+    set: value => Atomics.store(flag, 0, value)
+  }
 }
-const skipWithoutTranfi = tranfi ? false : 'compatible Tranfi test backend is not installed'
 const FINAL_TYPE_ID = 'wlearn.test.preprocess-final@1'
 
 class FinalModel {
@@ -59,10 +65,6 @@ core.register(
   { sync: true }
 )
 
-before(async () => {
-  if (tranfi) await registerPreprocess({ backend: tranfi })
-})
-
 test('re-exports core numeric scalers by exact identity', () => {
   assert.equal(StandardScaler, core.StandardScaler)
   assert.equal(MinMaxScaler, core.MinMaxScaler)
@@ -83,9 +85,7 @@ test('resolves configs without initializing the Tranfi backend', () => {
   )
 })
 
-test('mixed inference, defaults, fit-transform, and zero-row apply', {
-  skip: skipWithoutTranfi
-}, async () => {
+test('mixed inference, defaults, fit-transform, and zero-row apply', async () => {
   const preprocessor = await Preprocessor.create()
   assert.deepEqual(preprocessor.getParams(), {
     impute: { numeric: 'mean', categorical: 'mode' },
@@ -127,9 +127,7 @@ test('mixed inference, defaults, fit-transform, and zero-row apply', {
   preprocessor.dispose()
 })
 
-test('impute false preserves numeric NaN and label uses sentinel', {
-  skip: skipWithoutTranfi
-}, async () => {
+test('impute false preserves numeric NaN and label uses sentinel', async () => {
   const passthrough = await Preprocessor.create({
     impute: false,
     encode: false
@@ -148,9 +146,8 @@ test('impute false preserves numeric NaN and label uses sentinel', {
   label.dispose()
 })
 
-test('save/load validates plan identity and generic loader stays async', {
-  skip: skipWithoutTranfi
-}, async () => {
+test('save/load validates plan identity and generic loader stays async', async () => {
+  const tranfi = await registerPreprocess()
   const preprocessor = await Preprocessor.create({ scale: 'standard' })
   preprocessor.fit([[1, 10.5], [2, 20.5], [1, 30.5], [2, 40.5]])
   const bytes = preprocessor.save()
@@ -183,9 +180,7 @@ test('save/load validates plan identity and generic loader stays async', {
   }
 })
 
-test('load rejects wrong outer type, metadata disagreement, and corrupt plan', {
-  skip: skipWithoutTranfi
-}, async () => {
+test('load rejects wrong outer type, metadata disagreement, and corrupt plan', async () => {
   const wrong = core.encodeBundle(
     { typeId: 'wlearn.test.other@1' },
     [{ id: 'state', data: new Uint8Array([1]) }]
@@ -225,9 +220,8 @@ test('load rejects wrong outer type, metadata disagreement, and corrupt plan', {
   preprocessor.dispose()
 })
 
-test('load rejects boolean plan and policy version tags before import', {
-  skip: skipWithoutTranfi
-}, async () => {
+test('load rejects boolean plan and policy version tags before import', async () => {
+  const tranfi = await registerPreprocess()
   const preprocessor = await Preprocessor.create()
   preprocessor.fit([[1], [2], [1]])
   const decoded = core.validateBundle(preprocessor.save())
@@ -264,9 +258,7 @@ test('load rejects boolean plan and policy version tags before import', {
   }
 })
 
-test('validation, resource limits, transactional fit, params, and disposal', {
-  skip: skipWithoutTranfi
-}, async () => {
+test('validation, resource limits, transactional fit, params, and disposal', async () => {
   await assert.rejects(
     () => Preprocessor.create({ maxCategories: 1 }),
     error => error.code === 'ERR_VALIDATION'
@@ -297,9 +289,7 @@ test('validation, resource limits, transactional fit, params, and disposal', {
   assert.throws(() => preprocessor.getParams(), /disposed/)
 })
 
-test('JS matches the shared cross-language plan SHA oracle', {
-  skip: skipWithoutTranfi
-}, async () => {
+test('JS matches the shared cross-language plan SHA oracle', async () => {
   const preprocessor = await Preprocessor.create({
     impute: 'median', encode: 'onehot', scale: 'minmax'
   })
@@ -318,9 +308,7 @@ test('JS matches the shared cross-language plan SHA oracle', {
   preprocessor.dispose()
 })
 
-test('nested Pipeline load forwards type-keyed runtime limits', {
-  skip: skipWithoutTranfi
-}, async () => {
+test('nested Pipeline load forwards type-keyed runtime limits', async () => {
   const preprocessor = await Preprocessor.create({
     impute: 'median', encode: 'label', scale: 'minmax'
   })
@@ -349,22 +337,21 @@ test('nested Pipeline load forwards type-keyed runtime limits', {
   restored.dispose()
 })
 
-test('cancellation and unsupported runtime preserve fitted-plan ownership', {
-  skip: skipWithoutTranfi
-}, async () => {
-  const cancelFlag = new Int32Array(new SharedArrayBuffer(4))
+test('cancellation and unsupported runtime preserve fitted-plan ownership', async t => {
+  const tranfi = await registerPreprocess()
+  const cancel = await cancellation(t)
   const preprocessor = await Preprocessor.create(
-    { encode: false }, { cancelFlag }
+    { encode: false }, cancel.options
   )
   preprocessor.fit([[1.5], [2.5]])
-  Atomics.store(cancelFlag, 0, 1)
+  cancel.set(1)
   assert.throws(
     () => preprocessor.transform([[3.5]]),
     error => error.code === 'ERR_CANCELLED' &&
       error.engine === 'tranfi' && error.engineCode === 109 && Boolean(error.cause)
   )
   assert.equal(preprocessor.isFitted, true)
-  Atomics.store(cancelFlag, 0, 0)
+  cancel.set(0)
   assert.deepEqual(Array.from(preprocessor.transform([[3.5]]).data), [3.5])
 
   const original = tranfi.TransformRecipe.fromJSON
@@ -387,13 +374,13 @@ test('cancellation and unsupported runtime preserve fitted-plan ownership', {
   preprocessor.dispose()
 })
 
-test('pre-cancelled preprocessing does not read matrix values', { skip: skipWithoutTranfi }, async () => {
-  const cancelFlag = new Int32Array(new SharedArrayBuffer(4))
+test('pre-cancelled preprocessing does not read matrix values', async t => {
+  const cancel = await cancellation(t)
   const processor = await Preprocessor.create(
-    { impute: false, encode: false, scale: false }, { cancelFlag }
+    { impute: false, encode: false, scale: false }, cancel.options
   )
   processor.fit([[1, 2], [3, 4]])
-  Atomics.store(cancelFlag, 0, 1)
+  cancel.set(1)
   const row = [1, 2]
   Object.defineProperty(row, 0, { get() { throw new Error('cancelled input was read') } })
   for (const operation of ['fit', 'transform']) {
@@ -402,17 +389,17 @@ test('pre-cancelled preprocessing does not read matrix values', { skip: skipWith
   processor.dispose()
 })
 
-test('cancellation interrupts matrix conversion', { skip: skipWithoutTranfi }, async () => {
-  const cancelFlag = new Int32Array(new SharedArrayBuffer(4))
+test('cancellation interrupts matrix conversion', async t => {
+  const cancel = await cancellation(t)
   const processor = await Preprocessor.create(
-    { impute: false, encode: false, scale: false }, { cancelFlag }
+    { impute: false, encode: false, scale: false }, cancel.options
   )
   processor.fit([[1]])
   let reads = 0
   const row = [1]
   Object.defineProperty(row, 0, { get() {
     reads++
-    Atomics.store(cancelFlag, 0, 1)
+    cancel.set(1)
     return 1
   } })
   assert.throws(() => processor.transform(Array(30000).fill(row)),
@@ -421,7 +408,7 @@ test('cancellation interrupts matrix conversion', { skip: skipWithoutTranfi }, a
   processor.dispose()
 })
 
-test('WASM cancellation and returned buffer ownership', { skip: skipWithoutTranfi }, async () => {
+test('WASM cancellation and returned buffer ownership', async () => {
   const path = require('node:path')
   const createTranfi = process.env.TRANFI_JS_PATH
     ? require(path.join(process.env.TRANFI_JS_PATH, 'wasm'))
@@ -449,7 +436,7 @@ test('WASM cancellation and returned buffer ownership', { skip: skipWithoutTranf
   assert.deepEqual([...second.data], [5, 6])
 })
 
-test('column policies preserve fixed widths and explicit kinds', { skip: skipWithoutTranfi }, async () => {
+test('column policies preserve fixed widths and explicit kinds', async () => {
   const pre = await Preprocessor.create({ scale: 'standard', columns: {
     x0: { kind: 'numeric', scale: false },
     x1: { categories: [5, 0, 2] },
@@ -486,7 +473,7 @@ test('validates column policies without a backend', () => {
     columns: { x0: { categories: [0, 1] } } }), core.ValidationError)
 })
 
-test('column overrides inherit global updates and reject invalid patches atomically', { skip: skipWithoutTranfi }, async () => {
+test('column overrides inherit global updates and reject invalid patches atomically', async () => {
   const pre = await Preprocessor.create({ columns: { x0: { kind: 'numeric' } } })
   pre.fit([[1], [3]])
   const original = pre.save()
@@ -499,7 +486,7 @@ test('column overrides inherit global updates and reject invalid patches atomica
   pre.dispose()
 })
 
-test('column policies respect host limits before fit', { skip: skipWithoutTranfi }, async () => {
+test('column policies respect host limits before fit', async () => {
   const limits = { maxCategoriesPerColumn: 2, maxTotalCategories: 3 }
   for (const columns of [
     { x0: { categories: [0, 1, 2] } },
@@ -508,7 +495,7 @@ test('column policies respect host limits before fit', { skip: skipWithoutTranfi
   ]) await assert.rejects(Preprocessor.create({ maxCategories: 2, columns }, { limits }), core.ResourceLimitError)
 })
 
-test('column inference threshold and imputation overrides', { skip: skipWithoutTranfi }, async () => {
+test('column inference threshold and imputation overrides', async () => {
   const pre = await Preprocessor.create({ columns: {
     x0: { maxCategories: 2, impute: 'median' },
     x1: { kind: 'categorical', impute: false, encode: 'label' }
