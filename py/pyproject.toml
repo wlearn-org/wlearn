@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wlearn"
-version = "0.3.0"
+version = "0.3.1"
 description = "Portable ML computation primitives"
 readme = "README.md"
 license = "Apache-2.0"
@@ -33,7 +33,8 @@ ebm-fit = ["interpret>=0.6"]
 tsetlin-fit = ["tmu>=0.8.3,<0.9"]
 lightgbm = ["lightgbm>=4.0"]
 stochtree = ["stochtree>=0.1"]
-nn = ["polygrad==0.6.0"]
+nn = ["polygrad>=0.7.0"]
+dimred = ["wlearn-dimred>=0.1.0,<0.2"]
 bo = ["wlearn-bo>=0.1.0"]
 rf = ["wlearn-rf>=0.4.1"]
 gam = ["wlearn-gam>=0.2.0"]
@@ -52,7 +53,7 @@ all = [
     "tmu>=0.8.3,<0.9",
     "lightgbm>=4.0",
     "stochtree>=0.1",
-    "polygrad==0.6.0",
+    "polygrad>=0.7.0",
     "wlearn-bo>=0.1.0",
     "wlearn-rf>=0.4.1",
     "wlearn-gam>=0.2.0",

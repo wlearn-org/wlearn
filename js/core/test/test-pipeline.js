@@ -5,6 +5,16 @@ const { register } = require('../src/registry.js')
 const { encodeBundle, decodeBundle } = require('../src/bundle.js')
 const { DisposedError, NotFittedError, ValidationError } = require('../src/errors.js')
 
+it('rejects a transductive intermediate before fitting any step', () => {
+  let calls = 0
+  const first = { transform: X => X, fitTransform(X) { calls++; return X } }
+  const embedding = { capabilities: { transductive: true }, fitTransform(X) { calls++; return X } }
+  const final = { fit() { calls++ } }
+  const pipe = new Pipeline([['first', first], ['embedding', embedding], ['final', final]])
+  assert.throws(() => pipe.fit([[1]], [0]), /embedding.*transform/)
+  assert.equal(calls, 0)
+})
+
 // Mock transformer: doubles all values
 function createMockTransformer(name) {
   let fitted = false

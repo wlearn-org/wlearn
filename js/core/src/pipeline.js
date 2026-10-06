@@ -13,7 +13,7 @@ let registered = false
 /**
  * A pipeline of named estimator steps executed sequentially.
  *
- * Intermediate steps must implement `transform()` (or `fitTransform()`).
+ * Intermediate steps must implement `transform()` for unseen inputs.
  * The last step is the final estimator (predict/score).
  *
  * @example
@@ -96,6 +96,11 @@ class Pipeline {
    */
   fit(X, y, opts = {}) {
     this.#ensureAlive()
+    // Explicit transductive learners cannot supply features for later predict calls.
+    for (const step of this.#steps.slice(0, -1)) {
+      if (step.estimator.capabilities?.transductive && !step.isTransformer)
+        throw new ValidationError(`Pipeline step "${step.name}" requires transform()`)
+    }
     if (this.#fitInProgress) {
       throw new ValidationError('Pipeline fit is already in progress')
     }

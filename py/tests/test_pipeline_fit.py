@@ -406,3 +406,25 @@ def test_pipeline_routes_weights_and_validates_before_mutation():
     with pytest.raises(ValidationError, match='sample_weight'):
         pipe.fit([[0], [1]], [0, 1], sample_weight=weights)
     assert len(calls) == 2
+def test_transductive_intermediate_rejected_before_fitting():
+    import pytest
+    from wlearn import Pipeline
+    from wlearn.errors import ValidationError
+
+    calls = []
+    class First:
+        def fit_transform(self, X, y):
+            calls.append('first')
+            return X
+        def transform(self, X): return X
+    class Embedding:
+        capabilities = {'transductive': True}
+        def fit_transform(self, X, y):
+            calls.append('embedding')
+            return X
+    class Final:
+        def fit(self, X, y): calls.append('final')
+    pipe = Pipeline([('first', First()), ('embedding', Embedding()), ('final', Final())])
+    with pytest.raises(ValidationError, match='embedding.*transform'):
+        pipe.fit([[1]], [0])
+    assert calls == []

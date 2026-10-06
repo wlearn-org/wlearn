@@ -40,6 +40,10 @@ class Pipeline:
         The last step is only fitted (not transformed).
         """
         self._ensure_alive()
+        # Validate every intermediate before any fit mutates a child.
+        for name, est in self._steps[:-1]:
+            if _capabilities(est).get('transductive', False) and not callable(getattr(est, 'transform', None)):
+                raise ValidationError(f'Pipeline step "{name}" requires transform()')
         if sample_weight is not None:
             sample_weight = validate_sample_weight(sample_weight, target_rows(y))
             name, final = self._steps[-1]

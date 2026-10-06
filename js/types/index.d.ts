@@ -94,9 +94,9 @@ export interface TransformerCapabilities {
 }
 
 export interface Transformer {
-  fit(X: Matrix | number[][], y?: Labels | number[], opts?: FitOptions): this
-  transform(X: Matrix | number[][]): DenseMatrix
-  fitTransform(X: Matrix | number[][], y?: Labels | number[], opts?: FitOptions): DenseMatrix
+  fit(X: Matrix | number[][], y?: Labels | number[], opts?: FitOptions): MaybePromise<this>
+  transform(X: Matrix | number[][]): MaybePromise<DenseMatrix>
+  fitTransform(X: Matrix | number[][], y?: Labels | number[], opts?: FitOptions): MaybePromise<DenseMatrix>
   save(): Uint8Array
   dispose(): void
   getParams(): Record<string, unknown>

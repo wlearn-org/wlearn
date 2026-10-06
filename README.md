@@ -111,6 +111,7 @@ Built from scratch (not WASM ports of existing libraries):
 | `@wlearn/cluster` | C11 | Clustering and validation metrics. |
 | `@wlearn/bo` | C11 | Bayesian optimization. |
 | `@wlearn/basis` | C11 | Random/supervised feature maps and fitted readouts. |
+| `@wlearn/dimred` | C11 + Polygrad ABI108 | PCA, t-SNE, experimental synchronous UMAP and TriMap. PCA supports Pipeline transforms; nonlinear methods return fitted embeddings. |
 | `@wlearn/sym` | C11 + optional Polygrad | Symbolic regression and classification. |
 | `@wlearn/uncertainty` | C11 | Calibration, conformal prediction and risk control. |
 
@@ -129,7 +130,13 @@ WASM modules load asynchronously. Use the static `create()` factory:
 const model = await LinearModel.create({ solver: 'L2R_LR', C: 1.0 })
 ```
 
-After construction, base-model `fit` and `save` are synchronous. `predict`, `predictProba`, and `score` are synchronous for WASM-backed models but return Promises for async backends (for example, `@wlearn/mitra` uses ONNX Runtime). Pipeline fit remains synchronous with synchronous children and Promise-lifts an asynchronous child. Ensemble fit is asynchronous because ensembles construct and train owned children; use `await composite.fit(X, y)` in code that accepts either kind of composite.
+Most base-model `fit` methods are synchronous; dimred fitting and PCA transforms are asynchronous to support WebGPU. `save` remains synchronous. `predict`, `predictProba`, and `score` are synchronous for WASM-backed models but return Promises for async backends (for example, `@wlearn/mitra` uses ONNX Runtime). Pipeline fit remains synchronous with synchronous children and Promise-lifts an asynchronous child. Ensemble fit is asynchronous because ensembles construct and train owned children; use `await composite.fit(X, y)` in code that accepts either kind of composite.
+
+Dimred is an opt-in sibling package, not included in the SDK or `wlearn[all]`
+and requires Polygrad 0.7.0 (ABI108). Starting with wlearn 0.3.1, Python's optional
+`wlearn[dimred]` extra supplies `from wlearn.dimred import PCA, TSNE, UMAP, TriMap`.
+It uses the existing WLRN registry, not a separate persistence format. See
+the [dimred README](https://github.com/wlearn-org/dimred#readme) for setup and limits.
 
 ### fit / predict / score
 
