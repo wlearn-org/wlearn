@@ -1,6 +1,6 @@
 {
   "name": "@wlearn/core",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Runtime core for wlearn: matrix helpers, bundle format, registry, pipeline",
   "type": "commonjs",
   "main": "src/index.js",

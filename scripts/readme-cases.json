@@ -1785,5 +1785,96 @@
       "xlearn-wasm/README.md:184"
     ],
     "context": "const {XLearnFMRegressor}=require('@wlearn/xlearn'); const model=await XLearnFMRegressor.create({epoch:10})"
+  },
+  "7b5d634accd6c9ce08e997263bc827a07ce03134bd9a210da08ca56a9f3a42b4": {
+    "description": "Self-contained example; no external data",
+    "sources": [
+      "dimred/js/README.md:20"
+    ],
+    "timeout": 600
+  },
+  "28bfd0a06416a08d667280dfdfa72153b37fccca46ac3bd20e7ccd92cdc34ebb": {
+    "description": "Self-contained example; no external data",
+    "sources": [
+      "dimred/js/README.md:94"
+    ],
+    "timeout": 600
+  },
+  "05013b88c1a54d2c6ca3b4a2ae697b1de0a26d1615c8bff074ad1ae517e16b0a": {
+    "description": "Self-contained example; no external data",
+    "sources": [
+      "dimred/js/README.md:129"
+    ],
+    "timeout": 600
+  },
+  "77fb5131cbca4a7559351738633b0f3054020ae9e80538f1e233d762128b1275": {
+    "description": "Self-contained example; no external data",
+    "sources": [
+      "dimred/py/README.md:20"
+    ],
+    "timeout": 600
+  },
+  "bc49919f9727025f874514f224dffd866f5817525948816b9a8243eff9230591": {
+    "description": "Self-contained example; no external data",
+    "sources": [
+      "dimred/py/README.md:88"
+    ],
+    "timeout": 600
+  },
+  "671ab0f597a3cf52b21b2a2e1f27918b7cf87bcaebb08b4d3d6c65e871d0d3d7": {
+    "description": "Self-contained example; no external data",
+    "sources": [
+      "dimred/py/README.md:116"
+    ],
+    "timeout": 600
+  },
+  "4195cbc3d34b4367aec1fd54af6635de497db73661e4407b8b0e6b95280c88d9": {
+    "description": "Self-contained example; no external data",
+    "sources": [
+      "dimred/py/README.md:135"
+    ],
+    "timeout": 600
+  },
+  "5cbaf62938cc13a402f87d447f780e50f6ac4eb1dc1b56e2725549b965a3146b": {
+    "description": "Self-contained example; no external data",
+    "sources": [
+      "sym/js/README.md:18"
+    ],
+    "timeout": 600
+  },
+  "0742cd350f4fe641c6255d0537c11ab517e0984fefce8d991d4409953cba2e01": {
+    "description": "Self-contained example; no external data",
+    "sources": [
+      "sym/js/README.md:95"
+    ],
+    "timeout": 600
+  },
+  "9765d335e1b5b9a70468bf54bfe5b6c151828b36756fe49a80f81c931e6ddb95": {
+    "description": "Self-contained example; no external data",
+    "sources": [
+      "sym/py/README.md:21"
+    ],
+    "timeout": 600
+  },
+  "7580193fed23137373685df6afce77659820c8b54a2a0f783fe486971c0ffc14": {
+    "description": "Self-contained example; no external data",
+    "sources": [
+      "sym/py/README.md:93"
+    ],
+    "timeout": 600
+  },
+  "02c696fffb7869c35c55af4da2071fdb82a3dd6c76f7cfcd4d41567a78a21b14": {
+    "description": "Self-contained example; no external data",
+    "sources": [
+      "nn/README.md:32"
+    ],
+    "timeout": 600
+  },
+  "8c79130dd82ab4ae06691704e2b07ec4b2c5182451faeb476aeadcd03a8eb07e": {
+    "description": "Self-contained example; no external data",
+    "sources": [
+      "nn/README.md:96"
+    ],
+    "timeout": 600
   }
 }

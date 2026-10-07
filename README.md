@@ -743,8 +743,8 @@ recursive validation.
 
 Default decoders retain compatibility with historical v1 artifacts that omit
 `requires`, `params`, `artifacts`, or TOC `mediaType`, use non-canonical TOC order,
-or carry fixed-record extensions. Safety checks—bounds, portable JSON, blob
-coverage, hashes, and recursion budgets—still apply. Use
+or carry fixed-record extensions. Safety checks (bounds, portable JSON, blob
+coverage, hashes, and recursion budgets) still apply. Use
 `validateBundle(bytes, { allowLegacyManifest: false })` in JS or
 `validate_bundle(data, allow_legacy_manifest=False)` in Python for a canonical
 conformance gate. Legacy inputs may lack complete dependency-preflight metadata;
@@ -872,12 +872,6 @@ Website: [wlearn.org](https://wlearn.org)
 
 WASM port repos carry upstream C/C++ source as git submodules. C11 repos (rf, gam, cluster, bo, basis) are written from scratch with canonical C in root `src/`, JS packages in `js/`, and standalone Python packages in `py/`. Python wrappers for upstream-native packages live in the core repo.
 
-## License
-
-Packages in this core repository are Apache-2.0. Each model repository carries
-its own package license, notices, and upstream attribution; consult its `LICENSE`
-and `NOTICE` files before redistribution.
-
 ## Current execution scope
 
 Pipeline runs sequential steps and AutoML evaluates candidates/folds serially.
@@ -922,3 +916,9 @@ and evidence directory. It executes every JS/Python README block. The reviewed
 `scripts/readme-cases.json` records data and prior-example prerequisites; new or
 changed executable blocks fail until reviewed. API signature listings use text
 fences. `make test-readmes-harness` checks the gate's block selection itself.
+
+## License
+
+Packages in this core repository are Apache-2.0. Each model repository carries
+its own package license, notices, and upstream attribution; consult its `LICENSE`
+and `NOTICE` files before redistribution.

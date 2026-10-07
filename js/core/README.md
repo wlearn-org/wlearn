@@ -131,6 +131,19 @@ The package publishes `index.d.ts`; `npm run test:types` checks the public
 TypeScript surface against representative registry, bundle, scaler, and pipeline
 usage.
 
+The current Pipeline executes a sequential list of steps. TensorRef and graph
+interfaces describe future routing; they are not the current Pipeline executor.
+Matrix normalization and CV require dense inputs; sparse-capable model APIs must
+handle CSR through their declared capability.
+
+Pipeline routes `predictQuantiles`, `predictInterval`, `predictSet`,
+`predictRegion` and `predictDistribution` through its fitted transforms to a
+capable final estimator. Arguments and asynchronous results are preserved.
+Measures can require structured prediction fields; `metadata.predictionArgs`
+supplies positional arguments after X when `scoreEstimator` invokes that method.
+The core provides validation and routing; numerical uncertainty methods live in
+an optional package.
+
 ### Preprocessing
 
 - `StandardScaler` -- zero mean and population variance (`ddof=0`)
@@ -170,6 +183,21 @@ r2Score(yTrue, yPred)                         // number
 - `crossValScore(ModelClass, X, y, opts?)` -- evaluate with CV
 - `getScorer(name)` -- get scoring function by name (`'accuracy'`, `'r2'`, `'neg_mse'`)
 
+`cv` accepts a fold count, explicit `{ train, test }` row-index arrays, or a
+`ResamplingPlan`. `resolveCv` checks indices and train/test separation. AutoML,
+OOF, stacking, and bagging use these same folds; OOF consumers require each row
+in test folds exactly once. Bagging repeats may reuse an explicit complete plan.
+Temporal/index/period split generators are **experimental**, outside the stable
+CV contract. Their partial coverage is supported for evaluation, not materialized
+OOF training. This does not add time-series modeling or uncertainty estimation.
+
+`getScorer` resolves the Measure registry, including `log_loss`, `roc_auc`, `mse`,
+and `mae`. Measure definitions declare their required response and whether to
+minimize or maximize. Plain two-array callable scorers keep response predictions
+and maximization. `scoreEstimator` requests the correct prediction method and
+validates a finite score. Probability rows must contain finite values in [0, 1]
+and sum to one within 1e-6; declared classes must be unique.
+
 ### Ecosystem primitives
 
 These are the stable objects for apps, AutoML, benchmarks, and agents. They are optional. If you only want to fit, predict, score, and save a model, use the estimator and pipeline APIs above.
@@ -191,6 +219,38 @@ const archive = new Archive({ measures: ['accuracy'], primaryMeasure: 'accuracy'
 archive.add({ trialId: 'xgb-0', candidateId: 'xgb-depth6', scores, status: 'ok' })
 archive.leaderboard()
 ```
+
+### Structured predictions and multiple targets
+
+`createPrediction` validates flat row-major arrays with explicit metadata:
+
+| Field | Layout | Required metadata |
+| --- | --- | --- |
+| `quantiles` | row, target, level | `quantileLevels` |
+| `interval` | row, target, coverage, lower/upper | `coverageLevels` |
+| `sets` (classification) | row, coverage, class | `coverageLevels`, `classes` |
+| `sets` (multilabel) | row, coverage, label, state | `coverageLevels`, `targetCount` |
+| `samples` | row, draw, target | `sampleCount`, `sampleKind: 'outcome'` or `'mean'` |
+
+Samples may declare `sampleDependence: 'joint'` when columns in each draw belong
+together, or `'marginal'` when no joint interpretation is supplied. Array shape
+alone does not establish dependence. Optional `sampleWeights` are nonnegative
+relative weights for draws, shared across rows; omission means uniform weights.
+Numerical consumers normalize them. Posterior-mean samples do not represent
+future outcomes without an observation-noise model.
+
+Use `rows`, `targetCount` (default 1), and optional unique `targetNames` to
+identify axes. Levels are strictly increasing; quantiles cannot cross. Infinite
+interval endpoints express conservative support, and `[Infinity, -Infinity]`
+represents the empty set. Ellipsoid regions carry centers, a shared precision
+matrix and radii; the numerical producer must validate positive definiteness.
+
+Matrix targets require the explicit task kind `multioutput` or `multilabel`.
+`normalizeTargets`, `subsetTargets`, Task and `crossValScore` preserve those axes.
+Weights have one entry per row. Multilabel probabilities are independent columns;
+multiclass probability rows sum to one. Multioutput R2, MSE and MAE average the
+per-target scores. Multilabel measures include `subset_accuracy`, `hamming_loss`
+and `multilabel_log_loss`.
 
 ### createModelClass
 
@@ -221,7 +281,20 @@ The returned class supports:
 - `model.task` -- the detected or specified task.
 - Extra methods and getters from the inner classes are discovered and proxied automatically.
 
-Auto-detection rules: if `y` is `Int32Array`, task is classification. Otherwise, if any value is non-integer, task is regression. If all values are integers and there are 2–20 unique values, task is classification; otherwise regression.
+Auto-detection rules: if `y` is `Int32Array`, task is classification. Otherwise, if any value is non-integer, task is regression. If all values are integers and there are 2 to 20 unique values, task is classification; otherwise regression.
+
+Model packages with additional fitting entry points can declare
+`fitMethods: { fitSpecial: 'regression' }` in `createModelClass` options. Those
+methods use the same fit-state, failure, disposal and Promise handling as `fit`.
+Other extra methods remain fitted-only queries.
+
+### Browser bundles
+
+Independent browser bundles share one public core API and loader registry per
+JavaScript realm. They must embed exactly the same core version; mixing core
+versions throws an actionable `RegistryError`. Rebuild every browser bundle when
+updating core. This also preserves error-constructor identity and custom Measure
+registrations across composed packages. Workers and frames have their own realms.
 
 ### Errors
 
@@ -237,76 +310,3 @@ Auto-detection rules: if `y` is `Int32Array`, task is classification. Otherwise,
 ## License
 
 Apache-2.0
-
-## CV, scoring, and runtime identity
-
-`cv` accepts a fold count, explicit `{ train, test }` row-index arrays, or a
-`ResamplingPlan`. `resolveCv` checks indices and train/test separation. AutoML,
-OOF, stacking, and bagging use these same folds; OOF consumers require each row
-in test folds exactly once. Bagging repeats may reuse an explicit complete plan.
-Temporal/index/period split generators are **experimental**, outside the stable
-CV contract. Their partial coverage is supported for evaluation, not materialized
-OOF training. This does not add time-series modeling or uncertainty estimation.
-
-`getScorer` resolves the Measure registry, including `log_loss`, `roc_auc`, `mse`,
-and `mae`. Measure definitions declare their required response and whether to
-minimize or maximize. Plain two-array callable scorers keep response predictions
-and maximization. `scoreEstimator` requests the correct prediction method and
-validates a finite score. Probability rows must contain finite values in [0, 1]
-and sum to one within 1e-6; declared classes must be unique.
-
-Independent browser bundles share one public core API and loader registry per
-JavaScript realm. They must embed exactly the same core version; mixing core
-versions throws an actionable `RegistryError`. Rebuild every browser bundle when
-updating core. This also preserves error-constructor identity and custom Measure
-registrations across composed packages. Workers and frames have their own realms.
-
-The current Pipeline executes a sequential list of steps. TensorRef and graph
-interfaces describe future routing; they are not the current Pipeline executor.
-Matrix normalization and CV require dense inputs; sparse-capable model APIs must
-handle CSR through their declared capability.
-
-### Structured uncertainty and multiple targets
-
-`createPrediction` validates flat row-major arrays with explicit metadata:
-
-| Field | Layout | Required metadata |
-| --- | --- | --- |
-| `quantiles` | row, target, level | `quantileLevels` |
-| `interval` | row, target, coverage, lower/upper | `coverageLevels` |
-| `sets` (classification) | row, coverage, class | `coverageLevels`, `classes` |
-| `sets` (multilabel) | row, coverage, label, state | `coverageLevels`, `targetCount` |
-| `samples` | row, draw, target | `sampleCount`, `sampleKind: 'outcome'` or `'mean'` |
-
-Samples may declare `sampleDependence: 'joint'` when columns in each draw belong
-together, or `'marginal'` when no joint interpretation is supplied. Array shape
-alone does not establish dependence. Optional `sampleWeights` are nonnegative
-relative weights for draws, shared across rows; omission means uniform weights.
-Numerical consumers normalize them. Posterior-mean samples do not represent
-future outcomes without an observation-noise model.
-
-Use `rows`, `targetCount` (default 1), and optional unique `targetNames` to
-identify axes. Levels are strictly increasing; quantiles cannot cross. Infinite
-interval endpoints express conservative support, and `[Infinity, -Infinity]`
-represents the empty set. Ellipsoid regions carry centers, a shared precision
-matrix and radii; the numerical producer must validate positive definiteness.
-
-Matrix targets require the explicit task kind `multioutput` or `multilabel`.
-`normalizeTargets`, `subsetTargets`, Task and `crossValScore` preserve those axes.
-Weights have one entry per row. Multilabel probabilities are independent columns;
-multiclass probability rows sum to one. Multioutput R², MSE and MAE average the
-per-target scores. Multilabel measures include `subset_accuracy`, `hamming_loss`
-and `multilabel_log_loss`.
-
-Pipeline routes `predictQuantiles`, `predictInterval`, `predictSet`,
-`predictRegion` and `predictDistribution` through its fitted transforms to a
-capable final estimator. Arguments and asynchronous results are preserved.
-Measures can require structured prediction fields; `metadata.predictionArgs`
-supplies positional arguments after X when `scoreEstimator` invokes that method.
-The core provides validation and routing; numerical uncertainty methods live in
-an optional package.
-
-Model packages with additional fitting entry points can declare
-`fitMethods: { fitSpecial: 'regression' }` in `createModelClass` options. Those
-methods use the same fit-state, failure, disposal and Promise handling as `fit`.
-Other extra methods remain fitted-only queries.
