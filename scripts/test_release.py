@@ -1,7 +1,9 @@
 import base64
+from contextlib import redirect_stdout
 import hashlib
 import importlib.util
 import io
+import sys
 import json
 from pathlib import Path
 import tarfile
@@ -157,14 +159,136 @@ class ReleaseTests(unittest.TestCase):
         asset['digest'] = 'sha256:wrong'
         self.assertFalse(release.asset_matches(asset, self.archive))
 
-    def test_successful_upload_requires_registry_confirmation(self):
+    def test_refresh_registry_state_before_upload(self):
         manifest = dict(repos=[], packages=[self.package])
-        with patch.object(release, 'preflight', return_value=({self.package['id']: 'missing'}, {})), patch.object(release, 'run') as execute, patch.object(release, 'package_state', return_value='missing'):
-            with self.assertRaisesRegex(release.ReleaseError, 'registry has not confirmed'):
+        states = [({self.package['id']: 'missing'}, {}),
+                  ({self.package['id']: 'published'}, {})]
+        with patch.object(release, 'preflight', side_effect=states), patch.object(release, 'run') as execute, patch.object(release, 'package_state', return_value='published'):
+            release.publish(manifest, self.root, self.root)
+            self.assertFalse(any('publish' in c.args[0] for c in execute.call_args_list))
+
+    def test_upload_error_requires_matching_registry_archive(self):
+        manifest = dict(repos=[], packages=[self.package])
+        states = [({self.package['id']: 'missing'}, {}),
+                  ({self.package['id']: 'published'}, {})]
+        def execute(args, **kwargs):
+            if 'publish' in args:
+                raise release.ReleaseError('npm exit 1: already published')
+        with patch.object(release, 'preflight', side_effect=states), patch.object(release, 'run', side_effect=execute), patch.object(release, 'package_state', side_effect=['missing', 'published']):
+            release.publish(manifest, self.root, self.root)
+
+    def test_receipt_rejects_changed_archive(self):
+        release.publication_receipt(self.package, self.root, record=True)
+        changed = dict(self.package, sha256='0' * 64)
+        with self.assertRaisesRegex(release.ReleaseError, 'different archive'):
+            release.publication_receipt(changed, self.root)
+
+    def test_failed_upload_does_not_hide_registry_conflict(self):
+        manifest = dict(repos=[], packages=[self.package])
+        def execute(args, **kwargs):
+            if 'publish' in args:
+                raise release.ReleaseError('npm exit 1')
+        with patch.object(release, 'preflight', return_value=({self.package['id']: 'missing'}, {})), patch.object(release, 'run', side_effect=execute), patch.object(release, 'package_state', side_effect=['missing', release.ReleaseError('published archive differs')]):
+            with self.assertRaisesRegex(release.ReleaseError, 'npm exit 1; published archive differs'):
                 release.publish(manifest, self.root, self.root)
-            command = next(c.args[0] for c in execute.call_args_list if 'publish' in c.args[0])
-            self.assertIn('--ignore-scripts', command)
-            self.assertIn(str(self.archive), command)
+            self.assertFalse(release.publication_receipt(self.package, self.root))
+
+    def test_upload_all_packages_without_waiting_for_visibility(self):
+        second = dict(self.package, id='npm:@wlearn/second', name='@wlearn/second',
+                      needs=[self.package['id']])
+        packages = [self.package, second]
+        manifest = dict(repos=[], packages=packages)
+        states = {p['id']: 'missing' for p in packages}
+        with patch.object(release, 'preflight', return_value=(states, {})), patch.object(release, 'run') as execute, patch.object(release, 'package_state', return_value='missing'), patch('time.sleep', side_effect=AssertionError('Must not wait')):
+            release.publish(manifest, self.root, self.root)
+            self.assertEqual(sum('publish' in c.args[0] for c in execute.call_args_list), 2)
+            for package in packages:
+                self.assertTrue(release.publication_receipt(package, self.root))
+            execute.reset_mock()
+            release.publish(manifest, self.root, self.root)
+            self.assertFalse(any('publish' in c.args[0] for c in execute.call_args_list))
+
+    def test_failed_upload_without_confirmation_stops(self):
+        manifest = dict(repos=[], packages=[self.package])
+        def execute(args, **kwargs):
+            if 'publish' in args:
+                raise release.ReleaseError('npm authentication failed')
+        with patch.object(release, 'preflight', return_value=({self.package['id']: 'missing'}, {})), patch.object(release, 'run', side_effect=execute), patch.object(release, 'package_state', return_value='missing'):
+            with self.assertRaisesRegex(release.ReleaseError, 'npm authentication failed'):
+                release.publish(manifest, self.root, self.root)
+            self.assertFalse(release.publication_receipt(self.package, self.root))
+
+    def test_pypi_upload_allows_twine_credential_prompt(self):
+        package = dict(self.package, id='pypi:wlearn-bo', name='wlearn-bo', kind='pypi')
+        manifest = dict(repos=[], packages=[package])
+        with patch.object(release, 'preflight', return_value=({package['id']: 'missing'}, {})), patch.object(release, 'run') as execute, patch.object(release, 'package_state', return_value='missing'):
+            release.publish(manifest, self.root, self.root, twine=['python', '-m', 'twine'])
+            upload = next(c for c in execute.call_args_list if 'upload' in c.args[0])
+            self.assertNotIn('--non-interactive', upload.args[0])
+            self.assertIn('https://upload.pypi.org/legacy/', upload.args[0])
+            self.assertTrue(upload.kwargs['stream'])
+
+    def test_streamed_twine_http_status_is_detected(self):
+        output = io.StringIO()
+        with redirect_stdout(output), self.assertRaises(release.ReleaseError) as caught:
+            release.run([sys.executable, '-c',
+                         "print('ERROR HTTPError: 429 Too Many Requests'); raise SystemExit(1)"],
+                        stream=True, capture_stream=True)
+        self.assertEqual(caught.exception.http_status, 429)
+        self.assertIn('Too Many Requests', output.getvalue())
+
+    def test_pypi_creation_limit_defers_new_projects_but_finishes_other_uploads(self):
+        rf = dict(self.package, id='pypi:rf', kind='pypi', name='rf', artifact='rf.tar.gz')
+        sym = dict(rf, id='pypi:sym', name='sym', artifact='sym.tar.gz')
+        existing = dict(rf, id='pypi:existing', name='existing', artifact='existing.tar.gz')
+        packages = [rf, sym, existing, self.package]
+        repo = dict(id='core', github='wlearn-org/core', path='.', commit='a'*40, branch='main', tag='v0.3.0')
+        manifest = dict(repos=[repo], packages=packages)
+        pending = dict(repository=True, tag='a'*40, release=None, push_branch=False)
+        done = dict(pending, release={'assets': []})
+        states = {p['id']: 'missing' for p in packages}
+        calls = []
+        def execute(args, *a, **kwargs):
+            calls.append(args)
+            if 'upload' in args and args[-1].endswith('/rf.tar.gz'):
+                error = release.ReleaseError('HTTPError: 429 Too Many Requests')
+                error.http_status = 429
+                raise error
+        def project(url):
+            return {'info': {}} if '/existing/' in url else None
+        with patch.object(release, 'preflight', side_effect=[(states, {'core': pending}), (states, {'core': done})]), patch.object(release, 'run', side_effect=execute), patch.object(release, 'package_state', return_value='missing'), patch.object(release, 'get_json', side_effect=project), patch.object(release, 'github_state', return_value=pending), patch.object(release, 'release_assets', return_value=[]), patch('time.sleep', side_effect=AssertionError('Must not retry daily quota')):
+            with self.assertRaisesRegex(release.ReleaseError, 'deferred'):
+                release.publish(manifest, self.root, self.root)
+        uploads = [c for c in calls if 'upload' in c or 'publish' in c]
+        self.assertEqual(len(uploads), 3)
+        self.assertTrue(any(c[:3] == ['gh', 'release', 'create'] for c in calls))
+        self.assertFalse(release.publication_receipt(rf, self.root))
+        self.assertFalse(release.publication_receipt(sym, self.root))
+        self.assertTrue(release.publication_receipt(existing, self.root))
+        self.assertTrue(release.publication_receipt(self.package, self.root))
+
+    def test_npm_only_has_no_twine_github_or_wait(self):
+        python = dict(self.package, id='pypi:wlearn', kind='pypi')
+        manifest = dict(repos=[], packages=[self.package, python])
+        with patch.object(release, 'validate'), patch.object(release, 'run') as execute, patch.object(release, 'package_state', return_value='missing') as state, patch('time.sleep', side_effect=AssertionError('No waits')):
+            release.publish_npm(manifest, self.root, self.root)
+            release.publish_npm(manifest, self.root, self.root)
+            self.assertTrue(all(c.args[0][0] == 'npm' for c in execute.call_args_list))
+            self.assertEqual(sum('publish' in c.args[0] for c in execute.call_args_list), 1)
+            self.assertTrue(all(c.args[0]['kind'] == 'npm' for c in state.call_args_list))
+
+    def test_github_only_pushes_exact_commit_and_releases_without_registries(self):
+        repo = dict(id='core', github='wlearn-org/core', path='.', commit='a'*40, branch='main', tag='v0.3.0')
+        manifest = dict(repos=[repo], packages=[])
+        pending = dict(repository=True, tag=None, release=None, push_branch=True)
+        done = dict(repository=True, tag='a'*40, release={'assets': []}, push_branch=False)
+        with patch.object(release, 'preflight', side_effect=[({}, {'core': pending}), ({}, {'core': done})]) as check, patch.object(release, 'run') as execute, patch.object(release, 'github_state', return_value=pending), patch.object(release, 'release_assets', return_value=[]), patch.object(release, 'package_state', side_effect=AssertionError('No registry requests')):
+            release.publish_github(manifest, self.root, self.root)
+            calls = [c.args[0] for c in execute.call_args_list]
+            self.assertTrue(all(c[0] in ['gh', 'git'] for c in calls))
+            self.assertTrue(any(c[-1] == 'a'*40 + ':refs/heads/main' for c in calls))
+            self.assertTrue(any(c[:3] == ['gh', 'release', 'create'] for c in calls))
+            self.assertTrue(all(c.kwargs['github_only'] for c in check.call_args_list))
 
     def test_already_published_packages_are_not_uploaded(self):
         manifest = {'repos': [], 'packages': [self.package]}

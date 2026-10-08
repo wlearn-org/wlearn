@@ -27,7 +27,24 @@ class ReleaseError(RuntimeError):
     pass
 
 
-def run(args, cwd=None, stream=False):
+def run(args, cwd=None, stream=False, capture_stream=False):
+    if stream and capture_stream:
+        # Keep stdin/TTY available to Twine's secure credential prompt. Tee only
+        # output, retaining a bounded tail to distinguish HTTP throttling.
+        tail = ''
+        with subprocess.Popen(args, cwd=cwd, stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT, text=True) as process:
+            for line in process.stdout:
+                print(line, end='', flush=True)
+                tail = (tail + line)[-65536:]
+            code = process.wait()
+        if code:
+            error = ReleaseError(f'{shlex.join(map(str, args))}: exit {code}')
+            plain = re.sub(r'\x1b\[[0-9;]*m', '', tail)
+            match = re.search(r'HTTPError:\s*(\d{3})\b', plain)
+            error.http_status = int(match.group(1)) if match else None
+            raise error
+        return ''
     if stream:
         result = subprocess.run(args, cwd=cwd)
         if result.returncode:
@@ -52,7 +69,7 @@ def github_token():
 
 
 def get_json(url):
-    headers = {'User-Agent': 'wlearn-release'}
+    headers = {'User-Agent': 'wlearn-release', 'Cache-Control': 'no-cache'}
     if url.startswith('https://api.github.com/') and github_token():
         headers['Authorization'] = 'Bearer ' + github_token()
     request = urllib.request.Request(url, headers=headers)
@@ -286,10 +303,10 @@ def release_assets(repo, manifest, directory):
     return paths
 
 
-def preflight(manifest, directory, workspace):
+def preflight(manifest, directory, workspace, github_only=False):
     repos = validate(manifest, directory, workspace)
     states = {}
-    for package in ordered(manifest['packages']):
+    for package in ([] if github_only else ordered(manifest['packages'])):
         states[package['id']] = package_state(package, directory)
         print(f"{states[package['id']]:10} {package['id']} {package['version']}", flush=True)
     github = {}
@@ -303,6 +320,23 @@ def preflight(manifest, directory, workspace):
         github[key] = state
         print(f"GitHub {repo['github']} {repo['tag']}: " + ('released' if state['release'] else 'pending'), flush=True)
     return states, github
+
+
+def publication_receipt(package, directory, record=False):
+    # A receipt means upload was accepted, never that public bytes were verified.
+    # Retain it across restarts so delayed metadata cannot cause a second upload.
+    path = directory / 'publication-receipts.json'
+    receipts = json.loads(path.read_text()) if path.exists() else {}
+    key = package['id'] + '@' + package['version']
+    saved = receipts.get(key)
+    if saved is not None and saved != package['sha256']:
+        raise ReleaseError(f"{key}: accepted upload receipt belongs to a different archive")
+    if record:
+        receipts[key] = package['sha256']
+        temporary = path.with_suffix('.tmp')
+        temporary.write_text(json.dumps(receipts, indent=2) + '\n')
+        temporary.replace(path)
+    return saved is not None
 
 
 def publish(manifest, directory, workspace, create_repos=False, twine=None):
@@ -319,19 +353,71 @@ def publish(manifest, directory, workspace, create_repos=False, twine=None):
     for repo in manifest['repos']:
         if not github[repo['id']]['repository']:
             run(['gh', 'repo', 'create', repo['github'], '--public'], stream=True)
+    deferred = []
+    pypi_creation_limited = False
     for package in ordered(manifest['packages']):
         if states[package['id']] == 'published':
             continue
+        if publication_receipt(package, directory):
+            print(f"Skipping {package['id']}; upload already accepted", flush=True)
+            continue
+        # Preflight can be minutes old after authentication or earlier uploads.
+        if package_state(package, directory) == 'published':
+            continue
+        if package['kind'] == 'pypi' and pypi_creation_limited:
+            project = get_json(f"https://pypi.org/pypi/{package['name']}/json")
+            if project is None:
+                deferred.append(package['id'])
+                print(f"Deferring {package['id']}; PyPI new-project quota was reached", flush=True)
+                continue
         path = (directory / package['artifact']).resolve()
         print(f"Publishing {package['id']} {package['version']}", flush=True)
         if package['kind'] == 'npm':
-            run(['npm', 'publish', str(path), '--ignore-scripts', '--access', 'public', '--registry=https://registry.npmjs.org'], stream=True)
+            command = ['npm', 'publish', str(path), '--ignore-scripts', '--access', 'public', '--registry=https://registry.npmjs.org']
         else:
-            # Explicit destination avoids ambient .pypirc selecting TestPyPI.
-            run([*twine, 'upload', '--non-interactive', '--repository-url', 'https://upload.pypi.org/legacy/', str(path)], stream=True)
-        if package_state(package, directory) != 'published':
-            raise ReleaseError(f"{package['id']}: upload returned success but registry has not confirmed it; rerun to resume")
-    # Publish dependencies before push-triggered CI attempts their installation.
+            # Keep the real PyPI destination and inherit the terminal for credential prompts.
+            command = [*twine, 'upload', '--repository-url', 'https://upload.pypi.org/legacy/', str(path)]
+        try:
+            run(command, stream=True, capture_stream=package['kind'] == 'pypi')
+        except ReleaseError as upload_error:
+            if package['kind'] == 'pypi' and getattr(upload_error, 'http_status', None) == 429:
+                if package_state(package, directory) == 'published':
+                    publication_receipt(package, directory, record=True)
+                    continue
+                # PyPI's new-project limit can span 24 hours. Do not hammer it
+                # or prevent independent npm/GitHub releases from completing.
+                project = get_json(f"https://pypi.org/pypi/{package['name']}/json")
+                pypi_creation_limited = pypi_creation_limited or project is None
+                deferred.append(package['id'])
+                print(f"Deferring {package['id']}: PyPI HTTP429; no automatic retry", flush=True)
+                continue
+            # A concurrent/prior upload or lost response can report failure after
+            # acceptance. Only matching registry integrity permits continuing.
+            print(f"Upload command failed for {package['id']}; checking registry before stopping", flush=True)
+            try:
+                if package_state(package, directory) != 'published':
+                    raise ReleaseError('registry has not confirmed this upload; no receipt recorded')
+            except ReleaseError as confirmation_error:
+                raise ReleaseError(f'{upload_error}; {confirmation_error}') from upload_error
+            publication_receipt(package, directory, record=True)
+        else:
+            publication_receipt(package, directory, record=True)
+    write_github_releases(manifest, directory, workspace, github)
+    final, releases = preflight(manifest, directory, workspace)
+    pending = [key for key, state in final.items() if state != 'published']
+    verify_github_releases(manifest, directory, releases)
+    if deferred:
+        raise ReleaseError('Other uploads and GitHub releases completed; PyPI packages deferred: '
+                           + ', '.join(deferred)
+                           + '. Resume after the quota permits; accepted uploads will be skipped.')
+    if pending:
+        print('Uploads accepted and GitHub releases verified. Registry visibility pending: ' + ', '.join(pending))
+        print('Run the check command later to verify availability; accepted uploads will not be repeated.')
+    else:
+        print('All registry archives and GitHub releases verified.')
+
+
+def write_github_releases(manifest, directory, workspace, github):
     for repo in manifest['repos']:
         state = github[repo['id']]
         local = workspace / repo['path']
@@ -354,15 +440,50 @@ def publish(manifest, directory, workspace, create_repos=False, twine=None):
             missing = [p for p in paths if p.name not in existing]
             if missing:
                 run(['gh', 'release', 'upload', repo['tag'], '--repo', repo['github'], *map(str, missing)], stream=True)
-    final, releases = preflight(manifest, directory, workspace)
-    if any(state != 'published' for state in final.values()):
-        raise ReleaseError('Final registry verification is incomplete; rerun to resume')
+
+
+def verify_github_releases(manifest, directory, releases):
     for repo in manifest['repos']:
         state = releases[repo['id']]
         names = {a['name'] for a in (state['release'] or {}).get('assets', [])}
         if state['release'] is None or any(p.name not in names for p in release_assets(repo, manifest, directory)):
             raise ReleaseError(f"{repo['github']}: GitHub release is incomplete; rerun to resume")
-    print('All registry archives and GitHub releases verified.')
+
+
+def publish_github(manifest, directory, workspace, create_repos=False):
+    _, github = preflight(manifest, directory, workspace, github_only=True)
+    run(['gh', 'auth', 'status'])
+    missing = [r['github'] for r in manifest['repos'] if not github[r['id']]['repository']]
+    if missing and not create_repos:
+        raise ReleaseError(f'Missing GitHub repositories: {missing}; pass --create-repos')
+    for name in missing:
+        run(['gh', 'repo', 'create', name, '--public'], stream=True)
+    write_github_releases(manifest, directory, workspace, github)
+    _, releases = preflight(manifest, directory, workspace, github_only=True)
+    verify_github_releases(manifest, directory, releases)
+    print('All GitHub releases verified. npm and PyPI were not changed.')
+
+
+def publish_npm(manifest, directory, workspace):
+    validate(manifest, directory, workspace)
+    packages = [p for p in ordered(manifest['packages']) if p['kind'] == 'npm']
+    states = {p['id']: package_state(p, directory) for p in packages}
+    run(['npm', 'whoami', '--registry=https://registry.npmjs.org'])
+    for package in packages:
+        if states[package['id']] == 'published' or publication_receipt(package, directory):
+            print(f"Skipping {package['id']}; already published or accepted", flush=True)
+            continue
+        if package_state(package, directory) == 'published':
+            continue
+        path = (directory / package['artifact']).resolve()
+        try:
+            run(['npm', 'publish', str(path), '--ignore-scripts', '--access', 'public',
+                 '--registry=https://registry.npmjs.org'], stream=True)
+        except ReleaseError:
+            if package_state(package, directory) != 'published':
+                raise
+        publication_receipt(package, directory, record=True)
+    print('All npm uploads accepted. PyPI and GitHub were not changed.')
 
 
 def main():
@@ -371,11 +492,23 @@ def main():
     parser.add_argument('manifest', type=Path)
     parser.add_argument('--workspace', type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument('--create-repos', action='store_true')
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument('--github-only', action='store_true', help='Push commits/tags and create GitHub releases only')
+    scope.add_argument('--npm-only', action='store_true', help='Publish npm packages only; no PyPI or GitHub operations')
     parser.add_argument('--twine', help='Twine command, e.g. /path/to/python -m twine')
     args = parser.parse_args()
     manifest = json.loads(args.manifest.read_text())
     directory = args.manifest.resolve().parent
-    if args.action == 'publish':
+    if args.github_only:
+        if args.action == 'publish':
+            publish_github(manifest, directory, args.workspace, args.create_repos)
+        else:
+            preflight(manifest, directory, args.workspace, github_only=True)
+    elif args.npm_only:
+        if args.action != 'publish':
+            parser.error('--npm-only requires publish')
+        publish_npm(manifest, directory, args.workspace)
+    elif args.action == 'publish':
         publish(manifest, directory, args.workspace, args.create_repos, shlex.split(args.twine) if args.twine else None)
     else:
         preflight(manifest, directory, args.workspace)
